@@ -45,7 +45,11 @@ So this is what we're going to do now. First let's introduce a version of the pr
 
 This example exists in a number of forms, that each add important corners to the problem, but in the interest of simplicity, we will start with a simple situation where no problems occur.
 
-Assume that there is a large, but fixed, finite number $J$, and $J$ unknown parameters $\mu_j$, $j=1,\ldots, J$. The large number $J$ can be thought of as the number of strata in a population, while $\mu_j$ are the means of the corresponding stratum. Now construct an experiment where you draw $y_i \mid x = j, \mu_j \sim N(\mu_j, 1)$. To close out the generative model, we assume that the covariates have a known distribution $x_i \sim \text{Unif}\{1,\ldots, p\}$. 
+Assume that there is a large, but fixed, finite number $J$, and $J$ unknown parameters $\mu_j$, $j=1,\ldots, J$. The large number $J$ can be thought of as the number of strata in a population, while $\mu_j$ are the means of the corresponding stratum. Now construct an experiment where you draw 
+$$
+y_i \mid \mu,x = j \sim N(\mu_j, 1).
+$$
+To close out the generative model, we assume that the covariates have a known distribution $x_i \sim \text{Unif}\{1,\ldots, p\}$. 
 
 
 A classical problem in mathematical statistics is to construct a $\sqrt{n}$-consistent^[That is, an estimator where $\Pr(|\hat \mu_n - \mu| > \sqrt{n}\epsilon) \rightarrow 0$ for all $\epsilon>0$. This, roughly, means, that you can find a $C$ such that $\mu \in [ \hat \mu_n - C\sqrt{n}, \hat \mu_n + C\sqrt{n}]$ with high probability.] estimator $\hat\mu_n$ of the vector $\mu$. But in the setting of this problem, this is quite difficult. The challenge is that if $J$ is a very large number, then we would need a gargantuan^[The asymptotics say that we should count our data in multiples of $J$, so we'd $n > 100J$ to get even one decimal place of accuracy.] number of observations ($n \gg J$) in order to resolve all of the parameters properly. 
