@@ -1,0 +1,304 @@
+---
+title: "On that example of Robins and Ritov; or A sleeping dog in harbor is safe, but that's not what sleeping dogs are for"
+description: |
+  Look, it's a fucking example of Bayes being bad. But it comes up often enough to be worth talking about. I'm going to, unsurprisingly, argue that Bayes isn't bad. Neither are Robings/Ritov/Wasserman wrong. They're just looking at the problem through a different lens.
+date: 2022-15-07
+image: misandrists.JPG
+categories: [Fundamentals, Survey sampling, MRP, Bayes]
+twitter-card:
+  title: "On that example by Robins and Ritov"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/robins-ritov.html
+format: 
+  html:
+    df-print: paged
+
+draft: true
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Sometimes it's the parable of the barren fig tree. Sometimes you're just pissed at a shrub.
+
+Paradoxes and counterexamples live in statistics as our morality plays and our ghost stories. They serve as the creepy gas station attendants that populate the roads leading to the curséd woods; existing not to force change on the adventurer, but to signpost potential danger.
+
+As a rule, we should also look in askance at attempts to resolve these paradoxes and counterexamples. That is not what they are for. They are community resources, objects of our collective culture, monuments to thwarted desire.
+
+But sometimes, driven by the endless thirst for content, it's worth diving down into a counterexample and resolving it. This quixotic quest is not to somehow patch a hole, but to rather expand the hole until it can comfortably encase our wants, needs, and prayers.
+
+To that end, let's gather 'round the campfire and attend the tale of The Bayesian and the Ancillary Coin.
+
+
+This example was introduced by Robins and Ritov, and greatly popularised (and frequently reformulated) by Larry Wasserman^[It's worth saying that these three people do fabulous statistics of the form that I don't usually do. But that doesn't make it less important to understand their contributions. You could say that while I am not a Lazbian, I think it's important to know the theory.]. It says^[I might have slightly reworded it.] this: 
+
+>A committed subjective Bayesian (one who cleaves to the likelihood priniciple tighter than Rose clings to that door) will sometimes get a very wrong answer under some simple, but realistic, forms of randomization. Only a less committed Bayesian will be able to skirt the danger.
+
+
+So this is what we're going to do now. First let's introduce a version of the problem that does not trigger the counterexample. We then introduce the randomization scheme that leads to the error and talk about exactly how things go wrong. As someone who is particular skeptical of any claims to purity^[Purity is needed in good olive oil and that's it], the next job is going to be deconstructing this idea of a committed^[A committed subjective Bayesian prefers Dutch baby to a Dutch book.] subjective Bayesian. I will, perhaps unsurprisingly, argue that this is the only part of the Robins and Ritov (and Wasserman) conclusions that are somewhat questionable. In fact, a _true_ committed subjective Bayesian^[A true committed subjective Bayesian doesn't wear anything under his kilt.] can always easily the problem. 
+
+## A counterexample always proceedes from the least interesting premise
+
+This example exists in a number of forms, that each add important corners to the problem, but in the interest of simplicity, we will start with a simple situation where no problems occur.
+
+Assume that there is a large, but fixed, finite number $J$, and $J$ unknown parameters $\mu_j$, $j=1,\ldots, J$. The large number $J$ can be thought of as the number of strata in a population, while $\mu_j$ are the means of the corresponding stratum. Now construct an experiment where you draw $y_i \mid x = j, \mu_j \sim N(\mu_j, 1)$. To close out the generative model, we assume that the covariates have a known distribution $x_i \sim \text{Unif}\{1,\ldots, p\}$. 
+
+
+A classical problem in mathematical statistics is to construct a $\sqrt{n}$-consistent^[That is, an estimator where $\Pr(|\hat \mu_n - \mu| > \sqrt{n}\epsilon) \rightarrow 0$ for all $\epsilon>0$. This, roughly, means, that you can find a $C$ such that $\mu \in [ \hat \mu_n - C\sqrt{n}, \hat \mu_n + C\sqrt{n}]$ with high probability.] estimator $\hat\mu_n$ of the vector $\mu$. But in the setting of this problem, this is quite difficult. The challenge is that if $J$ is a very large number, then we would need a gargantuan^[The asymptotics say that we should count our data in multiples of $J$, so we'd $n > 100J$ to get even one decimal place of accuracy.] number of observations ($n \gg J$) in order to resolve all of the parameters properly. 
+
+But there is a saving grace! The _population_^[Remember $\mu_j = \mathbb{E}(y \mid x=j)$.] average 
+$$
+\mu = \mathbb{E}(y) = \sum_{j=1}^J \mu_j \Pr(x = j)= \frac{1}{J}\sum_{j=1}^J \mu_j
+$$
+can be estimated fairly easily. In fact, the sample mean (aka the most obvious estimator)  $\bar{y} = n^{-1} \sum_{i=1}^n y_i$ is going to be $\sqrt{n}$-consistent. 
+
+Similarly, if we were to construct a Bayesian estimate of the population mean based off the prior $\mu_j \mid m \sim N(m, 1)$ and $m \sim N(0,\tau^2)$, then the posterior estimate of the population mean is, for large enough^[Theorem 2 of [Harmeling and Toussaint](https://argmin.lis.tu-berlin.de/papers/07-harmeling-tr.pdf)] $n$, 
+$$
+\hat \mu_{\text{Bayes},n}= \mathbb{E}(m \mid y) \approx \frac{1}{n + 2/\tau} \sum_{i=1}^n y_i.
+$$
+This means that the^[a] Bayesian resolution of this problem is roughly the same as the classical resolution. This is a nice thing. For very simple problems, these estimators should be fairly similar. It's only when shit gets complicated where things become subtle.
+
+This scenario, where a model is parameterized by and extremely high dimensional parameter $\mu$ but the quantity of inferential inference is a low-dimensional summary of $\mu$, is widely and deeply studied under the name of semi-parametric statistics. 
+
+Semi-parametric statistics is, unsurprisingly, harder than parametric statistics, but it also quite a bit more challenging than non-parametric statistics. The reason is that if we want to guarantee a good estimate of a particular finite dimensional summary, it turns out that it's not enough to generically get a "good" estimate of the high-dimensional parameter. In fact, getting a good estimate of the high-dimensional parameter is often not possible (see the example we just considered). 
+
+Instead understanding semi-parametric models becomes the fine art of understanding what needs to be done well and what we can half arse. A description of this would take us _well_ outside the scope of a mere blog post, but if you want to learn more about the topic, that's what to google.
+
+
+
+## Robins and Ritov toss an ancillary coin and let slip the dogs of war
+
+In order to destroy all that is right and good about the previous example, we only need to do one thing: randomize in a nefarious way. Robins and Ritov (actually, Wasserman who proposed the case with a finite $J$) add to their experiment $J$ biased coins $r_j$ with the property that 
+$$
+\Pr(r_j = 1 \mid X=j) = \xi_j,
+$$
+for some _known_  $0 < \delta \leq \xi_j < 1-\delta$, $j=1,\ldots, J$ and some $c>0$. 
+
+They then go through the data and add a column $r_i \sim \text{Bernouili}(\xi_{x_i})$. The new data is now a three dimensional vector $(y_i, x_i, r_i)$. It's important to this problem that the $\xi_j$ are known and that we have the conditional independence structure $y \perp r \mid x$.
+
+Robins, Ritov, and Wasserman all ask the same question: Can we still estimate the population mean if we only observe samples from the _conditional_ distribution $(y_i, x_i) \sim p(x,y \mid r=1)$? 
+
+The answer is going to turn out that there is a perfectly good estimator from classical survey statistics, but a Bayesian estimator is a bit more challenging to find.
+
+Before we get there, it's worth noting that unlike the problem in the previous section, this problem is at least a little bit interesting. It's a cartoon of a very common situation where there is covariate-dependent randomization in a clinical trial. Or, maybe even more cleanly, a cartoon of a simple probability survey. 
+
+A critical feature of this problem is that because the $\xi_j$ are known and $p(x)$ is known, the joint likelihood factors as 
+$$
+p(y,x,r \mid \mu) = p(x)p(r\mid x) p(y \mid x, \mu) = p(r , x) p(y \mid x, \mu),
+$$ 
+so $r$ is ancillary^[If you've not come across it, _ancillary_ is the term used for parts of the data that don't influence parameter estimates. It's the opposite of a sufficient statistic. One way to see that it's ancillary for _any_ model $p(y\mid x, \theta)$, is to consider the log of the joint density $$
+\log(p(x,y,r \mid \theta)) = \log p(y\mid x, \theta) + \log p(r \mid x) + \log p(x)
+$$, where the last two terms are constant in $\theta$.] for $\mu$.
+
+The simplest classical estimator for $\mathbb{E}(y)$ is the Horvitz-Thompson estimator $$
+\bar{y}_\text{HT} = \frac{1}{n} \sum_{i=1}^n \frac{y_i}{\xi_{x_i}}.
+$$ It's easy to show that this is a $\sqrt{n}$-consistent estimator. Better yet, *uniform* over  $\mu^*$ in the sense that the convergence of the estimator isn't affected (to leading order) by the specific $\mu^*_j$ values.  This uniformity is quite useful as it gives some hope of good finite-data behaviour.
+
+So now that we know that the problem *can* be solved, let's see if we can solve it in a Bayesian way. Robins and Ritov gave the following result.
+
+> There is no uniformly consistent Baysesian estimator of the parameter $\mu$ unless the prior depends on the $\xi_j$ values.
+
+Robins and Ritov argue that a "committed subjective Bayesian" would, by the Likelihood Principle, never allow their prior to depend on the ancillary statistic $\xi$ as the Likelihood Principle clearly states that inference should be independent on ancillary information.
+
+There are, of course, ways to construct priors that depend on the sampling probabilities. Wasserman calls this "frequentist chasing"
+
+So let's investigate this, by talking about what went wrong, how to fix it, and whether fixing it makes us bad Bayesians.
+
+# The likelihood principle and the death of nuance
+
+So what is the likelihood principle and why is it being such a bastard to us poor liddle bayesians?
+
+The likelihood principle says, roughly, that the all of the information needed for parameter inference^[You need to be specific here. Obviously this would be false if you were trying to do a statistical prediction. Or if you were trying to make a decision. Those things necessarily depend on extra stuff!] should be contained in the likelihood function. 
+
+In particular, if we follow the likelihood principle, then if we have two likelihoods that are scalar multiples of each other, our estimates of the parameters should be the same.
+
+Ok. Sure.
+
+Why on earth do people care about the likelihood principle? I guess it's because they aren't happy with the fact that Bayesian methods actually work in practice and instead want to do some extremely boring philosophy-ish stuff to "prove" the superiority and purity of Bayesian methods. And you know all power^[This is a lie. Insisting on talking about this shit rather than actually making Bayes useful and using it in new and exciting ways to do things that are hard to do without Bayesian methods is a waste of time. Worse than that, when you start pretending your method of choice is the only possible thing that a sensible and principled person would use, you start to look like a bit of a dickhead. It also turns people off trying these very flexible and useful methods. So yeah. I maybe do care a little bit. ] to them. Your kink is not my kink. 
+
+In this context, it means that because $r$ is ancillary to $y$ for estimating $\mu$ we should avoid using the $r_i$s (and the $\xi_j$s) to estimate $\mu$. This is in direct opposition to what the Horvitz-Thompson estimator uses.
+
+What happens if we follow this principle? We get a bad estimate. 
+
+It's pretty easy to see that the posterior mean will, eventually, converge to the true value eventually. All that has to happen is you need to see enough observations in each category. So if you get enough data, you will eventually get a good estimate.
+
+Unfortunately, when $J$ is large, this will potentially take a very very long^[The expected number of samples to see one draw where $x_i =j$ is $J$. The expected number of draws where $x_i = j$ that you need to actually observe the corresponding $y_i$ is $\xi_j^{-1}$. This suggests it will potentially take _a lot_ of draws to even have effectively one sample from each category, let alone the 20-100 you'd need to, practically, get some sort of reasonable estimate.] time. 
+
+Let's go a bit deeper and see why this behaviour is not wrong, _per se_, it's just Bayesian.
+
+Bayesian inference produces a posterior distribution, which  is conditional on an observed sample. This posterior distribution is an update to the prior that describes how compatible different parameter configurations are with the observed sample. 
+
+The thing is, our sample only sees a small sample of the values of $x$. This means that we are, essentially, estimating 
+$$
+\mathbb{E}_x (\mathbb{E}(y \mid x) 1_{x \in A_{r}} \mid r),
+$$
+where $A_r$ is the set observed values of $x$, which depends on $r$. This target changes as we get more data and see more levels of $x$ and eventually coalesces towards the thing we are trying to compute. 
+
+But, and this is critical, we _cannot_ say _anything_ about $\mu_j$ for $j \not \in A_r$ unless we can assume that they are, in some sense, very strongly related. Unfortunately, the whole point of this example is that we are not allowed^[Robins and Ritov have always been open that if there is a true parametric model for the $\mathbb{E}(Y \mid x = j)$ (or if that function is "very smooth" in some technical sense, eg a realisation of a smooth Gaussian process) then the Bayesian estimator that incorporates this information will do perfectly well. ] to assume that!
+
+In this extremely flexible model, it's possible to have a sequence $\xi_j$ that is highly correlated^[So the RR example uses binary data, so then it's the correlation between $\mathbb{E}(y \mid x=j)$ and $\xi_j$, but the exact same argument works of the one sequence is positively correlated something like $\operatorname{expit}(\mu_j)$. I went with the Gaussian version because at one point I thought I might end up having to derive posteriors and I'm all about simplicity.] with $\mu_j$. If, for instance, $\operatorname{expit}(\mu_j) = \xi_j$ were^[expit is the inverse of the logit transform] equally spaced on $[\delta, 1-\delta]$ for some small $\delta>0$, you would have the situation where you are very likely to see the largest values of $y$ and quite unlikely to see any of the smaller values. This would gravely bias your sample mean upwards.
+
+This construction is the basis similar to the one that Robins and Ritov use to prove that there is always at parameter value where the posterior mean converges^[Check [the paper](https://cdn1.sph.harvard.edu/wp-content/uploads/sites/343/2013/03/coda.pdf) for the details as the situation is slightly different to the one I'm sketching out here, but there's no real substantive difference.] to the true mean at a rate no faster than $\mathcal{O}((\log \log n)^2 \log n)$, which would require an exponentially large number of samples to do any sort  of inference.
+
+A reasonable criticism of this argument is that surely most problems will not have strong correlation between the sampling probabilities and the conditional means. In a follow up paper, [Ritov _et al._](https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/The-Bayesian-Analysis-of-Complex-High-Dimensional-Models--Can/10.1214/14-STS483.full) argue that it's not necessarily all that rare. For instance, if they are both realisations of independent GPs^[Of course, if this were true we could use a GP prior for the $\mu_j$s and we'd probably get a decent estimator anyway.] the empirical correlation between the two observed sequences can be far from zero! Less abstractly, it's pretty easy to imagine something that is more popular with old people (who often answer their phones) than with young people (who don't typically answer their phones). So this type of adversarial correlation certainly can happen in practice.
+
+# Can we save Bayes?
+
+No.
+
+Bayes does not need to be saved. She is doing exactly what it set out to do and is living her best life. Do not interfere^[If you want to interfere, there are plenty of ways to build priors that incorporate the $\xi_j$ information. The [Ritov etc paper](https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/The-Bayesian-Analysis-of-Complex-High-Dimensional-Models--Can/10.1214/14-STS483.full) has nice references to the various things that sprung up from this example. Are these useful beyond simply making sure the posterior mean of $\mu$ estimates $\mathbb{E}(y)$? Not really. They are priors designed to solve exactly one problem.].
+
+So let's look at why we don't need to fix things.
+
+## A simple posterior and its post-processing
+
+Once again, recall the setting: we are observing the triple^[I'm using the C/C++ ternary operator. In R this would be parsed as `ifelse(r[i] == 1, y[i], NA)`. ] 
+$$
+z_i = (x_i,r_i,y_i) = (x_i, r_i, \texttt{r[i]==1? y[i]: NA}).
+$$
+In particular, we can process this data to get some quantities:
+
+- $N$: The total sample size
+- $n= \sum_{i=1}^N r_i$: The number of observed $y$
+- $N_j = \sum_{i=1}^N 1_{x_i = j}$: The total number of times group $j$ was sampled
+- $n_j = \sum_{i=1}^N 1_{x_i = j}$: The number of times an observation from group $j$ was recorded.
+
+Because of the structure of the problem, most observed values of $N_j$ and $n_j$ will be zero or one.
+
+Nevertheless, we persist.
+
+We now need priors on the $\mu_j$. There are probably a tonne of options here, but I'm going to go with the simplest one, which is just to make them iid $N(0, \tau^2)$ for some fixed and known value $\tau$. We can then fit the resulting model and get the posterior for each $\mu_j$. Note that because of the data sparsity, most of the posteriors will just be the same as the prior.
+
+Then we can ask ourselves a much more Bayesian question: What would the average in our sample have been if we had recorded every $y_i$? Our best estimate of that quantity is $$
+\frac{1}{N}\sum_{j=1}^J N_j \mu_j 
+$$
+
+That's all well and good. And, again, if I had small enough $J$ or large enough $N$ that I had a good estimate for all of the $\mu_j$, this would be a good estimate. Moreover, for finite data this is likely to be a much better estimator than $\sum_{j=1}^J \mu_j$ as it at least partially corrects for any potential imbalance in the covariate sampling.
+
+It's also worth noting here that there is nothing "Bayesian" about this. I am simply taking the knowledge I have from the sample I observed and processing the posterior to compute a quantity that I am interested in.
+
+But, of course, that isn't actually the quantity that I'm interested in. I'm interested in that quantity averaged over realisations of $r$. We can compute this if we can quantify the effect that $n_j$ has on $\mu_j$.
+
+We can do this pretty easily. Our priors are iid independent^[Not exchangeable---there are no shared parameters!], so this decouples into $J$ independent normal-normal models. 
+
+For any $j$, denote $y^{(j)}$ as the subset of $y$ that are in category $j$. We have that^[Remember that $y \mid x = j \sim N(\mu_j, 1)$. If we wanted a more flexible variance, we could obviously have one, but it makes not real difference to anything.] 
+\begin{align*}
+p(\mu_j \mid y) &\propto \exp\left(-\frac{1}{2}\sum_{i=1}^{n_j}(y^{(j)}_i - \mu_j)^2 - \frac{1}{2\tau^2}\mu_j^2\right)\\
+&\propto \exp\left[-\frac{1}{2}\left(\frac{1}{\tau} + n_j\right)\mu_j^2 + \mu_u\sum_{i=1}^{n_j}y_i^{(j)}\right].
+\end{align*}
+
+If we expand the density for a $\mu_j \mid y \sim N(m,v^2)$ we get 
+$$
+p(\mu_j \mid y) \propto \exp\left(-\frac{1}{2v^2}\mu_j^2 + \frac{1}{v^2}m\mu\right).
+$$
+Matching terms in these two expressions we get that 
+$$
+v_j^\text{post} = \operatorname{Var}(\mu_j \mid y, n_j) =  \frac{1}{n_j + \tau^{-2}},
+$$
+while the posterior mean is 
+$$
+m_j^\text{post} = \mathbb{E}(\mu_j \mid y, n_j) = \frac{1}{n_j + \tau^{-2}}\sum_{i=1}^{n_j}y_i^{(j)},
+$$
+where I've suppressed the dependence on the sample $y$ in the $m_j$ and $v_j$ notation because, as a true^[I promise I'm just rolling my eyes to see if I can see my brain.] Bayesian, my sample is fixed and known.
+Hence 
+$$
+\mu_j \mid y \sim N(m_j^{\text{post}}, v_j^{\text{post}}).
+$$
+
+Then I get the following estimator for the mean of the complete sample
+$$
+\mathbb{E}\left(\frac{1}{N}\sum_{j=1}^JN_j\mu_j \mid y \right)= \frac{1}{N}\sum_{j=1}^JN_jm_j^\text{post}.
+$$
+We can also compute the posterior variance^[Remember everything is independent!]
+$$
+\operatorname{Var}\left(\sum_{j=1}^JN_j\mu_j \mid y \right)=\sum_{j=1}^J\frac{N_j^2}{N^2}v_j^\text{post}.
+$$
+Note that most of the groups won't have a corresponding observation, so, recalling that $A_r$ is the set of $j$s that have been updated in the sample,
+we get
+$$
+\operatorname{Var}\left(\frac{1}{N}\sum_{j=1}^JN_j\mu_j \mid y \right)=\sum_{j\in A_r}\frac{N_j^2}{N^2}v_j^\text{post} + \tau^2\sum_{j \not \in A_r}\frac{N_j^2}{N^2},
+$$
+where the term that multiplies $\tau^2$ is less than 1.
+
+So that's all well and good, but that isn't really the thing we were trying to estimate. We are actually interested in estimating the population mean, which we will get if we let $N\rightarrow \infty$.
+
+So let's see if we can do this without violating any of the universally agreed upon sacred strictures of Bayes.
+
+## Modelling the effect of the ancillary coin
+
+Here's the thing, though. We have computed our posterior distributions $p(\mu_j \mid y)$ and we can now use them as a generative model^[This is the posterior predictive distribution!] for our data. We also have the composition of the complete data set (the $N_j$s) and full knowledge about how a new sample of the $n_j$s would come into our world.
+
+We can put these things together! And that's not in anyway violating our Bayesian oaths! We are simply using our totally legally obtained posterior distribution to compute things. We are still true committed^[A true committed subjective Bayesian knows that DP stands for Dirichlet Process. No matter the context.] subjective Bayesians.
+
+So we are going to ask ourselves a simple question. Imagine, for a given $N_j$, we have $n_j \sim \text{Binom}(N_j, \xi_j)$ iid samples^[The variance is $v_j^\text{post} + 1$ because this is the posterior predictive distribution.] 
+$$
+\tilde{y}^{(j)}_i \sim N(m_j^\text{post}, v_j^\text{post} + 1).
+$$
+What is the posterior mean $\mathbb{E}(\mu_j \mid \tilde{y}^{(j)}, N_j)$? In fact, because this is random data drawn from a hypothetical sample, we can (and should^[Does this seem like a frequentist question? I guess. But really it's a question we can always ask about the posterior. Should we? Well if you are trying to estimate a population quantity you sort of have to. Because there isn't really a concept of a population parameter within a Bayesian framework (true committed subjective or otherwise).]) ask questions about its distribution! To be brutally francis with you, I am too lazy to work out the variance of the posterior mean. So I'm just going to look at the mean of the posterior mean.
+
+First things first, we need to look at the (average) posterior for $\mu_j$ when $n_j = n$. The exact calculation we did before gives us
+$$
+m_j(n) = \left(1-\frac{1}{\tau^2n + 1}\right) m_j^\text{post}.
+$$
+And, while I said I wasn't going to focus on the variance, it's easy enough to write down as
+$$
+v_j(n) = \frac{1}{n + \tau^{-2}} + \left(1 - \frac{1}{\tau^2n + 1}\right)(1 + v^\text{post}_j),
+$$
+where the second term takes into account the variance due to the imputation.
+
+
+With this, we can estimate sample mean for any number $\tilde N$ and any set of $\tilde N_j$ that sum to $\tilde N$ and any set of $\tilde n_j \sim \text{Binom}(\tilde N_j, \xi_j)$ as 
+\begin{align*}
+\frac{1}{\tilde N}\sum_{j=1}^J \tilde N_j m_j(n_j) &= \frac{1}{\tilde N}\sum_{j=1}^J \frac{\tilde N_j}{\tilde n_j} \tilde n_j \tilde m_j(n_j) \\
+&= \frac{1}{\tilde N}\sum_{j=1}^J \frac{1}{\xi_j} \tilde n_j m_j^\text{post} + o(1),
+\end{align*}
+where in the last line I've used the fact that the empirical proportion converges to $\xi_j$ and the posterior mean converges to $m_j^\text{post}$. The little-o^[Remember that this means that the error (which is a random variable) goes to 0 as $n\rightarrow \infty$. A more careful person could probably work out how fast it would happen.] error term is as $\tilde N$ (and hence $\tilde N_j$ and $\tilde n_j$) goes to infinity.
+
+To turn this into a practical estimate, we can plug in our values of $n_j$ and $N$ to get our Bayesian approximation to the population mean 
+\begin{align*}
+\hat \mu &= \frac{1}{N}\sum_{j=1}^J \frac{n_j}{\xi_j}m_j^{\text{post}} \\
+&=\frac{1}{N} \sum_{j \in A_r} \frac{n_j}{\xi_j}m_j^\text{post} \\
+&=\frac{1}{N}\sum_{j=1}^J\sum_{i=1}^{n_j} \frac{1}{\xi_j}\left(1 - \frac{\tau^{-2}}{n_j}\right)y_i^{(j)},
+\end{align*}
+which is (up to the small term in brackets) the Horvitz-Thompson estimator!
+
+## Is it Bayesian?
+I stress, again, that there is nothing inherently non-Bayesian about this derivation. Except possibly the question that it is asking. What I did was compute the posterior distribution and then I took it seriously and used it to compute a quantity of interest. 
+
+The only oddity is that the quantity of interest (the population mean) has a slightly awkward link to the observed sample. Hence, I estimated something that had a more direct link to the population mean: the sample mean of the completely observed sample under different realisations of the randomisation $r_i$. 
+
+In order to estimate the sample mean under different realisations of the randomisation, I needed to use the posterior predictive distribution to impute these fictional samples. I then averaged over the imputed samples and sent the sample size to infinity to get an estimator^[I only computed the mean, so feel free to pretend that I'm minimizing a loss function]. 
+
+Or, to put it differently, I used Bayes to get a posterior estimate for new data 
+$$
+p(\tilde y, \tilde r, \tilde x) = \int_{\mathbb{R}^J}p(\tilde y \mid \tilde x, \mu)\,d\mu p(\tilde r \mid \tilde x) p(\tilde x)
+$$
+and then used this probabilistic model to estimate $\mathbb{E}(\tilde y)$. There was no reason to use Bayesian methods to do this. Non-Bayesian questions do not invite Bayesian answers.
+
+Now, would I go to all of this effort in real life? Probably not. And in the applications that I've come across, I've never had to. I've done a bunch of MRP^[Multilevel regression with poststratification, a survey modelling technique], which is structurally quite similar to this problem except we can reasonably model the dependence structure between the $\mu_j$s. [This paper](https://arxiv.org/abs/1908.06716) I wrote with Alex Gao, Lauren Kennedy, and Andrew Gelman is an example of the type of modelling you can do.
+
+# Is it true? Am I a chaser?
+
+
+Wasserman derides "frequentist chasing" Bayesians, making the point that if they want a frequentist guarantee so badly, why not just do it the easy way.
+
+Now. Laz. Mate.
+
+Let me tell you that a lot of my self esteem has been traditionally gathered from chasers, so I absolutely refuse to be party to the slander.
+
+But more than that, let's be clear. Bayes is a way to probabilistically describe data. That is not enough in and of itself to be useful. For it to be useful, we need to _do something_ with that posterior distribution.
+
+So really, let's talk about what a _true committed subjective Bayesian_ does about this. Firstly, I mean really. There is no such thing^[No true Scotsman etc]. But leaving that aside, the closest I can get to a working definition is that a true committed subjective Bayesian is a person who understands that parameters are polite fictions that are used to describe the data. They are not, inherently, linked to any population quantity (for a true committed subjective Bayesian, such a thing does not exist).
+
+
+The _only_ way to link parameters in a Bayesian model to a population quantity of interest is to use some sort of extra-Bayesian^[or meta-Bayesian in the event that we are doing things like building a Bayesian pseudo-model of on the space of all considered model that just happens to give every model equal probability because Harold Fucking Jeffreys gave you an erection and you could either process that event like an adult or build a whole personality around it. And you chose the latter.] information. 
+
+For instance, in the first example (the one without the ancillary coin), I made that link in secret using assumptions about the sample. We all know that those types of assumptions are fraught and the reason that people spend so much time whispering DAG into the unknown infinity.
+
+For the ancillary coin example, we used the given information about the sampling mechanism as our extra information to link our posterior distribution to the population quantity of interest. None of this changes the _purity_^[Can you tell that I hate this entire discussion?] of the Bayesian analysis. Or makes a non-Bayesian solution preferable. (Although, in this case, a non-Bayesian solution is a fuckload easier to come up with.)
+
+Of course Wasserman (and I presume Robins and Ritov) know all of this. But it's fun to write it all down.
