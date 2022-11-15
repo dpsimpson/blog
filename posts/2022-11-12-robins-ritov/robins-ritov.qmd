@@ -25,7 +25,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Sometimes it's the parable of the barren fig tree. Sometimes you're just pissed at a shrub.
 
-Paradoxes and counterexamples live in statistics as our morality plays and our ghost stories. They serve as the creepy gas station attendants that populate the roads leading to the curséd woods; existing not to force change on the adventurer, but to signpost potential danger.
+Paradoxes and counterexamples live in statistics as our morality plays and our ghost stories. They serve as the creepy gas station attendants that populate the roads leading to the curséd woods; existing not to force change on the adventurer, but to signpost potential danger.^[Huge thanks to Sameer Deshpande for great comments!]
 
 As a rule, we should also look in askance at attempts to resolve these paradoxes and counterexamples. That is not what they are for. They are community resources, objects of our collective culture, monuments to thwarted desire.
 
