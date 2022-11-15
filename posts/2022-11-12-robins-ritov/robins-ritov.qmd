@@ -1,7 +1,7 @@
 ---
 title: "On that example of Robins and Ritov; or A sleeping dog in harbor is safe, but that's not what sleeping dogs are for"
 description: |
-  Look, it's a fucking example of Bayes being bad. But it comes up often enough to be worth talking about. I'm going to, unsurprisingly, argue that Bayes isn't bad. Neither are Robings/Ritov/Wasserman wrong. They're just looking at the problem through a different lens.
+  Look, it's a dull example of Bayes being bad. But it comes up often enough to be worth talking about. I'm going to, unsurprisingly, argue that Bayes isn't bad. Neither are Robings/Ritov/Wasserman wrong. They're just looking at the problem through a different lens.
 date: 2022-15-07
 image: misandrists.JPG
 categories: [Fundamentals, Survey sampling, MRP, Bayes]
