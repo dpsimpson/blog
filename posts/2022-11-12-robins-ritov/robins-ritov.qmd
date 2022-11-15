@@ -14,7 +14,7 @@ format:
   html:
     df-print: paged
 
-draft: true
+draft: false
 
 ---
 
@@ -34,12 +34,12 @@ But sometimes, driven by the endless thirst for content, it's worth diving down 
 To that end, let's gather 'round the campfire and attend the tale of The Bayesian and the Ancillary Coin.
 
 
-This example was introduced by Robins and Ritov, and greatly popularised (and frequently reformulated) by Larry Wasserman^[It's worth saying that these three people do fabulous statistics of the form that I don't usually do. But that doesn't make it less important to understand their contributions. You could say that while I am not a Lazbian, I think it's important to know the theory.]. It says^[I might have slightly reworded it.] this: 
+This example^[I first came across this in a [series of posts](https://normaldeviate.wordpress.com/2012/10/11/the-robins-ritov-example-a-post-mortem/) on Larry Wasserman's now defunct but quite excellent blog.] was introduced by Robins and Ritov, and greatly popularised (and frequently reformulated) by Larry Wasserman^[It's worth saying that these three people do fabulous statistics of the form that I don't usually do. But that doesn't make it less important to understand their contributions. You could say that while I am not a Lazbian, I think it's important to know the theory.]. It says^[I might have slightly reworded it.] this: 
 
 >A committed subjective Bayesian (one who cleaves to the likelihood priniciple tighter than Rose clings to that door) will sometimes get a very wrong answer under some simple, but realistic, forms of randomization. Only a less committed Bayesian will be able to skirt the danger.
 
 
-So this is what we're going to do now. First let's introduce a version of the problem that does not trigger the counterexample. We then introduce the randomization scheme that leads to the error and talk about exactly how things go wrong. As someone who is particular skeptical of any claims to purity^[Purity is needed in good olive oil and that's it], the next job is going to be deconstructing this idea of a committed^[A committed subjective Bayesian prefers Dutch baby to a Dutch book.] subjective Bayesian. I will, perhaps unsurprisingly, argue that this is the only part of the Robins and Ritov (and Wasserman) conclusions that are somewhat questionable. In fact, a _true_ committed subjective Bayesian^[A true committed subjective Bayesian doesn't wear anything under his kilt.] can always easily the problem. 
+So this is what we're going to do now. First let's introduce a version of the problem that does not trigger the counterexample. We then introduce the randomization scheme that leads to the error and talk about exactly how things go wrong. As someone who is particular skeptical of any claims to purity^[Purity is needed in good olive oil and that's it], the next job is going to be deconstructing this idea of a committed^[A committed subjective Bayesian prefers Dutch baby to a Dutch book.] subjective Bayesian. I will, perhaps unsurprisingly, argue that this is the only part of the Robins and Ritov (and Wasserman) conclusions that are somewhat questionable. In fact, a _true_ committed subjective Bayesian^[A true committed subjective Bayesian doesn't wear anything under his kilt.] can solve the problem. It's just a matter of looking at it through the correct lens.
 
 ## A counterexample always proceedes from the least interesting premise
 
@@ -58,7 +58,7 @@ can be estimated fairly easily. In fact, the sample mean (aka the most obvious e
 
 Similarly, if we were to construct a Bayesian estimate of the population mean based off the prior $\mu_j \mid m \sim N(m, 1)$ and $m \sim N(0,\tau^2)$, then the posterior estimate of the population mean is, for large enough^[Theorem 2 of [Harmeling and Toussaint](https://argmin.lis.tu-berlin.de/papers/07-harmeling-tr.pdf)] $n$, 
 $$
-\hat \mu_{\text{Bayes},n}= \mathbb{E}(m \mid y) \approx \frac{1}{n + 2/\tau} \sum_{i=1}^n y_i.
+\hat \mu_{\text{Bayes},n}= \mathbb{E}(\mu \mid y) \approx \frac{1}{n + 2/\tau} \sum_{i=1}^n y_i.
 $$
 This means that the^[a] Bayesian resolution of this problem is roughly the same as the classical resolution. This is a nice thing. For very simple problems, these estimators should be fairly similar. It's only when shit gets complicated where things become subtle.
 
@@ -96,9 +96,9 @@ $$, where the last two terms are constant in $\theta$.] for $\mu$.
 
 The simplest classical estimator for $\mathbb{E}(y)$ is the Horvitz-Thompson estimator $$
 \bar{y}_\text{HT} = \frac{1}{n} \sum_{i=1}^n \frac{y_i}{\xi_{x_i}}.
-$$ It's easy to show that this is a $\sqrt{n}$-consistent estimator. Better yet, *uniform* over  $\mu^*$ in the sense that the convergence of the estimator isn't affected (to leading order) by the specific $\mu^*_j$ values.  This uniformity is quite useful as it gives some hope of good finite-data behaviour.
+$$ It's easy to show that this is a $\sqrt{n}$-consistent estimator. Better yet, _uniform_ over  $\mu$ in the sense that the convergence of the estimator isn't affected (to leading order) by the specific $\mu_j$ values.  This uniformity is quite useful as it gives some hope of good finite-data behaviour.
 
-So now that we know that the problem *can* be solved, let's see if we can solve it in a Bayesian way. Robins and Ritov gave the following result.
+So now that we know that the problem _can_ be solved, let's see if we can solve it in a Bayesian way. Robins and Ritov gave the following result.
 
 > There is no uniformly consistent Baysesian estimator of the parameter $\mu$ unless the prior depends on the $\xi_j$ values.
 
@@ -177,7 +177,7 @@ Then we can ask ourselves a much more Bayesian question: What would the average 
 \frac{1}{N}\sum_{j=1}^J N_j \mu_j 
 $$
 
-That's all well and good. And, again, if I had small enough $J$ or large enough $N$ that I had a good estimate for all of the $\mu_j$, this would be a good estimate. Moreover, for finite data this is likely to be a much better estimator than $\sum_{j=1}^J \mu_j$ as it at least partially corrects for any potential imbalance in the covariate sampling.
+That's all well and good. And, again, if I had small enough $J$ or large enough $N$ that I had a good estimate for all of the $\mu_j$, this would be a good estimate. Moreover, for finite data this is likely to be a much better estimator than $J^{-1}\sum_{j=1}^J \mu_j$ as it at least partially corrects for any potential imbalance in the covariate sampling.
 
 It's also worth noting here that there is nothing "Bayesian" about this. I am simply taking the knowledge I have from the sample I observed and processing the posterior to compute a quantity that I am interested in.
 
@@ -215,7 +215,7 @@ $$
 $$
 We can also compute the posterior variance^[Remember everything is independent!]
 $$
-\operatorname{Var}\left(\sum_{j=1}^JN_j\mu_j \mid y \right)=\sum_{j=1}^J\frac{N_j^2}{N^2}v_j^\text{post}.
+\operatorname{Var}\left(\frac{1}{N}\sum_{j=1}^JN_j\mu_j \mid y \right)=\sum_{j=1}^J\frac{N_j^2}{N^2}v_j^\text{post}.
 $$
 Note that most of the groups won't have a corresponding observation, so, recalling that $A_r$ is the set of $j$s that have been updated in the sample,
 we get
@@ -297,8 +297,14 @@ So really, let's talk about what a _true committed subjective Bayesian_ does abo
 
 The _only_ way to link parameters in a Bayesian model to a population quantity of interest is to use some sort of extra-Bayesian^[or meta-Bayesian in the event that we are doing things like building a Bayesian pseudo-model of on the space of all considered model that just happens to give every model equal probability because Harold Fucking Jeffreys gave you an erection and you could either process that event like an adult or build a whole personality around it. And you chose the latter.] information. 
 
-For instance, in the first example (the one without the ancillary coin), I made that link in secret using assumptions about the sample. We all know that those types of assumptions are fraught and the reason that people spend so much time whispering DAG into the unknown infinity.
+For instance, in the first example (the one without the ancillary coin), I made that link in secret using assumptions about the sample. We all know that those types of assumptions are fraught and the reason that people spend so much time whispering DAG into the ears of their sleeping lovers.
 
 For the ancillary coin example, we used the given information about the sampling mechanism as our extra information to link our posterior distribution to the population quantity of interest. None of this changes the _purity_^[Can you tell that I hate this entire discussion?] of the Bayesian analysis. Or makes a non-Bayesian solution preferable. (Although, in this case, a non-Bayesian solution is a fuckload easier to come up with.)
 
 Of course Wasserman (and I presume Robins and Ritov) know all of this. But it's fun to write it all down.
+
+Moreover, I think that the three lessons here are fairly transferable:
+
+1. If you're going to go to the trouble of computing a posterior, take it seriously. Use it to do things! You can even put it in as part of a probabilistic model.
+1. If you're going to make Bayes work for you, think in terms of observables (eg the mean of the complete sample) rather than parameters.
+1. Appeals to purity are a bit of a waste of time.
