@@ -128,7 +128,7 @@ In this context, it means that because $r$ is ancillary to $y$ for estimating $\
 
 What happens if we follow this principle? We get a bad estimate. 
 
-It's pretty easy to see that the posterior mean will, eventually, converge to the true value eventually. All that has to happen is you need to see enough observations in each category. So if you get enough data, you will eventually get a good estimate.
+It's pretty easy to see that the posterior mean will, eventually, converge to the true value. All that has to happen is you need to see enough observations in each category. So if you get enough data, you will eventually get a good estimate.
 
 Unfortunately, when $J$ is large, this will potentially take a very very long^[The expected number of samples to see one draw where $x_i =j$ is $J$. The expected number of draws where $x_i = j$ that you need to actually observe the corresponding $y_i$ is $\xi_j^{-1}$. This suggests it will potentially take _a lot_ of draws to even have effectively one sample from each category, let alone the 20-100 you'd need to, practically, get some sort of reasonable estimate.] time. 
 
@@ -144,7 +144,7 @@ where $A_r$ is the set observed values of $x$, which depends on $r$. This target
 
 But, and this is critical, we _cannot_ say _anything_ about $\mu_j$ for $j \not \in A_r$ unless we can assume that they are, in some sense, very strongly related. Unfortunately, the whole point of this example is that we are not allowed^[Robins and Ritov have always been open that if there is a true parametric model for the $\mathbb{E}(Y \mid x = j)$ (or if that function is "very smooth" in some technical sense, eg a realisation of a smooth Gaussian process) then the Bayesian estimator that incorporates this information will do perfectly well. ] to assume that!
 
-In this extremely flexible model, it's possible to have a sequence $\xi_j$ that is highly correlated^[So the RR example uses binary data, so then it's the correlation between $\mathbb{E}(y \mid x=j)$ and $\xi_j$, but the exact same argument works of the one sequence is positively correlated something like $\operatorname{expit}(\mu_j)$. I went with the Gaussian version because at one point I thought I might end up having to derive posteriors and I'm all about simplicity.] with $\mu_j$. If, for instance, $\operatorname{expit}(\mu_j) = \xi_j$ were^[expit is the inverse of the logit transform] equally spaced on $[\delta, 1-\delta]$ for some small $\delta>0$, you would have the situation where you are very likely to see the largest values of $y$ and quite unlikely to see any of the smaller values. This would gravely bias your sample mean upwards.
+In this extremely flexible model, it's possible to have a sequence $\xi_j$ that is highly correlated^[So the RR example uses binary data, so then it's the correlation between $\mathbb{E}(y \mid x=j)$ and $\xi_j$, but the exact same argument works if $\xi_j$ is correlated something like $\operatorname{expit}(\mu_j)$. I went with the Gaussian version because at one point I thought I might end up having to derive posteriors and I'm all about simplicity.] with $\mu_j$. If, for instance, $\operatorname{expit}(\mu_j) = \xi_j$ were^[expit is the inverse of the logit transform] equally spaced on $[\delta, 1-\delta]$ for some small $\delta>0$, you would have the situation where you are very likely to see the largest values of $y$ and quite unlikely to see any of the smaller values. This would gravely bias your sample mean upwards.
 
 This construction is the basis similar to the one that Robins and Ritov use to prove that there is always at parameter value where the posterior mean converges^[Check [the paper](https://cdn1.sph.harvard.edu/wp-content/uploads/sites/343/2013/03/coda.pdf) for the details as the situation is slightly different to the one I'm sketching out here, but there's no real substantive difference.] to the true mean at a rate no faster than $\mathcal{O}((\log \log n)^2 \log n)$, which would require an exponentially large number of samples to do any sort  of inference.
 
@@ -169,7 +169,7 @@ In particular, we can process this data to get some quantities:
 - $N$: The total sample size
 - $n= \sum_{i=1}^N r_i$: The number of observed $y$
 - $N_j = \sum_{i=1}^N 1_{x_i = j}$: The total number of times group $j$ was sampled
-- $n_j = \sum_{i=1}^N 1_{x_i = j}$: The number of times an observation from group $j$ was recorded.
+- $n_j = \sum_{i=1}^N r_i1_{x_i = j}$: The number of times an observation from group $j$ was recorded.
 
 Because of the structure of the problem, most observed values of $N_j$ and $n_j$ will be zero or one.
 
@@ -187,17 +187,17 @@ It's also worth noting here that there is nothing "Bayesian" about this. I am si
 
 But, of course, that isn't actually the quantity that I'm interested in. I'm interested in that quantity averaged over realisations of $r$. We can compute this if we can quantify the effect that $n_j$ has on $\mu_j$.
 
-We can do this pretty easily. Our priors are iid independent^[Not exchangeable---there are no shared parameters!], so this decouples into $J$ independent normal-normal models. 
+We can do this pretty easily. Our priors are iid^[Not exchangeable---there are no shared parameters!], so this decouples into $J$ independent normal-normal models. 
 
 For any $j$, denote $y^{(j)}$ as the subset of $y$ that are in category $j$. We have that^[Remember that $y \mid x = j \sim N(\mu_j, 1)$. If we wanted a more flexible variance, we could obviously have one, but it makes not real difference to anything.] 
 \begin{align*}
 p(\mu_j \mid y) &\propto \exp\left(-\frac{1}{2}\sum_{i=1}^{n_j}(y^{(j)}_i - \mu_j)^2 - \frac{1}{2\tau^2}\mu_j^2\right)\\
-&\propto \exp\left[-\frac{1}{2}\left(\frac{1}{\tau} + n_j\right)\mu_j^2 + \mu_u\sum_{i=1}^{n_j}y_i^{(j)}\right].
+&\propto \exp\left[-\frac{1}{2}\left(\frac{1}{\tau} + n_j\right)\mu_j^2 + \mu_j\sum_{i=1}^{n_j}y_i^{(j)}\right].
 \end{align*}
 
 If we expand the density for a $\mu_j \mid y \sim N(m,v^2)$ we get 
 $$
-p(\mu_j \mid y) \propto \exp\left(-\frac{1}{2v^2}\mu_j^2 + \frac{1}{v^2}m\mu\right).
+p(\mu_j \mid y) \propto \exp\left(-\frac{1}{2v^2}\mu_j^2 + \frac{1}{v^2}m\mu_j\right).
 $$
 Matching terms in these two expressions we get that 
 $$
