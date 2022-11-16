@@ -66,7 +66,7 @@ $$
 $$
 This means that the^[a] Bayesian resolution of this problem is roughly the same as the classical resolution. This is a nice thing. For very simple problems, these estimators should be fairly similar. It's only when shit gets complicated where things become subtle.
 
-This scenario, where a model is parameterized by and extremely high dimensional parameter $\mu$ but the quantity of inferential inference is a low-dimensional summary of $\mu$, is widely and deeply studied under the name of semi-parametric statistics. 
+This scenario, where a model is parameterized by an extremely high dimensional parameter $\mu$ but the quantity of inferential inference is a low-dimensional summary of $\mu$, is widely and deeply studied under the name of semi-parametric statistics. 
 
 Semi-parametric statistics is, unsurprisingly, harder than parametric statistics, but it also quite a bit more challenging than non-parametric statistics. The reason is that if we want to guarantee a good estimate of a particular finite dimensional summary, it turns out that it's not enough to generically get a "good" estimate of the high-dimensional parameter. In fact, getting a good estimate of the high-dimensional parameter is often not possible (see the example we just considered). 
 
