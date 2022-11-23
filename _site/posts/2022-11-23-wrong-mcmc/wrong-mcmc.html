@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.15">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Dan Simpson">
+<meta name="dcterms.date" content="2022-11-23">
+<meta name="description" content="Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times.">
+
+<title>Un garçon pas comme les autres (Bayes) - MCMC with the wrong acceptance probability</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+<link href="../../site_libs/pagedtable-1.1/css/pagedtable.css" rel="stylesheet">
+<script src="../../site_libs/pagedtable-1.1/js/pagedtable.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - MCMC with the wrong acceptance probability">
+<meta property="og:description" content="Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times.">
+<meta property="og:image" content="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg">
+<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta name="twitter:title" content="MCMC with the wrong acceptance probability">
+<meta name="twitter:description" content="Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times.">
+<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg">
+<meta name="twitter:creator" content="@dan_p_simpson">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+
+<body class="floating nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">About this blog</a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ </a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default toc-left page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">MCMC with the wrong acceptance probability</h1>
+                  <div>
+        <div class="description">
+          <p>Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times.</p>
+        </div>
+      </div>
+                          <div class="quarto-categories">
+                <div class="quarto-category">Fundamentals</div>
+                <div class="quarto-category">MCMC</div>
+                <div class="quarto-category">Bayes</div>
+              </div>
+                  </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Dan Simpson </p>
+            </div>
+    </div>
+      
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">November 23, 2022</p>
+      </div>
+    </div>
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+    <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#what-is-markov-chain-monte-carlo" id="toc-what-is-markov-chain-monte-carlo" class="nav-link active" data-scroll-target="#what-is-markov-chain-monte-carlo">What is Markov chain Monte Carlo</a></li>
+  <li><a href="#mcmc-with-approximate-acceptance-probabilities" id="toc-mcmc-with-approximate-acceptance-probabilities" class="nav-link" data-scroll-target="#mcmc-with-approximate-acceptance-probabilities">MCMC with approximate acceptance probabilities</a></li>
+  <li><a href="#a-bit-of-a-literature-review" id="toc-a-bit-of-a-literature-review" class="nav-link" data-scroll-target="#a-bit-of-a-literature-review">A bit of a literature review</a>
+  <ul class="collapse">
+  <li><a href="#trying-to-understand-noisy-markov-chains" id="toc-trying-to-understand-noisy-markov-chains" class="nav-link" data-scroll-target="#trying-to-understand-noisy-markov-chains">Trying to understand noisy Markov chains</a></li>
+  <li><a href="#what-do-the-n_j-look-like" id="toc-what-do-the-n_j-look-like" class="nav-link" data-scroll-target="#what-do-the-n_j-look-like">What do the <span class="math inline">\(N_j\)</span> look like?</a></li>
+  </ul></li>
+  </ul>
+</nav>
+</nav>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+<p>Just the other day<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> I was chatting with a friend<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a> about MCMC and he asked me a fundamental, but seldom asked, question: <em>What happens my acceptance probability is a bit off?</em>.</p>
+<p>This question comes up a bunch. In this context, they were switching from double to single precision<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a> and were a little worried that some of their operations would be a bit more inexact than they were used to. Would this tank MCMC? Would everything still be fine?</p>
+<section id="what-is-markov-chain-monte-carlo" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-markov-chain-monte-carlo">What is Markov chain Monte Carlo</h2>
+<p>Markov chain Monte Carlo (MCMC) is, usually, guess-and-check for people who want to be fancy.</p>
+<p>It is a class of algorithms that allow you to construct a<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a> Markov chain that has a given <em>stationary distribution</em><a href="#fn5" class="footnote-ref" id="fnref5" role="doc-noteref"><sup>5</sup></a> <span class="math inline">\(\pi\)</span>. In Bayesian applications, we usually want to choose <span class="math inline">\(\pi = p(\theta \mid y)\)</span>, but there are other applications of MCMC.</p>
+<p>Most<a href="#fn6" class="footnote-ref" id="fnref6" role="doc-noteref"><sup>6</sup></a> MCMC algorithms live in the Metropolis-Hastings family of algorithms. These methods require only one component: a proposal distribution <span class="math inline">\(q(\theta' \mid \theta)\)</span>. Given basically any<a href="#fn7" class="footnote-ref" id="fnref7" role="doc-noteref"><sup>7</sup></a> proposal distribution, we can go from our current state <span class="math inline">\(\theta_k\)</span> to the new state <span class="math inline">\(\theta_{k+1}\)</span> using the following three steps:</p>
+<ol type="1">
+<li><p>Propose a potential new state <span class="math inline">\(\theta' \sim q(\theta' \mid \theta_k)\)</span></p></li>
+<li><p>Sample a Bernoulli random variable <span class="math inline">\(r_{k+1}\)</span> with <span class="math display">\[
+\Pr(r_{k+1} = 1 \mid \theta_k) = \alpha_{k+1} =  \min\left\{1, \frac{\pi(\theta')}{\pi(\theta_k)}\frac{q(\theta_k \mid \theta')}{q(\theta' \mid \theta_k)}\right\}
+\]</span></p></li>
+<li><p>Set <span class="math inline">\(\theta_{k+1}\)</span> according to the formula <span class="math display">\[
+\theta_{k+1} = \begin{cases} \theta', &amp; r_{k+1}=1 \\ \theta_k, &amp;r_{k+1} = 0.\end{cases}
+\]</span></p></li>
+</ol>
+<p>The acceptance probability<a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> is chosen<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> to balance<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> out the proposal <span class="math inline">\(q(\cdot \mid \cdot)\)</span> with the target distribution <span class="math inline">\(\pi\)</span>.</p>
+<p>You can interpret the two ratios in the acceptance probability separately. The first one prefers proposals from high-density regions over proposals from low-density regions. The second ratio balances this by down-weighting proposed states that were <em>easy</em> to propose from the current location. When the proposal is symmetric, ie <span class="math inline">\(q(\theta'\mid \theta)= q(\theta \mid \theta')\)</span>, the second ratio is always 1. However, in better algorithms like MALA<a href="#fn11" class="footnote-ref" id="fnref11" role="doc-noteref"><sup>11</sup></a>, the proposal is not symmetric. If we look at the MALA proposal <span class="math display">\[
+q(\theta'\mid \theta) \sim N\left(\theta + \frac{1}{2}\Sigma\nabla \log \pi(\theta), \Sigma\right)
+\]</span> it’s pretty easy to see that we are biasing our samples towards the mode of the distribution. If we did not have the second ratio in the acceptance probability we would severely under-sample the tails of the distribution.</p>
+</section>
+<section id="mcmc-with-approximate-acceptance-probabilities" class="level2">
+<h2 class="anchored" data-anchor-id="mcmc-with-approximate-acceptance-probabilities">MCMC with approximate acceptance probabilities</h2>
+<p>With this definition in hand, it’s now possible to re-cast the question my friend asked as &gt; What happens to my MCMC algorithm if, instead of <span class="math inline">\(\alpha_{k+1}\)</span> I accidentally compute <span class="math inline">\(\tilde \alpha_{k+1}\)</span> and use that instead to simulate <span class="math inline">\(r_{k+1}\)</span>?</p>
+<p>So let’s go about answering that!</p>
+</section>
+<section id="a-bit-of-a-literature-review" class="level2">
+<h2 class="anchored" data-anchor-id="a-bit-of-a-literature-review">A bit of a literature review</h2>
+<p>Unsurprisingly, this type of question has popped up over and over again in the literature:</p>
+<ul>
+<li><p>This exact question was asked by Gareth Roberts and Jeff Rosenthal first<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> <a href="http://probability.ca/jeff/ftpdir/sens.pdf">with Peter Schwartz</a> and a second, more<a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> <a href="#fn14" class="footnote-ref" id="fnref14" role="doc-noteref"><sup>14</sup></a> realistic, time <a href="http://probability.ca/jeff/ftpdir/gjl.pdf">with Laird Breyer</a>. They found that as long as the chain’s convergence is sufficiently nice<a href="#fn15" class="footnote-ref" id="fnref15" role="doc-noteref"><sup>15</sup></a> then the perturbed chain will converge nicely and have<a href="#fn16" class="footnote-ref" id="fnref16" role="doc-noteref"><sup>16</sup></a> a central limit theorem.</p></li>
+<li><p>About 10 years ago, an absolute orgy<a href="#fn17" class="footnote-ref" id="fnref17" role="doc-noteref"><sup>17</sup></a> <a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a> of research happened around the question <em>What happens if the acceptance probability is random but unbiased?</em>. These <em>exact approximate</em><a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a> or <em>pseudo-marginal</em> methods. These have some success in situations<a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a> where the likelihood has a <em>parameter dependent</em> normalising constant that can’t be computed exactly, but can be estimated unbiasedly. The problem with this class of methods is that the extra noise tends to make the Markov chain perform pretty badly<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a>. This limits its practical use to models where we really can’t do anything else<a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a>. That said, there is some interesting literature on random sub-sampling of data where it <a href="https://www.jmlr.org/papers/volume18/15-205/15-205.pdf">doesn’t really work</a> and where <a href="https://ses.library.usyd.edu.au/bitstream/handle/2123/16205/BAWP-2017-01.pdf">it does work</a>.</p></li>
+<li><p>A third branch of literature is on truly approximate algorithms. These try to understand what happens if you’re just wrong with <span class="math inline">\(\alpha_{k+1}\)</span> and you don’t do anything to correct it. There are a lot of papers on this, and I’m not going to do anything approaching a thorough review. I have work<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> <a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> to do. So I will just list two older papers that were influential for me. The first was by <a href="https://arxiv.org/abs/1205.6857">Geoff Nichols, Colin Fox, and Alexis Muir Watt</a>, which looks at what happens when you don’t correct your pseudo-marginal method correctly. It’s a really neat theory paper that is a great presentation<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> of the concepts. The second paper is by <a href="https://arxiv.org/abs/1205.6857">Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland</a>, which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings.</p></li>
+</ul>
+<section id="trying-to-understand-noisy-markov-chains" class="level3">
+<h3 class="anchored" data-anchor-id="trying-to-understand-noisy-markov-chains">Trying to understand noisy Markov chains</h3>
+<p>So how do I think of noisy Markov chains. Despite all appearances<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> I am not really a theory person. So while I know that there’s a massive literature on the stability of Markov chains, it doesn’t really influence how I think about it.</p>
+<p>Instead, I think about it in terms of that <a href="https://arxiv.org/abs/1205.6857">Nicholls, Fox, and Muir Watt paper</a> paper. Or, specifically, a talk I saw Colin give at some point that was really clear.</p>
+<p>The important thing to recognise is that <em>it is not important how well you compute</em> <span class="math inline">\(\alpha_{k+1}\)</span>. What is important is if you get the same outcome. Imagine we have two random variables <span class="math inline">\(r_{k+1} \sim \text{Bernoulli}(\alpha_{k+1})\)</span> and <span class="math inline">\(\tilde r_{k+1} \sim \text{Bernoulli}(\tilde \alpha_{k+1})\)</span>. If our realisation of <span class="math inline">\(r_{k+1}\)</span> is the same as our realisation of <span class="math inline">\(\tilde r_{k+1}\)</span>, then we get the same <span class="math inline">\(x_{k+1}\)</span>. Or, to put it another way, when <span class="math inline">\(r_{k+1} = \tilde r_{k+1}\)</span>, no one can tell<a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> that it’s an approximate Markov chain.</p>
+<p>This means that one way to understand inexact MCMC is to think of the Markov chain <span class="math display">\[
+(\tilde{\theta}_k, s_k), \qquad k=0, 1, \ldots, \infty,
+\]</span> where<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> <span class="math display">\[
+s_k = \begin{cases} 0, \quad &amp; r_{k} = \tilde r_k \\
+1, &amp;r_k \neq \tilde r_k\end{cases}
+\]</span> indicates whether or not we made the wrong decision. It’s important to note that while <span class="math inline">\(\tilde \theta_k\)</span> is marginally a Markov chain, <span class="math inline">\(s_k\)</span> is not. You can actually think of <span class="math inline">\(s_k\)</span> as the observation of a hidden Markov model if you want to. I won’t stop you. Nothing will. There is no morality, there is no law. It is The Purge.</p>
+<p>Although we can never actually observe <span class="math inline">\(s_k\)</span>, thinking about it is really useful. In particular, we note that until <span class="math inline">\(s_k =1\)</span> for the first time, the samples of <span class="math inline">\(\tilde \theta_k\)</span> are <em>identical</em> to a correct Metropolis-Hastings algorithm. After this point, the approximate chain and the (imaginary) exact chain will be different. But we can iterate this argument.</p>
+<p>To do this, we can define the length <span class="math inline">\(N_j\)</span> of the Markov chain that would be the same as the exact MCMC algorithm started at <span class="math inline">\(\theta_{N_{k-1}}\)</span> by <span class="math inline">\(N_0=0\)</span> and <span class="math display">\[
+N_k = \inf_{i &gt; N_k}\{i - N_{k-1}: s_i = 1\}.
+\]</span></p>
+<p>If we run our algorithm for <span class="math inline">\(N\)</span> steps, we can then think of the output as being the same as running <span class="math inline">\(J = \sum_{k=1}^N s_k\)</span> Markov chains of different lengths. The <span class="math inline">\(j\)</span>th chain starts at <span class="math inline">\(\theta_{N_{j-1}}\)</span> and is length <span class="math inline">\(N_{j}-1\)</span>. It is worth remembering that these chains are not started from independent points. In particular, if <span class="math inline">\(N_j\)</span> is small, then the starting position of the <span class="math inline">\(j\)</span>th and the <span class="math inline">\(j+1\)</span>th chain will be heavily correlated.</p>
+<p>To think about this we need to think about what happens after <span class="math inline">\(N_k\)</span> steps of a Markov chain. We are going to need the notation <span class="math inline">\(\theta_k = P^k \theta_0\)</span> denotes <span class="math inline">\(k\)</span> steps of the exact algorithm.</p>
+<p>The topic of convergence of Markov chains is a complex business, but we are going to assume that our exact Markov chain is<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a> <em>geometrically ergodic</em>, which means that <span class="math display">\[
+\|P^k \theta_0 - \pi\| \leq M(\theta_0) \rho^{k}
+\]</span> for some function<a href="#fn30" class="footnote-ref" id="fnref30" role="doc-noteref"><sup>30</sup></a> <span class="math inline">\(M(x_0)\)</span> and <span class="math inline">\(0 &lt; \rho &lt; 1\)</span>.</p>
+<p>Geometric ergodicity is a great condition because, among other things, it ensures that sample means from the Markov chain satisfy a central limit theorem. It’s also bloody impossible to prove. But usually indicators like <a href="https://arxiv.org/abs/1903.08008">R-hat</a> do a decent job at suggesting that there might be problems. Also if you are spending a lot of time rejecting proposals in certain parts of the space, there’s a solid chance that you’re not geometrically ergodic.</p>
+<p>Now let’s assume that we are interested in computing <span class="math inline">\(\mathbb{E}_\pi(h(\theta))\)</span> for some nice<a href="#fn31" class="footnote-ref" id="fnref31" role="doc-noteref"><sup>31</sup></a> function <span class="math inline">\(h\)</span>. Then the nice thing about Markov chains is that, give or take<a href="#fn32" class="footnote-ref" id="fnref32" role="doc-noteref"><sup>32</sup></a> <span class="math display">\[
+\left|\frac{1}{N_j-1}\sum_{k=N_{j-1}}^{N_j-1}h(\theta_k) - \mathbb{E}_\pi(h(\theta))\right| \leq C \frac{M(\theta_{N_{j-1}})}{N_j-1}\frac{1 - \rho^{N_{j}-1}}{1- \rho}.
+\]</span> where <span class="math inline">\(C\)</span> might depend on <span class="math inline">\(h\)</span> if <span class="math inline">\(h\)</span> is unbounded.</p>
+<p>This suggests that the error is bounded by, roughly, <span class="math display">\[
+\left|\frac{1}{N}\sum_{k=1}^{N}h(\theta_k) - \mathbb{E}_\pi(h(\theta))\right| \leq \frac{C}{N} \sum_{j = 1}^J M(\theta_{N_{j-1}})\frac{1 - \rho^{N_{j}-1}}{1- \rho}.
+\]</span></p>
+<p>This suggests a few things:</p>
+<ul>
+<li><p>If <span class="math inline">\(J\)</span> is small relative to <span class="math inline">\(N\)</span>, we are going to get <em>very</em> similar estimates to just running <span class="math inline">\(J\)</span> parallel Markov chains and combining them <em>without removing any warm up iterations</em>. In particular, if almost all <span class="math inline">\(N_j\)</span> are big, it will be <em>a lot</em> like combining <span class="math inline">\(J\)</span> warmed up <em>independent</em> chains.</p></li>
+<li><p>Effective sample size and Monte Carlo standard error estimates will potentially be very wrong. This is because instead of computing them based on multiple dependent chains, we are pretending that all of our samples came from a single ergodic Markov chain. Is this a problem? I really don’t know. Again, if the <span class="math inline">\(N_j\)</span>s are usually large, we will be fine.</p></li>
+<li><p>Because <span class="math inline">\(M(\theta)\)</span> can be pretty large when <span class="math inline">\(\theta\)</span> is large, we might have some problems. It’s easy to imagine cases where we get stuck out in a tail and we just fire off a lot of events when <span class="math inline">\(\theta_{N_j}\)</span> is really big. This will be a problem. But also, if we are stuck out in a tail, we are rightly fucked anyway and all of the MCMC diagnostics should be screaming at you. We can take heart that <span class="math inline">\(\mathbb{E}_\pi(M(\theta))\)</span> is usually finite<a href="#fn33" class="footnote-ref" id="fnref33" role="doc-noteref"><sup>33</sup></a> and not, you know, massive.</p></li>
+</ul>
+</section>
+<section id="what-do-the-n_j-look-like" class="level3">
+<h3 class="anchored" data-anchor-id="what-do-the-n_j-look-like">What do the <span class="math inline">\(N_j\)</span> look like?</h3>
+<p>So the take away from the last section was that if the random variables <span class="math inline">\(N_j\)</span> are usually pretty big, then everything will work ok. Intuitively this makes sense. If the <span class="math inline">\(N_j\)</span>s were always small, it would be very difficult to ever get close to any sort of stationary distribution.</p>
+<p>The paper by <a href="https://arxiv.org/abs/1205.6857">Nicholls, Fox, and Muir Watt paper</a> talks about potential sizes for <span class="math inline">\(N_j\)</span>. The general construction that they use is a <em>coupling</em>, which is a bivariate Markov chain <span class="math inline">\((\theta_k, \tilde \theta_k)\)</span> that start from the same position and are updated as follows:</p>
+<ol type="1">
+<li>Propose $’ q(’ _{k})</li>
+<li>Generate a uniform random number <span class="math inline">\(u_{k+1}\)</span></li>
+<li>Update <span class="math inline">\(\theta\)</span> as <span class="math display">\[
+\theta_{k+1} = \begin{cases} \theta', \qquad &amp; u_{k+1} \leq \alpha_{k+1} \\
+\theta_{k}, &amp; u_{k+1} &gt; \alpha_{k+1}.\end{cases}
+\]</span></li>
+<li>Update <span class="math inline">\(\tilde \theta\)</span> as <span class="math display">\[
+\tilde \theta_{k+1} = \begin{cases} \theta', \qquad &amp; u_{k+1} \leq \tilde \alpha_{k+1} \\
+\tilde \theta_{k}, &amp; u_{k+1} &gt; \tilde \alpha_{k+1}.\end{cases}
+\]</span></li>
+</ol>
+<p>This Markov chain is coupled in three ways ways. The chain starts at the same values <span class="math inline">\(\theta_0 = \tilde \theta_0\)</span>, the proposed <span class="math inline">\(\theta'\)</span> is the same for both chains, and the randomness<a href="#fn34" class="footnote-ref" id="fnref34" role="doc-noteref"><sup>34</sup></a> used to do the accept/reject step is the same. Together, this things mean that <span class="math inline">\(\theta_k = \tilde \theta_k\)</span> for all <span class="math inline">\(k &lt; N_1\)</span>.</p>
+<p>For this coupling construction, we can get the exact distribution of the <span class="math inline">\(s_k\)</span>. To do this, we remember that we will only make different decisions in the two chains (or uncouple) if <span class="math inline">\(u\)</span> is on different sides of the two acceptance probabilities. The probability of happening is <span class="math display">\[\begin{align*}
+\Pr(s_k = 1) &amp;= \Pr( u \in [\min\{ \alpha_{k}, \tilde \alpha_k\}, \max\{ \alpha_{k}, \tilde \alpha_k\}]) \\
+&amp;= |\alpha_k - \tilde \alpha_k|.
+\end{align*}\]</span></p>
+<p>I guess you could write down the distribution of the <span class="math inline">\(N_j\)</span> in terms of this. In particular, you get <span class="math display">\[
+\Pr(N_1 = n) = |\alpha_n - \tilde \alpha_n|\prod_{k=1}^{n-1} (1- |\alpha_k - \tilde \alpha_k|)
+\]</span>, but honestly it would be an absolute nightmare.</p>
+<p>When people get stuck in probability questions, the natural thing to do is to make the problem so abstract that you can make the answer up. In that spirit, let’s ask a slightly different: what is the distribution of the <em>maximal</em> decoupling time between the exact and the approximate chain. This is the distribution of the longest possible coupling of the two chains over all<a href="#fn35" class="footnote-ref" id="fnref35" role="doc-noteref"><sup>35</sup></a> possible random sequences <span class="math inline">\((\theta_k, \tilde \theta_k)\)</span> such that the distribution of <span class="math inline">\((\theta_1, \theta_2, \ldots)\)</span> is the same as our exact Markov chain and the distribution of <span class="math inline">\((\tilde\theta_1,\tilde \theta_2, \ldots)\)</span> is the same as our approximate Markov chain.</p>
+<p>This maximal value of <span class="math inline">\(N_1\)</span> is called the <a href="https://arxiv.org/abs/1608.01511"><em>maximal agreement coupling time</em></a> or, more whimsically, the <a href="https://arxiv.org/pdf/1702.03917.pdf">MEXIT time</a>. It turns out that getting the distribution of <span class="math inline">\(N_1\)</span> is … difficult, but we<a href="#fn36" class="footnote-ref" id="fnref36" role="doc-noteref"><sup>36</sup></a> can construct a random variable <span class="math inline">\(\tau\)</span> that is independent of <span class="math inline">\(\tilde \theta_k\)</span> such that <span class="math inline">\(\tau \leq N_1\)</span> almost surely and <span class="math display">\[
+\Pr(\tau = t\mid \tau \geq t) = 1 - \operatorname*{ess\,inf}_{B, \theta_{&lt;t}} \left\{\frac{P(\theta_t \in B \mid \theta_{&lt;t})}{\tilde P(\theta_t \in B \mid \theta_{&lt;t})}\right\},
+\]</span> where <span class="math inline">\(P(\theta_t \mid \theta_{&lt;t})\)</span> is the transition distribution for the exact Markov<a href="#fn37" class="footnote-ref" id="fnref37" role="doc-noteref"><sup>37</sup></a> chain and <span class="math inline">\(\tilde P(\theta_t \mid \theta_{&lt;t})\)</span> is the transition distribution for the approximate Markov chain.</p>
+<p>For a Metropolis-Hastings algorithm, the transition distribution has the form <span class="math display">\[
+P(B, \theta)= \begin{cases} \alpha(\theta)Q(B \mid \theta),\qquad &amp; \theta \not \in B \\
+\alpha(\theta)Q(B\mid \theta) + (1-\alpha(\theta)), &amp;\theta \in B
+\end{cases}
+\]</span> where <span class="math inline">\(Q(B\mid \theta)\)</span> is the probability associated with the proposal density <span class="math inline">\(q(\cdot \mid \theta)\)</span> and I have been very explicit about the dependence of the acceptance probability on <span class="math inline">\(\theta\)</span>. (The <span class="math inline">\((1-\alpha(\theta))\)</span> term takes into account the probability of starting at <span class="math inline">\(\theta\)</span> and not accepting the proposed state.)</p>
+<p>That definition of <span class="math inline">\(\tau\)</span> looks pretty nasty, but it’s not too bad: in particular, the infinitum only cares of <span class="math inline">\(\theta_{t-1}\in B\)</span>. This means that the condition simplifies to <span class="math display">\[
+\Pr(\tau = t\mid \tau \geq t) = 1 - \min\left\{\operatorname*{ess\,inf}_{B, \theta_{t-1}} \frac{\alpha_t(\theta_{t-1}) Q(B \mid \theta_{t-1})}{\tilde\alpha_t(\theta_{t-1}) Q(B \mid \theta_{t-1})}, \operatorname*{ess\,inf}_{B, \theta_{t-1}} \frac{\alpha_t(\theta_{t-1}) Q(B \mid \theta_{t-1}) + (1-\alpha_t(\theta_{t-1}))}{\tilde\alpha_t(\theta_{t-1}) Q(B \mid \theta_{t-1}) + (1- \tilde \alpha_t(\theta_{t-1}))}\right\}.
+\]</span></p>
+<p>This simplifies further if we assume that the proposal distribution <span class="math inline">\(Q(\cdot \mid \theta_k)\)</span> is absolutely continuous and has a strictly positive density. Then, it truly does not matter what <span class="math inline">\(B\)</span> is. For the first term, it just cancels, while the second term is monotone<a href="#fn38" class="footnote-ref" id="fnref38" role="doc-noteref"><sup>38</sup></a> in <span class="math inline">\(Q(B \mid \theta_{t-1})\)</span>, so we can take this term to be either zero or one and get<a href="#fn39" class="footnote-ref" id="fnref39" role="doc-noteref"><sup>39</sup></a> <span class="math display">\[
+\Pr(\tau = t\mid \tau \geq t) = 1 - \min\left\{\operatorname*{ess\,inf}_{ \theta_{t-1}} \frac{\alpha_t(\theta_{t-1}) }{\tilde\alpha_t(\theta_{t-1})}, \operatorname*{ess\,inf}_{\theta_{t-1}} \frac{1-\alpha_t(\theta_{t-1})}{ 1- \tilde \alpha_t(\theta_{t-1})},1\right\}.
+\]</span></p>
+<p>This is, as the Greeks would say, not too bad.</p>
+<p>If, for instance, we know the relative error <span class="math display">\[
+\tilde\alpha(\theta) = (1 + \delta(\theta))\alpha(\theta),
+\]</span> then <span class="math display">\[
+\frac{\alpha(\theta)}{\tilde \alpha(\theta)} = \frac{1}{1 + \delta(\theta)},
+\]</span> and if we know<a href="#fn40" class="footnote-ref" id="fnref40" role="doc-noteref"><sup>40</sup></a> <span class="math inline">\(\delta(\theta) \leq \bar \delta\)</span>, we get <span class="math display">\[
+\frac{\alpha(\theta)}{\tilde \alpha(\theta)} \geq \frac{1}{1 + \bar\delta}.
+\]</span> Similarly, if <span class="math display">\[
+1-\tilde \alpha(\theta) = (1-\alpha(\theta))(1+\epsilon(\theta)),
+\]</span> and <span class="math inline">\(\epsilon(\theta) \leq \bar \epsilon\)</span>, then we get <span class="math display">\[
+\frac{1-\alpha(\theta)}{1-\tilde \alpha(\theta)} = \frac{1}{1+\epsilon(x)} \geq \frac{1}{1+\bar\epsilon}.
+\]</span></p>
+<p>The nice thing is that we can choose our upper bounds so that <span class="math inline">\(\rho = (1+ \bar \delta)^{-1} = (1+ \bar\epsilon)^{-1}\)</span> and get the upper bound <span class="math display">\[
+\Pr(\tau = t\mid \tau \geq t) \leq 1 - \rho.
+\]</span> It follows that <span class="math display">\[
+\Pr(\tau = t) \leq \rho^{t-1}(1-\rho).
+\]</span></p>
+<p>Now this is a bit nasty. It’s an upper bound on the probability of a lower bound on the maximal decoupling time. Probability, eh.</p>
+<p>Probably the most useful thing we can get from this is an upper bound on <span class="math inline">\(\mathbb{E}(\tau)\)</span>, which is<a href="#fn41" class="footnote-ref" id="fnref41" role="doc-noteref"><sup>41</sup></a> <span class="math display">\[
+\mathbb{E}(\tau) \leq \frac{1}{1-\rho} = 1 + \bar \delta^{-1}.
+\]</span></p>
+<p>This confirms our intuition that if the relative error is large, we will have, on average, quite small <span class="math inline">\(N_j\)</span>. It’s not quite enough to show the opposite (good floating point error begets big <span class="math inline">\(N_j\)</span>), but that’s probably true as well.</p>
+<p>And that is where we end this saga. There is definitely more that could be said, but I decided to spend exactly one day writing this post and that time is now over.</p>
+
+
+</section>
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Usually this is a lie, but it was actually a thing that happened last week<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>Don’t judge me (or my friends) based on this. I promise we also talk about other shit.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>Hi GPUs!<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn4"><p>usually reversible, although a lot of cool but not ready for prime time work is being done on non-reversible chains.<a href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn5"><p>A stationary distribution, if it exists, is the distribution that is preserved by the Markov chain. If <span class="math inline">\(\pi\)</span> is the stationary distribution and <span class="math inline">\(x_1 \sim \pi\)</span>, then if we construct <span class="math inline">\(x_2, x_3,\ldots\)</span> by running the Markov chain then for every <span class="math inline">\(k\)</span>, the marginal distribution is <span class="math inline">\(x_k \sim \pi\)</span>.<a href="#fnref5" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn6"><p>But critically not all! The dynamic HMC algorithm used in Stan, for instance, is not a Metropolis-Hastings algorithm. Instead of doing an accept/reject step it samples from the proposed trajectory. Betancourt’s <a href="https://arxiv.org/abs/1701.02434">long intro to Hamiltonian Monte Carlo</a> covers this very well.<a href="#fnref6" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn7"><p>The conditions for this to work are <em>very</em> light. But that’s because the definition of “working” only thinks about what happens after infinitely many steps. To get a practically useful Metropolis-Hastings algorithm, you’ve got to work very hard on choosing your proposal density.<a href="#fnref7" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn8"><p>sometimes called the Hastings correction<a href="#fnref8" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn9"><p>This is not the only choice that will work, but in some sense it is the most efficient one.<a href="#fnref9" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn10"><p>Technically, it is chosen by requiring that the Markov proposal <span class="math inline">\(P(\theta,\theta')\)</span> satisfies the detailed balance condition <span class="math inline">\(\pi P(\theta,\theta') = P(\theta', \theta)\pi\)</span>, but everything about that equation is beyond the scope of this particular post.<a href="#fnref10" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn11"><p>Metropolis-adjusted Langevin Algorithm<a href="#fnref11" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn12"><p>Under the assumption that the total floating point error was bounded by a constant <span class="math inline">\(\delta\)</span><a href="#fnref12" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn13"><p>This time the assumption was that the rounding error for the acceptance probability at state <span class="math inline">\(\theta_k\)</span> was bounded by <span class="math inline">\(\delta \|\theta_k\|\)</span>. This is a lot closer to how floating point arithmetic actually works. The trade off is that it requires a tighter condition on the drift function <span class="math inline">\(V\)</span>.<a href="#fnref13" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn14"><p>IEEE floating point arithmetic represents a real number using <span class="math inline">\(B\)</span> bits. Typically <span class="math inline">\(B = 64\)</span> (double precision) or <span class="math inline">\(B = 32\)</span> (single precision). You can read a great intro to this on <a href="https://nhigham.com/2020/05/04/what-is-floating-point-arithmetic/">Nick Higham’s blog</a>. But in general, the <em>best</em> we can represent a real number <span class="math inline">\(\theta\)</span> by is by a floating point number <span class="math inline">\(\tilde \theta\)</span> that satisfies <span class="math display">\[
+|\theta - \tilde \theta| \leq 2^{-N+1}|\theta|,
+\]</span> where <span class="math inline">\(N=23\)</span> in single precision and <span class="math inline">\(N=32\)</span> in double precision. Of course, the acceptance probability is a non-linear combination of floating point numbers, so the actual error is going to be more complicated than that. I strongly recommend you read <a href="http://www.maths.manchester.ac.uk/~higham/asna/index.php">Nick Higham’s book</a> on the subject.<a href="#fnref14" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn15"><p><span class="math inline">\(V\)</span>-geometrically ergodic with some light conditions on <span class="math inline">\(V\)</span><a href="#fnref15" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn16"><p>Geometric ergodicity implies the existence of a CLT! Which is nice, because all of our intuition about how to use the output from MCMC depends on a CLT.<a href="#fnref16" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn17"><p>Like all good orgies, this one was mostly populated by men<a href="#fnref17" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn18"><p>Yes, I know. My (limited) contribution this literature was some small contributions to a paper <a href="https://www.jstor.org/stable/24780815">lead by Anne-Marie Lyne</a>. But if years of compulsory catholicism taught me anything (other than “If you’re drinking with a nun or an aging homosexual, don’t try to keep up”) it’s that something does not have to be literally true to be morally true.<a href="#fnref18" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn19"><p>We have to slightly redefine the word “exact” to mean “targets the correct stationary distribution” for this name to make sense<a href="#fnref19" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn20"><p>Random graph models and point processes are two great examples<a href="#fnref20" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn21"><p>for instance, it gets stuck for long times at single values<a href="#fnref21" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn22"><p>the aforementioned point process and graph models<a href="#fnref22" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn23"><p>Playing God of War: Ragnarok<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn24"><p>The first run of God of War Games were not my cup of tea, but the 2008 game, which is essentially a detailed simulation of what happens when a muscle bear is entrusted with walking an 11 year old up a hill, was really enjoyable. So far this is too.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn25"><p>Does it talk about involutions for not fucking reason? Of course it does. Read past that.<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn26"><p>Yeah, like I have also read my blog. Think of it as being like social media. It is not a representation of me a whole person. It’s actually biased towards stuff that I have either found or find difficult.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p>A friend of mine has a “No one knows I’m a transexual” t-shirt that she likes to wear to supermarkets.<a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn28"><p>Note that both <span class="math inline">\(r_k\)</span> and <span class="math inline">\(\tilde \r_k\)</span> are computed using the <em>same</em> value <span class="math inline">\(\tilde \theta_{k-1}\)</span>.<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn29"><p>The norm here is usually either the total variation norm of the <span class="math inline">\(V\)</span>-norm. But truly it’s not important for the hand waving.<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn30"><p>In most cases <span class="math inline">\(M(\theta) \rightarrow \infty\)</span> as <span class="math inline">\(\|\theta\| \rightarrow \infty\)</span>.<a href="#fnref30" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn31"><p>Bounded and continuous always works. But everything is probably ok for unbounded functions as long as <span class="math inline">\(h(\theta)\)</span> has a pile of finite moments.<a href="#fnref31" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn32"><p>This is roughly true. I basically used the geometric ergodicity bound to bound <span class="math display">\[
+\sum_{k=N_{j-1}}^{N_j-1} \left(\theta_k - \frac{1}{N_j-1}\mathbb{E}_\pi(h(\theta)\right)
+\]</span> and summed it up. There are smarter things to do, but it’s close enough for government work. <a href="#fnref32" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn33"><p>Sometimes, if you squint, this term will kinda, sorta start to look like <span class="math inline">\(\mathbb{E}_\pi(\pi(\theta)^{-1/2})\)</span>, which isn’t usually toooo big. But also, sometimes it looks totally different. Theory is wild.<a href="#fnref33" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn34"><p>If you’ve ever wondered how <code>rbinom(1,p)</code> works, there you are.<a href="#fnref34" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn35"><p>Think of this as the opposite of an adversarial example. We are trying to find the exact chain that is scared to leave the approximate chain behind. Which is either romantic or creepy, depending on finer details.<a href="#fnref35" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn36"><p>Well not me. <a href="https://arxiv.org/pdf/1608.01511.pdf">Florian Völlering</a> did it in his Theorem 1.4. I most certainly could not have done it.<a href="#fnref36" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn37"><p>Well the result does not need this to be a Markov chain!<a href="#fnref37" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn38"><p>it goes up if <span class="math inline">\(\alpha&gt;\tilde \alpha\)</span> otherwise it goes down<a href="#fnref38" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn39"><p>The 1 case can basically never happen except in the trivial case where both acceptance probabilities are the same. And if we thought that was going to happen we would’ve done something bloody else<a href="#fnref39" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn40"><p>The the relative error being bounded does not stop the absolute error growing!<a href="#fnref40" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn41"><p>Look above and recognize the Geometric distribution<a href="#fnref41" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
+  author = {Dan Simpson},
+  editor = {},
+  title = {MCMC with the Wrong Acceptance Probability},
+  date = {2022-11-23},
+  url = {https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html},
+  langid = {en}
+}
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
+Dan Simpson. 2022. <span>“MCMC with the Wrong Acceptance
+Probability.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</a>.
+</div></div></section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    setTimeout(function() {
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
+    tippyHover(ref, function() {
+      var popup = window.document.createElement('div');
+      cites.forEach(function(cite) {
+        var citeDiv = window.document.createElement('div');
+        citeDiv.classList.add('hanging-indent');
+        citeDiv.classList.add('csl-entry');
+        var biblioDiv = window.document.getElementById('ref-' + cite);
+        if (biblioDiv) {
+          citeDiv.innerHTML = biblioDiv.innerHTML;
+        }
+        popup.appendChild(citeDiv);
+      });
+      return popup.innerHTML;
+    });
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

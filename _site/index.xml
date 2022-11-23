@@ -15,7 +15,160 @@
 <link>https://dansblog.netlify.app/index.html</link>
 </image>
 <generator>quarto-1.2.15</generator>
-<lastBuildDate>Mon, 14 Nov 2022 13:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 22 Nov 2022 13:00:00 GMT</lastBuildDate>
+<item>
+  <title>MCMC with the wrong acceptance probability</title>
+  <dc:creator>Dan Simpson</dc:creator>
+  <link>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<p>Just the other day<sup>1</sup> I was chatting with a friend<sup>2</sup> about MCMC and he asked me a fundamental, but seldom asked, question: <em>What happens my acceptance probability is a bit off?</em>.</p>
+<p>This question comes up a bunch. In this context, they were switching from double to single precision<sup>3</sup> and were a little worried that some of their operations would be a bit more inexact than they were used to. Would this tank MCMC? Would everything still be fine?</p>
+<section id="what-is-markov-chain-monte-carlo" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-markov-chain-monte-carlo">What is Markov chain Monte Carlo</h2>
+<p>Markov chain Monte Carlo (MCMC) is, usually, guess-and-check for people who want to be fancy.</p>
+<p>It is a class of algorithms that allow you to construct a<sup>4</sup> Markov chain that has a given <em>stationary distribution</em><sup>5</sup> <img src="https://latex.codecogs.com/png.latex?%5Cpi">. In Bayesian applications, we usually want to choose <img src="https://latex.codecogs.com/png.latex?%5Cpi%20=%20p(%5Ctheta%20%5Cmid%20y)">, but there are other applications of MCMC.</p>
+<p>Most<sup>6</sup> MCMC algorithms live in the Metropolis-Hastings family of algorithms. These methods require only one component: a proposal distribution <img src="https://latex.codecogs.com/png.latex?q(%5Ctheta'%20%5Cmid%20%5Ctheta)">. Given basically any<sup>7</sup> proposal distribution, we can go from our current state <img src="https://latex.codecogs.com/png.latex?%5Ctheta_k"> to the new state <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7Bk+1%7D"> using the following three steps:</p>
+<ol type="1">
+<li><p>Propose a potential new state <img src="https://latex.codecogs.com/png.latex?%5Ctheta'%20%5Csim%20q(%5Ctheta'%20%5Cmid%20%5Ctheta_k)"></p></li>
+<li><p>Sample a Bernoulli random variable <img src="https://latex.codecogs.com/png.latex?r_%7Bk+1%7D"> with <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(r_%7Bk+1%7D%20=%201%20%5Cmid%20%5Ctheta_k)%20=%20%5Calpha_%7Bk+1%7D%20=%20%20%5Cmin%5Cleft%5C%7B1,%20%5Cfrac%7B%5Cpi(%5Ctheta')%7D%7B%5Cpi(%5Ctheta_k)%7D%5Cfrac%7Bq(%5Ctheta_k%20%5Cmid%20%5Ctheta')%7D%7Bq(%5Ctheta'%20%5Cmid%20%5Ctheta_k)%7D%5Cright%5C%7D%0A"></p></li>
+<li><p>Set <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7Bk+1%7D"> according to the formula <img src="https://latex.codecogs.com/png.latex?%0A%5Ctheta_%7Bk+1%7D%20=%20%5Cbegin%7Bcases%7D%20%5Ctheta',%20&amp;%20r_%7Bk+1%7D=1%20%5C%5C%20%5Ctheta_k,%20&amp;r_%7Bk+1%7D%20=%200.%5Cend%7Bcases%7D%0A"></p></li>
+</ol>
+<p>The acceptance probability<sup>8</sup> is chosen<sup>9</sup> to balance<sup>10</sup> out the proposal <img src="https://latex.codecogs.com/png.latex?q(%5Ccdot%20%5Cmid%20%5Ccdot)"> with the target distribution <img src="https://latex.codecogs.com/png.latex?%5Cpi">.</p>
+<p>You can interpret the two ratios in the acceptance probability separately. The first one prefers proposals from high-density regions over proposals from low-density regions. The second ratio balances this by down-weighting proposed states that were <em>easy</em> to propose from the current location. When the proposal is symmetric, ie <img src="https://latex.codecogs.com/png.latex?q(%5Ctheta'%5Cmid%20%5Ctheta)=%20q(%5Ctheta%20%5Cmid%20%5Ctheta')">, the second ratio is always 1. However, in better algorithms like MALA<sup>11</sup>, the proposal is not symmetric. If we look at the MALA proposal <img src="https://latex.codecogs.com/png.latex?%0Aq(%5Ctheta'%5Cmid%20%5Ctheta)%20%5Csim%20N%5Cleft(%5Ctheta%20+%20%5Cfrac%7B1%7D%7B2%7D%5CSigma%5Cnabla%20%5Clog%20%5Cpi(%5Ctheta),%20%5CSigma%5Cright)%0A"> it’s pretty easy to see that we are biasing our samples towards the mode of the distribution. If we did not have the second ratio in the acceptance probability we would severely under-sample the tails of the distribution.</p>
+</section>
+<section id="mcmc-with-approximate-acceptance-probabilities" class="level2">
+<h2 class="anchored" data-anchor-id="mcmc-with-approximate-acceptance-probabilities">MCMC with approximate acceptance probabilities</h2>
+<p>With this definition in hand, it’s now possible to re-cast the question my friend asked as &gt; What happens to my MCMC algorithm if, instead of <img src="https://latex.codecogs.com/png.latex?%5Calpha_%7Bk+1%7D"> I accidentally compute <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Calpha_%7Bk+1%7D"> and use that instead to simulate <img src="https://latex.codecogs.com/png.latex?r_%7Bk+1%7D">?</p>
+<p>So let’s go about answering that!</p>
+</section>
+<section id="a-bit-of-a-literature-review" class="level2">
+<h2 class="anchored" data-anchor-id="a-bit-of-a-literature-review">A bit of a literature review</h2>
+<p>Unsurprisingly, this type of question has popped up over and over again in the literature:</p>
+<ul>
+<li><p>This exact question was asked by Gareth Roberts and Jeff Rosenthal first<sup>12</sup> <a href="http://probability.ca/jeff/ftpdir/sens.pdf">with Peter Schwartz</a> and a second, more<sup>13</sup> <sup>14</sup> realistic, time <a href="http://probability.ca/jeff/ftpdir/gjl.pdf">with Laird Breyer</a>. They found that as long as the chain’s convergence is sufficiently nice<sup>15</sup> then the perturbed chain will converge nicely and have<sup>16</sup> a central limit theorem.</p></li>
+<li><p>About 10 years ago, an absolute orgy<sup>17</sup> <sup>18</sup> of research happened around the question <em>What happens if the acceptance probability is random but unbiased?</em>. These <em>exact approximate</em><sup>19</sup> or <em>pseudo-marginal</em> methods. These have some success in situations<sup>20</sup> where the likelihood has a <em>parameter dependent</em> normalising constant that can’t be computed exactly, but can be estimated unbiasedly. The problem with this class of methods is that the extra noise tends to make the Markov chain perform pretty badly<sup>21</sup>. This limits its practical use to models where we really can’t do anything else<sup>22</sup>. That said, there is some interesting literature on random sub-sampling of data where it <a href="https://www.jmlr.org/papers/volume18/15-205/15-205.pdf">doesn’t really work</a> and where <a href="https://ses.library.usyd.edu.au/bitstream/handle/2123/16205/BAWP-2017-01.pdf">it does work</a>.</p></li>
+<li><p>A third branch of literature is on truly approximate algorithms. These try to understand what happens if you’re just wrong with <img src="https://latex.codecogs.com/png.latex?%5Calpha_%7Bk+1%7D"> and you don’t do anything to correct it. There are a lot of papers on this, and I’m not going to do anything approaching a thorough review. I have work<sup>23</sup> <sup>24</sup> to do. So I will just list two older papers that were influential for me. The first was by <a href="https://arxiv.org/abs/1205.6857">Geoff Nichols, Colin Fox, and Alexis Muir Watt</a>, which looks at what happens when you don’t correct your pseudo-marginal method correctly. It’s a really neat theory paper that is a great presentation<sup>25</sup> of the concepts. The second paper is by <a href="https://arxiv.org/abs/1205.6857">Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland</a>, which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings.</p></li>
+</ul>
+<section id="trying-to-understand-noisy-markov-chains" class="level3">
+<h3 class="anchored" data-anchor-id="trying-to-understand-noisy-markov-chains">Trying to understand noisy Markov chains</h3>
+<p>So how do I think of noisy Markov chains. Despite all appearances<sup>26</sup> I am not really a theory person. So while I know that there’s a massive literature on the stability of Markov chains, it doesn’t really influence how I think about it.</p>
+<p>Instead, I think about it in terms of that <a href="https://arxiv.org/abs/1205.6857">Nicholls, Fox, and Muir Watt paper</a> paper. Or, specifically, a talk I saw Colin give at some point that was really clear.</p>
+<p>The important thing to recognise is that <em>it is not important how well you compute</em> <img src="https://latex.codecogs.com/png.latex?%5Calpha_%7Bk+1%7D">. What is important is if you get the same outcome. Imagine we have two random variables <img src="https://latex.codecogs.com/png.latex?r_%7Bk+1%7D%20%5Csim%20%5Ctext%7BBernoulli%7D(%5Calpha_%7Bk+1%7D)"> and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20r_%7Bk+1%7D%20%5Csim%20%5Ctext%7BBernoulli%7D(%5Ctilde%20%5Calpha_%7Bk+1%7D)">. If our realisation of <img src="https://latex.codecogs.com/png.latex?r_%7Bk+1%7D"> is the same as our realisation of <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20r_%7Bk+1%7D">, then we get the same <img src="https://latex.codecogs.com/png.latex?x_%7Bk+1%7D">. Or, to put it another way, when <img src="https://latex.codecogs.com/png.latex?r_%7Bk+1%7D%20=%20%5Ctilde%20r_%7Bk+1%7D">, no one can tell<sup>27</sup> that it’s an approximate Markov chain.</p>
+<p>This means that one way to understand inexact MCMC is to think of the Markov chain <img src="https://latex.codecogs.com/png.latex?%0A(%5Ctilde%7B%5Ctheta%7D_k,%20s_k),%20%5Cqquad%20k=0,%201,%20%5Cldots,%20%5Cinfty,%0A"> where<sup>28</sup> <img src="https://latex.codecogs.com/png.latex?%0As_k%20=%20%5Cbegin%7Bcases%7D%200,%20%5Cquad%20&amp;%20r_%7Bk%7D%20=%20%5Ctilde%20r_k%20%5C%5C%0A1,%20&amp;r_k%20%5Cneq%20%5Ctilde%20r_k%5Cend%7Bcases%7D%0A"> indicates whether or not we made the wrong decision. It’s important to note that while <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_k"> is marginally a Markov chain, <img src="https://latex.codecogs.com/png.latex?s_k"> is not. You can actually think of <img src="https://latex.codecogs.com/png.latex?s_k"> as the observation of a hidden Markov model if you want to. I won’t stop you. Nothing will. There is no morality, there is no law. It is The Purge.</p>
+<p>Although we can never actually observe <img src="https://latex.codecogs.com/png.latex?s_k">, thinking about it is really useful. In particular, we note that until <img src="https://latex.codecogs.com/png.latex?s_k%20=1"> for the first time, the samples of <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_k"> are <em>identical</em> to a correct Metropolis-Hastings algorithm. After this point, the approximate chain and the (imaginary) exact chain will be different. But we can iterate this argument.</p>
+<p>To do this, we can define the length <img src="https://latex.codecogs.com/png.latex?N_j"> of the Markov chain that would be the same as the exact MCMC algorithm started at <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7BN_%7Bk-1%7D%7D"> by <img src="https://latex.codecogs.com/png.latex?N_0=0"> and <img src="https://latex.codecogs.com/png.latex?%0AN_k%20=%20%5Cinf_%7Bi%20%3E%20N_k%7D%5C%7Bi%20-%20N_%7Bk-1%7D:%20s_i%20=%201%5C%7D.%0A"></p>
+<p>If we run our algorithm for <img src="https://latex.codecogs.com/png.latex?N"> steps, we can then think of the output as being the same as running <img src="https://latex.codecogs.com/png.latex?J%20=%20%5Csum_%7Bk=1%7D%5EN%20s_k"> Markov chains of different lengths. The <img src="https://latex.codecogs.com/png.latex?j">th chain starts at <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7BN_%7Bj-1%7D%7D"> and is length <img src="https://latex.codecogs.com/png.latex?N_%7Bj%7D-1">. It is worth remembering that these chains are not started from independent points. In particular, if <img src="https://latex.codecogs.com/png.latex?N_j"> is small, then the starting position of the <img src="https://latex.codecogs.com/png.latex?j">th and the <img src="https://latex.codecogs.com/png.latex?j+1">th chain will be heavily correlated.</p>
+<p>To think about this we need to think about what happens after <img src="https://latex.codecogs.com/png.latex?N_k"> steps of a Markov chain. We are going to need the notation <img src="https://latex.codecogs.com/png.latex?%5Ctheta_k%20=%20P%5Ek%20%5Ctheta_0"> denotes <img src="https://latex.codecogs.com/png.latex?k"> steps of the exact algorithm.</p>
+<p>The topic of convergence of Markov chains is a complex business, but we are going to assume that our exact Markov chain is<sup>29</sup> <em>geometrically ergodic</em>, which means that <img src="https://latex.codecogs.com/png.latex?%0A%5C%7CP%5Ek%20%5Ctheta_0%20-%20%5Cpi%5C%7C%20%5Cleq%20M(%5Ctheta_0)%20%5Crho%5E%7Bk%7D%0A"> for some function<sup>30</sup> <img src="https://latex.codecogs.com/png.latex?M(x_0)"> and <img src="https://latex.codecogs.com/png.latex?0%20%3C%20%5Crho%20%3C%201">.</p>
+<p>Geometric ergodicity is a great condition because, among other things, it ensures that sample means from the Markov chain satisfy a central limit theorem. It’s also bloody impossible to prove. But usually indicators like <a href="https://arxiv.org/abs/1903.08008">R-hat</a> do a decent job at suggesting that there might be problems. Also if you are spending a lot of time rejecting proposals in certain parts of the space, there’s a solid chance that you’re not geometrically ergodic.</p>
+<p>Now let’s assume that we are interested in computing <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D_%5Cpi(h(%5Ctheta))"> for some nice<sup>31</sup> function <img src="https://latex.codecogs.com/png.latex?h">. Then the nice thing about Markov chains is that, give or take<sup>32</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5Cleft%7C%5Cfrac%7B1%7D%7BN_j-1%7D%5Csum_%7Bk=N_%7Bj-1%7D%7D%5E%7BN_j-1%7Dh(%5Ctheta_k)%20-%20%5Cmathbb%7BE%7D_%5Cpi(h(%5Ctheta))%5Cright%7C%20%5Cleq%20C%20%5Cfrac%7BM(%5Ctheta_%7BN_%7Bj-1%7D%7D)%7D%7BN_j-1%7D%5Cfrac%7B1%20-%20%5Crho%5E%7BN_%7Bj%7D-1%7D%7D%7B1-%20%5Crho%7D.%0A"> where <img src="https://latex.codecogs.com/png.latex?C"> might depend on <img src="https://latex.codecogs.com/png.latex?h"> if <img src="https://latex.codecogs.com/png.latex?h"> is unbounded.</p>
+<p>This suggests that the error is bounded by, roughly, <img src="https://latex.codecogs.com/png.latex?%0A%5Cleft%7C%5Cfrac%7B1%7D%7BN%7D%5Csum_%7Bk=1%7D%5E%7BN%7Dh(%5Ctheta_k)%20-%20%5Cmathbb%7BE%7D_%5Cpi(h(%5Ctheta))%5Cright%7C%20%5Cleq%20%5Cfrac%7BC%7D%7BN%7D%20%5Csum_%7Bj%20=%201%7D%5EJ%20M(%5Ctheta_%7BN_%7Bj-1%7D%7D)%5Cfrac%7B1%20-%20%5Crho%5E%7BN_%7Bj%7D-1%7D%7D%7B1-%20%5Crho%7D.%0A"></p>
+<p>This suggests a few things:</p>
+<ul>
+<li><p>If <img src="https://latex.codecogs.com/png.latex?J"> is small relative to <img src="https://latex.codecogs.com/png.latex?N">, we are going to get <em>very</em> similar estimates to just running <img src="https://latex.codecogs.com/png.latex?J"> parallel Markov chains and combining them <em>without removing any warm up iterations</em>. In particular, if almost all <img src="https://latex.codecogs.com/png.latex?N_j"> are big, it will be <em>a lot</em> like combining <img src="https://latex.codecogs.com/png.latex?J"> warmed up <em>independent</em> chains.</p></li>
+<li><p>Effective sample size and Monte Carlo standard error estimates will potentially be very wrong. This is because instead of computing them based on multiple dependent chains, we are pretending that all of our samples came from a single ergodic Markov chain. Is this a problem? I really don’t know. Again, if the <img src="https://latex.codecogs.com/png.latex?N_j">s are usually large, we will be fine.</p></li>
+<li><p>Because <img src="https://latex.codecogs.com/png.latex?M(%5Ctheta)"> can be pretty large when <img src="https://latex.codecogs.com/png.latex?%5Ctheta"> is large, we might have some problems. It’s easy to imagine cases where we get stuck out in a tail and we just fire off a lot of events when <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7BN_j%7D"> is really big. This will be a problem. But also, if we are stuck out in a tail, we are rightly fucked anyway and all of the MCMC diagnostics should be screaming at you. We can take heart that <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D_%5Cpi(M(%5Ctheta))"> is usually finite<sup>33</sup> and not, you know, massive.</p></li>
+</ul>
+</section>
+<section id="what-do-the-n_j-look-like" class="level3">
+<h3 class="anchored" data-anchor-id="what-do-the-n_j-look-like">What do the <img src="https://latex.codecogs.com/png.latex?N_j"> look like?</h3>
+<p>So the take away from the last section was that if the random variables <img src="https://latex.codecogs.com/png.latex?N_j"> are usually pretty big, then everything will work ok. Intuitively this makes sense. If the <img src="https://latex.codecogs.com/png.latex?N_j">s were always small, it would be very difficult to ever get close to any sort of stationary distribution.</p>
+<p>The paper by <a href="https://arxiv.org/abs/1205.6857">Nicholls, Fox, and Muir Watt paper</a> talks about potential sizes for <img src="https://latex.codecogs.com/png.latex?N_j">. The general construction that they use is a <em>coupling</em>, which is a bivariate Markov chain <img src="https://latex.codecogs.com/png.latex?(%5Ctheta_k,%20%5Ctilde%20%5Ctheta_k)"> that start from the same position and are updated as follows:</p>
+<ol type="1">
+<li>Propose $’ q(’ _{k})</li>
+<li>Generate a uniform random number <img src="https://latex.codecogs.com/png.latex?u_%7Bk+1%7D"></li>
+<li>Update <img src="https://latex.codecogs.com/png.latex?%5Ctheta"> as <img src="https://latex.codecogs.com/png.latex?%0A%5Ctheta_%7Bk+1%7D%20=%20%5Cbegin%7Bcases%7D%20%5Ctheta',%20%5Cqquad%20&amp;%20u_%7Bk+1%7D%20%5Cleq%20%5Calpha_%7Bk+1%7D%20%5C%5C%0A%5Ctheta_%7Bk%7D,%20&amp;%20u_%7Bk+1%7D%20%3E%20%5Calpha_%7Bk+1%7D.%5Cend%7Bcases%7D%0A"></li>
+<li>Update <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta"> as <img src="https://latex.codecogs.com/png.latex?%0A%5Ctilde%20%5Ctheta_%7Bk+1%7D%20=%20%5Cbegin%7Bcases%7D%20%5Ctheta',%20%5Cqquad%20&amp;%20u_%7Bk+1%7D%20%5Cleq%20%5Ctilde%20%5Calpha_%7Bk+1%7D%20%5C%5C%0A%5Ctilde%20%5Ctheta_%7Bk%7D,%20&amp;%20u_%7Bk+1%7D%20%3E%20%5Ctilde%20%5Calpha_%7Bk+1%7D.%5Cend%7Bcases%7D%0A"></li>
+</ol>
+<p>This Markov chain is coupled in three ways ways. The chain starts at the same values <img src="https://latex.codecogs.com/png.latex?%5Ctheta_0%20=%20%5Ctilde%20%5Ctheta_0">, the proposed <img src="https://latex.codecogs.com/png.latex?%5Ctheta'"> is the same for both chains, and the randomness<sup>34</sup> used to do the accept/reject step is the same. Together, this things mean that <img src="https://latex.codecogs.com/png.latex?%5Ctheta_k%20=%20%5Ctilde%20%5Ctheta_k"> for all <img src="https://latex.codecogs.com/png.latex?k%20%3C%20N_1">.</p>
+<p>For this coupling construction, we can get the exact distribution of the <img src="https://latex.codecogs.com/png.latex?s_k">. To do this, we remember that we will only make different decisions in the two chains (or uncouple) if <img src="https://latex.codecogs.com/png.latex?u"> is on different sides of the two acceptance probabilities. The probability of happening is <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0A%5CPr(s_k%20=%201)%20&amp;=%20%5CPr(%20u%20%5Cin%20%5B%5Cmin%5C%7B%20%5Calpha_%7Bk%7D,%20%5Ctilde%20%5Calpha_k%5C%7D,%20%5Cmax%5C%7B%20%5Calpha_%7Bk%7D,%20%5Ctilde%20%5Calpha_k%5C%7D%5D)%20%5C%5C%0A&amp;=%20%7C%5Calpha_k%20-%20%5Ctilde%20%5Calpha_k%7C.%0A%5Cend%7Balign*%7D"></p>
+<p>I guess you could write down the distribution of the <img src="https://latex.codecogs.com/png.latex?N_j"> in terms of this. In particular, you get <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(N_1%20=%20n)%20=%20%7C%5Calpha_n%20-%20%5Ctilde%20%5Calpha_n%7C%5Cprod_%7Bk=1%7D%5E%7Bn-1%7D%20(1-%20%7C%5Calpha_k%20-%20%5Ctilde%20%5Calpha_k%7C)%0A">, but honestly it would be an absolute nightmare.</p>
+<p>When people get stuck in probability questions, the natural thing to do is to make the problem so abstract that you can make the answer up. In that spirit, let’s ask a slightly different: what is the distribution of the <em>maximal</em> decoupling time between the exact and the approximate chain. This is the distribution of the longest possible coupling of the two chains over all<sup>35</sup> possible random sequences <img src="https://latex.codecogs.com/png.latex?(%5Ctheta_k,%20%5Ctilde%20%5Ctheta_k)"> such that the distribution of <img src="https://latex.codecogs.com/png.latex?(%5Ctheta_1,%20%5Ctheta_2,%20%5Cldots)"> is the same as our exact Markov chain and the distribution of <img src="https://latex.codecogs.com/png.latex?(%5Ctilde%5Ctheta_1,%5Ctilde%20%5Ctheta_2,%20%5Cldots)"> is the same as our approximate Markov chain.</p>
+<p>This maximal value of <img src="https://latex.codecogs.com/png.latex?N_1"> is called the <a href="https://arxiv.org/abs/1608.01511"><em>maximal agreement coupling time</em></a> or, more whimsically, the <a href="https://arxiv.org/pdf/1702.03917.pdf">MEXIT time</a>. It turns out that getting the distribution of <img src="https://latex.codecogs.com/png.latex?N_1"> is … difficult, but we<sup>36</sup> can construct a random variable <img src="https://latex.codecogs.com/png.latex?%5Ctau"> that is independent of <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_k"> such that <img src="https://latex.codecogs.com/png.latex?%5Ctau%20%5Cleq%20N_1"> almost surely and <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(%5Ctau%20=%20t%5Cmid%20%5Ctau%20%5Cgeq%20t)%20=%201%20-%20%5Coperatorname*%7Bess%5C,inf%7D_%7BB,%20%5Ctheta_%7B%3Ct%7D%7D%20%5Cleft%5C%7B%5Cfrac%7BP(%5Ctheta_t%20%5Cin%20B%20%5Cmid%20%5Ctheta_%7B%3Ct%7D)%7D%7B%5Ctilde%20P(%5Ctheta_t%20%5Cin%20B%20%5Cmid%20%5Ctheta_%7B%3Ct%7D)%7D%5Cright%5C%7D,%0A"> where <img src="https://latex.codecogs.com/png.latex?P(%5Ctheta_t%20%5Cmid%20%5Ctheta_%7B%3Ct%7D)"> is the transition distribution for the exact Markov<sup>37</sup> chain and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20P(%5Ctheta_t%20%5Cmid%20%5Ctheta_%7B%3Ct%7D)"> is the transition distribution for the approximate Markov chain.</p>
+<p>For a Metropolis-Hastings algorithm, the transition distribution has the form <img src="https://latex.codecogs.com/png.latex?%0AP(B,%20%5Ctheta)=%20%5Cbegin%7Bcases%7D%20%5Calpha(%5Ctheta)Q(B%20%5Cmid%20%5Ctheta),%5Cqquad%20&amp;%20%5Ctheta%20%5Cnot%20%5Cin%20B%20%5C%5C%0A%5Calpha(%5Ctheta)Q(B%5Cmid%20%5Ctheta)%20+%20(1-%5Calpha(%5Ctheta)),%20&amp;%5Ctheta%20%5Cin%20B%0A%5Cend%7Bcases%7D%0A"> where <img src="https://latex.codecogs.com/png.latex?Q(B%5Cmid%20%5Ctheta)"> is the probability associated with the proposal density <img src="https://latex.codecogs.com/png.latex?q(%5Ccdot%20%5Cmid%20%5Ctheta)"> and I have been very explicit about the dependence of the acceptance probability on <img src="https://latex.codecogs.com/png.latex?%5Ctheta">. (The <img src="https://latex.codecogs.com/png.latex?(1-%5Calpha(%5Ctheta))"> term takes into account the probability of starting at <img src="https://latex.codecogs.com/png.latex?%5Ctheta"> and not accepting the proposed state.)</p>
+<p>That definition of <img src="https://latex.codecogs.com/png.latex?%5Ctau"> looks pretty nasty, but it’s not too bad: in particular, the infinitum only cares of <img src="https://latex.codecogs.com/png.latex?%5Ctheta_%7Bt-1%7D%5Cin%20B">. This means that the condition simplifies to <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(%5Ctau%20=%20t%5Cmid%20%5Ctau%20%5Cgeq%20t)%20=%201%20-%20%5Cmin%5Cleft%5C%7B%5Coperatorname*%7Bess%5C,inf%7D_%7BB,%20%5Ctheta_%7Bt-1%7D%7D%20%5Cfrac%7B%5Calpha_t(%5Ctheta_%7Bt-1%7D)%20Q(B%20%5Cmid%20%5Ctheta_%7Bt-1%7D)%7D%7B%5Ctilde%5Calpha_t(%5Ctheta_%7Bt-1%7D)%20Q(B%20%5Cmid%20%5Ctheta_%7Bt-1%7D)%7D,%20%5Coperatorname*%7Bess%5C,inf%7D_%7BB,%20%5Ctheta_%7Bt-1%7D%7D%20%5Cfrac%7B%5Calpha_t(%5Ctheta_%7Bt-1%7D)%20Q(B%20%5Cmid%20%5Ctheta_%7Bt-1%7D)%20+%20(1-%5Calpha_t(%5Ctheta_%7Bt-1%7D))%7D%7B%5Ctilde%5Calpha_t(%5Ctheta_%7Bt-1%7D)%20Q(B%20%5Cmid%20%5Ctheta_%7Bt-1%7D)%20+%20(1-%20%5Ctilde%20%5Calpha_t(%5Ctheta_%7Bt-1%7D))%7D%5Cright%5C%7D.%0A"></p>
+<p>This simplifies further if we assume that the proposal distribution <img src="https://latex.codecogs.com/png.latex?Q(%5Ccdot%20%5Cmid%20%5Ctheta_k)"> is absolutely continuous and has a strictly positive density. Then, it truly does not matter what <img src="https://latex.codecogs.com/png.latex?B"> is. For the first term, it just cancels, while the second term is monotone<sup>38</sup> in <img src="https://latex.codecogs.com/png.latex?Q(B%20%5Cmid%20%5Ctheta_%7Bt-1%7D)">, so we can take this term to be either zero or one and get<sup>39</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(%5Ctau%20=%20t%5Cmid%20%5Ctau%20%5Cgeq%20t)%20=%201%20-%20%5Cmin%5Cleft%5C%7B%5Coperatorname*%7Bess%5C,inf%7D_%7B%20%5Ctheta_%7Bt-1%7D%7D%20%5Cfrac%7B%5Calpha_t(%5Ctheta_%7Bt-1%7D)%20%7D%7B%5Ctilde%5Calpha_t(%5Ctheta_%7Bt-1%7D)%7D,%20%5Coperatorname*%7Bess%5C,inf%7D_%7B%5Ctheta_%7Bt-1%7D%7D%20%5Cfrac%7B1-%5Calpha_t(%5Ctheta_%7Bt-1%7D)%7D%7B%201-%20%5Ctilde%20%5Calpha_t(%5Ctheta_%7Bt-1%7D)%7D,1%5Cright%5C%7D.%0A"></p>
+<p>This is, as the Greeks would say, not too bad.</p>
+<p>If, for instance, we know the relative error <img src="https://latex.codecogs.com/png.latex?%0A%5Ctilde%5Calpha(%5Ctheta)%20=%20(1%20+%20%5Cdelta(%5Ctheta))%5Calpha(%5Ctheta),%0A"> then <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B%5Calpha(%5Ctheta)%7D%7B%5Ctilde%20%5Calpha(%5Ctheta)%7D%20=%20%5Cfrac%7B1%7D%7B1%20+%20%5Cdelta(%5Ctheta)%7D,%0A"> and if we know<sup>40</sup> <img src="https://latex.codecogs.com/png.latex?%5Cdelta(%5Ctheta)%20%5Cleq%20%5Cbar%20%5Cdelta">, we get <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B%5Calpha(%5Ctheta)%7D%7B%5Ctilde%20%5Calpha(%5Ctheta)%7D%20%5Cgeq%20%5Cfrac%7B1%7D%7B1%20+%20%5Cbar%5Cdelta%7D.%0A"> Similarly, if <img src="https://latex.codecogs.com/png.latex?%0A1-%5Ctilde%20%5Calpha(%5Ctheta)%20=%20(1-%5Calpha(%5Ctheta))(1+%5Cepsilon(%5Ctheta)),%0A"> and <img src="https://latex.codecogs.com/png.latex?%5Cepsilon(%5Ctheta)%20%5Cleq%20%5Cbar%20%5Cepsilon">, then we get <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B1-%5Calpha(%5Ctheta)%7D%7B1-%5Ctilde%20%5Calpha(%5Ctheta)%7D%20=%20%5Cfrac%7B1%7D%7B1+%5Cepsilon(x)%7D%20%5Cgeq%20%5Cfrac%7B1%7D%7B1+%5Cbar%5Cepsilon%7D.%0A"></p>
+<p>The nice thing is that we can choose our upper bounds so that <img src="https://latex.codecogs.com/png.latex?%5Crho%20=%20(1+%20%5Cbar%20%5Cdelta)%5E%7B-1%7D%20=%20(1+%20%5Cbar%5Cepsilon)%5E%7B-1%7D"> and get the upper bound <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(%5Ctau%20=%20t%5Cmid%20%5Ctau%20%5Cgeq%20t)%20%5Cleq%201%20-%20%5Crho.%0A"> It follows that <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(%5Ctau%20=%20t)%20%5Cleq%20%5Crho%5E%7Bt-1%7D(1-%5Crho).%0A"></p>
+<p>Now this is a bit nasty. It’s an upper bound on the probability of a lower bound on the maximal decoupling time. Probability, eh.</p>
+<p>Probably the most useful thing we can get from this is an upper bound on <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D(%5Ctau)">, which is<sup>41</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathbb%7BE%7D(%5Ctau)%20%5Cleq%20%5Cfrac%7B1%7D%7B1-%5Crho%7D%20=%201%20+%20%5Cbar%20%5Cdelta%5E%7B-1%7D.%0A"></p>
+<p>This confirms our intuition that if the relative error is large, we will have, on average, quite small <img src="https://latex.codecogs.com/png.latex?N_j">. It’s not quite enough to show the opposite (good floating point error begets big <img src="https://latex.codecogs.com/png.latex?N_j">), but that’s probably true as well.</p>
+<p>And that is where we end this saga. There is definitely more that could be said, but I decided to spend exactly one day writing this post and that time is now over.</p>
+
+
+</section>
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Usually this is a lie, but it was actually a thing that happened last week↩︎</p></li>
+<li id="fn2"><p>Don’t judge me (or my friends) based on this. I promise we also talk about other shit.↩︎</p></li>
+<li id="fn3"><p>Hi GPUs!↩︎</p></li>
+<li id="fn4"><p>usually reversible, although a lot of cool but not ready for prime time work is being done on non-reversible chains.↩︎</p></li>
+<li id="fn5"><p>A stationary distribution, if it exists, is the distribution that is preserved by the Markov chain. If <img src="https://latex.codecogs.com/png.latex?%5Cpi"> is the stationary distribution and <img src="https://latex.codecogs.com/png.latex?x_1%20%5Csim%20%5Cpi">, then if we construct <img src="https://latex.codecogs.com/png.latex?x_2,%20x_3,%5Cldots"> by running the Markov chain then for every <img src="https://latex.codecogs.com/png.latex?k">, the marginal distribution is <img src="https://latex.codecogs.com/png.latex?x_k%20%5Csim%20%5Cpi">.↩︎</p></li>
+<li id="fn6"><p>But critically not all! The dynamic HMC algorithm used in Stan, for instance, is not a Metropolis-Hastings algorithm. Instead of doing an accept/reject step it samples from the proposed trajectory. Betancourt’s <a href="https://arxiv.org/abs/1701.02434">long intro to Hamiltonian Monte Carlo</a> covers this very well.↩︎</p></li>
+<li id="fn7"><p>The conditions for this to work are <em>very</em> light. But that’s because the definition of “working” only thinks about what happens after infinitely many steps. To get a practically useful Metropolis-Hastings algorithm, you’ve got to work very hard on choosing your proposal density.↩︎</p></li>
+<li id="fn8"><p>sometimes called the Hastings correction↩︎</p></li>
+<li id="fn9"><p>This is not the only choice that will work, but in some sense it is the most efficient one.↩︎</p></li>
+<li id="fn10"><p>Technically, it is chosen by requiring that the Markov proposal <img src="https://latex.codecogs.com/png.latex?P(%5Ctheta,%5Ctheta')"> satisfies the detailed balance condition <img src="https://latex.codecogs.com/png.latex?%5Cpi%20P(%5Ctheta,%5Ctheta')%20=%20P(%5Ctheta',%20%5Ctheta)%5Cpi">, but everything about that equation is beyond the scope of this particular post.↩︎</p></li>
+<li id="fn11"><p>Metropolis-adjusted Langevin Algorithm↩︎</p></li>
+<li id="fn12"><p>Under the assumption that the total floating point error was bounded by a constant <img src="https://latex.codecogs.com/png.latex?%5Cdelta">↩︎</p></li>
+<li id="fn13"><p>This time the assumption was that the rounding error for the acceptance probability at state <img src="https://latex.codecogs.com/png.latex?%5Ctheta_k"> was bounded by <img src="https://latex.codecogs.com/png.latex?%5Cdelta%20%5C%7C%5Ctheta_k%5C%7C">. This is a lot closer to how floating point arithmetic actually works. The trade off is that it requires a tighter condition on the drift function <img src="https://latex.codecogs.com/png.latex?V">.↩︎</p></li>
+<li id="fn14"><p>IEEE floating point arithmetic represents a real number using <img src="https://latex.codecogs.com/png.latex?B"> bits. Typically <img src="https://latex.codecogs.com/png.latex?B%20=%2064"> (double precision) or <img src="https://latex.codecogs.com/png.latex?B%20=%2032"> (single precision). You can read a great intro to this on <a href="https://nhigham.com/2020/05/04/what-is-floating-point-arithmetic/">Nick Higham’s blog</a>. But in general, the <em>best</em> we can represent a real number <img src="https://latex.codecogs.com/png.latex?%5Ctheta"> by is by a floating point number <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta"> that satisfies <img src="https://latex.codecogs.com/png.latex?%0A%7C%5Ctheta%20-%20%5Ctilde%20%5Ctheta%7C%20%5Cleq%202%5E%7B-N+1%7D%7C%5Ctheta%7C,%0A"> where <img src="https://latex.codecogs.com/png.latex?N=23"> in single precision and <img src="https://latex.codecogs.com/png.latex?N=32"> in double precision. Of course, the acceptance probability is a non-linear combination of floating point numbers, so the actual error is going to be more complicated than that. I strongly recommend you read <a href="http://www.maths.manchester.ac.uk/~higham/asna/index.php">Nick Higham’s book</a> on the subject.↩︎</p></li>
+<li id="fn15"><p><img src="https://latex.codecogs.com/png.latex?V">-geometrically ergodic with some light conditions on <img src="https://latex.codecogs.com/png.latex?V">↩︎</p></li>
+<li id="fn16"><p>Geometric ergodicity implies the existence of a CLT! Which is nice, because all of our intuition about how to use the output from MCMC depends on a CLT.↩︎</p></li>
+<li id="fn17"><p>Like all good orgies, this one was mostly populated by men↩︎</p></li>
+<li id="fn18"><p>Yes, I know. My (limited) contribution this literature was some small contributions to a paper <a href="https://www.jstor.org/stable/24780815">lead by Anne-Marie Lyne</a>. But if years of compulsory catholicism taught me anything (other than “If you’re drinking with a nun or an aging homosexual, don’t try to keep up”) it’s that something does not have to be literally true to be morally true.↩︎</p></li>
+<li id="fn19"><p>We have to slightly redefine the word “exact” to mean “targets the correct stationary distribution” for this name to make sense↩︎</p></li>
+<li id="fn20"><p>Random graph models and point processes are two great examples↩︎</p></li>
+<li id="fn21"><p>for instance, it gets stuck for long times at single values↩︎</p></li>
+<li id="fn22"><p>the aforementioned point process and graph models↩︎</p></li>
+<li id="fn23"><p>Playing God of War: Ragnarok↩︎</p></li>
+<li id="fn24"><p>The first run of God of War Games were not my cup of tea, but the 2008 game, which is essentially a detailed simulation of what happens when a muscle bear is entrusted with walking an 11 year old up a hill, was really enjoyable. So far this is too.↩︎</p></li>
+<li id="fn25"><p>Does it talk about involutions for not fucking reason? Of course it does. Read past that.↩︎</p></li>
+<li id="fn26"><p>Yeah, like I have also read my blog. Think of it as being like social media. It is not a representation of me a whole person. It’s actually biased towards stuff that I have either found or find difficult.↩︎</p></li>
+<li id="fn27"><p>A friend of mine has a “No one knows I’m a transexual” t-shirt that she likes to wear to supermarkets.↩︎</p></li>
+<li id="fn28"><p>Note that both <img src="https://latex.codecogs.com/png.latex?r_k"> and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Cr_k"> are computed using the <em>same</em> value <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_%7Bk-1%7D">.↩︎</p></li>
+<li id="fn29"><p>The norm here is usually either the total variation norm of the <img src="https://latex.codecogs.com/png.latex?V">-norm. But truly it’s not important for the hand waving.↩︎</p></li>
+<li id="fn30"><p>In most cases <img src="https://latex.codecogs.com/png.latex?M(%5Ctheta)%20%5Crightarrow%20%5Cinfty"> as <img src="https://latex.codecogs.com/png.latex?%5C%7C%5Ctheta%5C%7C%20%5Crightarrow%20%5Cinfty">.↩︎</p></li>
+<li id="fn31"><p>Bounded and continuous always works. But everything is probably ok for unbounded functions as long as <img src="https://latex.codecogs.com/png.latex?h(%5Ctheta)"> has a pile of finite moments.↩︎</p></li>
+<li id="fn32"><p>This is roughly true. I basically used the geometric ergodicity bound to bound <img src="https://latex.codecogs.com/png.latex?%0A%5Csum_%7Bk=N_%7Bj-1%7D%7D%5E%7BN_j-1%7D%20%5Cleft(%5Ctheta_k%20-%20%5Cfrac%7B1%7D%7BN_j-1%7D%5Cmathbb%7BE%7D_%5Cpi(h(%5Ctheta)%5Cright)%0A"> and summed it up. There are smarter things to do, but it’s close enough for government work. ↩︎</p></li>
+<li id="fn33"><p>Sometimes, if you squint, this term will kinda, sorta start to look like <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D_%5Cpi(%5Cpi(%5Ctheta)%5E%7B-1/2%7D)">, which isn’t usually toooo big. But also, sometimes it looks totally different. Theory is wild.↩︎</p></li>
+<li id="fn34"><p>If you’ve ever wondered how <code>rbinom(1,p)</code> works, there you are.↩︎</p></li>
+<li id="fn35"><p>Think of this as the opposite of an adversarial example. We are trying to find the exact chain that is scared to leave the approximate chain behind. Which is either romantic or creepy, depending on finer details.↩︎</p></li>
+<li id="fn36"><p>Well not me. <a href="https://arxiv.org/pdf/1608.01511.pdf">Florian Völlering</a> did it in his Theorem 1.4. I most certainly could not have done it.↩︎</p></li>
+<li id="fn37"><p>Well the result does not need this to be a Markov chain!↩︎</p></li>
+<li id="fn38"><p>it goes up if <img src="https://latex.codecogs.com/png.latex?%5Calpha%3E%5Ctilde%20%5Calpha"> otherwise it goes down↩︎</p></li>
+<li id="fn39"><p>The 1 case can basically never happen except in the trivial case where both acceptance probabilities are the same. And if we thought that was going to happen we would’ve done something bloody else↩︎</p></li>
+<li id="fn40"><p>The the relative error being bounded does not stop the absolute error growing!↩︎</p></li>
+<li id="fn41"><p>Look above and recognize the Geometric distribution↩︎</p></li>
+</ol>
+</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
+  author = {Dan Simpson},
+  editor = {},
+  title = {MCMC with the Wrong Acceptance Probability},
+  date = {2022-11-23},
+  url = {https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html},
+  langid = {en}
+}
+</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas">
+Dan Simpson. 2022. <span>“MCMC with the Wrong Acceptance
+Probability.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</a>.
+</div></div></section></div> ]]></description>
+  <category>Fundamentals</category>
+  <category>MCMC</category>
+  <category>Bayes</category>
+  <guid>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</guid>
+  <pubDate>Tue, 22 Nov 2022 13:00:00 GMT</pubDate>
+  <media:content url="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>On that example of Robins and Ritov; or A sleeping dog in harbor is safe, but that’s not what sleeping dogs are for</title>
   <dc:creator>Dan Simpson</dc:creator>
@@ -6556,136 +6709,6 @@ Dan Simpson. 2021. <span>“Priors: Night Work (Track 1).”</span> October
   <guid>https://dansblog.netlify.app/posts/2021-10-14-priors1/priors1.html</guid>
   <pubDate>Thu, 14 Oct 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors1/perm.JPG" medium="image"/>
-</item>
-<item>
-  <title>\((n-1)\)-sane in the membrane</title>
-  <dc:creator>Dan Simpson</dc:creator>
-  <link>https://dansblog.netlify.app/posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html</link>
-  <description><![CDATA[ 
-
-
-
-
-<p>I’ve been teaching a lot lately. That’s no huge surprise. It is my job. Maybe the one slight oddity this year is that I shifted jobs and, in switching hemispheres, I landed 3 consecutive teaching semesters. So. I’ve been teaching a lot lately.</p>
-<p>And when you’re in a period of heavy teaching, every-fucking-thing is about teaching.</p>
-<p>So this blogpost is about teaching.</p>
-<p>Right now, I’m coming to the end of a second year class called <em>Statistical Thinking</em>. It’s been fun to work out how to teach the material. It’s standard fare: sampling variation, tests, bootstraps<sup>1</sup>, regression, and just a hint of Bayes in the last 2 weeks that you incentivize by promising a bastard of an exam question. So you know, (arms up even though I’m Catholic) <a href="https://www.youtube.com/watch?v=6nwj8nAYEM4"><strong>tradition</strong></a>!</p>
-<section id="if-i-were-a-rich-man-katrina-lenk-with-a-violin" class="level3">
-<h3 class="anchored" data-anchor-id="if-i-were-a-rich-man-katrina-lenk-with-a-violin">If I were a rich man (Katrina Lenk with a violin)</h3>
-<p>The thing about teaching an intro stats class is that it brings screaming to mind that quote from Bennett’s The History Boys<sup>2</sup>: (paraphrasing) <em>“How do I define [intro to Statistics]? It’s just one fucking thing after another”</em>.</p>
-<p>Constructing twelve moderately sequential weeks from the whole mass of things that someone being introduced to statistics needs to know is not unlike being thrown in the middle of the lake with nothing but an ice-cream container and a desiccated whale penis: confusing, difficult, and rather damp.</p>
-<p>The nice thing about building an intro stats course is you’re not alone. You’re adrift in a sea of shit ideas! (Also a lot of good ones<sup>3</sup>, but don’t ruin my flow!)</p>
-<p>The trouble is that this sort of course is simultaneously teaching <em>big concepts</em> and <em>complex details</em>. And while it’s not toooooo hard to make the concepts build and reinforce as time inexorably marches on, the techniques and details needed to illuminate the big concepts are not quite as linear.</p>
-<p>There are two routes through this conundrum: incantations inscribed onto books made of human skin using the blood of sacrificial virgins (aka gathered during engineering statistics service teaching) or computers.</p>
-<p>I went with computers because we are in lockdown and I couldn’t be bothered sourcing and bleeding virgins.</p>
-<p>The downside is that you need the students to have a grip on R programming (and programmatic thinking). This only happens if the degree you are teaching in is built in such a way that these skills have already been taught. Otherwise you need to teach both (which is very possible, but you need to teach less statistical content).</p>
-<p>This is not a postmortem on my teaching, but if it were, it would be about that last point.</p>
-</section>
-<section id="i-saw-goody-proctor-with-the-devil" class="level3">
-<h3 class="anchored" data-anchor-id="i-saw-goody-proctor-with-the-devil">I saw Goody Proctor with the devil!</h3>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://dansblog.netlify.app/posts/2021-10-11-n-sane-in-the-membrane/tweet_poll.png" class="img-fluid figure-img"></p>
-<p></p><figcaption class="figure-caption">A <a href="https://twitter.com/hardsci/status/1446498701615288320">tweet</a> from Sanjay Srivastava</figcaption><p></p>
-</figure>
-</div>
-<p>This is a very long way to say <em>I saw a tweet an had feelings</em>.</p>
-<p>Because I’m thinking about this stuff pretty hard right now, I am (as <a href="https://www.youtube.com/watch?v=x31XrfiikwQ">Hedwig</a> would say) fully dilated.</p>
-<p>And my question is <em>what is the use of teaching this distinction?</em> Should anyone bother dividing by <img src="https://latex.codecogs.com/png.latex?(n-1)"> instead of <img src="https://latex.codecogs.com/png.latex?n"> in their variance estimates?</p>
-<p>Well I guess the first question is <em>is there a difference in this distinction</em>? Let’s do the sort of R experiment I want my students to do!</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="co" style="color: #5E5E5E;"># Independent samples for a qq-plot!</span></span>
-<span id="cb1-2"><span class="co" style="color: #5E5E5E;"># Thanks to Rob Trangucci for catching this!</span></span>
-<span id="cb1-3"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
-<span id="cb1-4">n_sim <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="dv" style="color: #AD0000;">100000</span></span>
-<span id="cb1-5">n <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="dv" style="color: #AD0000;">10</span></span>
-<span id="cb1-6">experiments <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">tibble</span>(<span class="at" style="color: #657422;">exp =</span> <span class="fu" style="color: #4758AB;">rep</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>n_sim, <span class="at" style="color: #657422;">each =</span> n),</span>
-<span id="cb1-7">                      <span class="at" style="color: #657422;">sample =</span> <span class="fu" style="color: #4758AB;">rnorm</span>(n <span class="sc" style="color: #5E5E5E;">*</span> n_sim),</span>
-<span id="cb1-8">                      <span class="at" style="color: #657422;">sample2 =</span> <span class="fu" style="color: #4758AB;">rnorm</span>(n <span class="sc" style="color: #5E5E5E;">*</span> n_sim))</span>
-<span id="cb1-9"></span>
-<span id="cb1-10">compare <span class="ot" style="color: #003B4F;">&lt;-</span> experiments <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
-<span id="cb1-11">  <span class="fu" style="color: #4758AB;">group_by</span>(exp) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
-<span id="cb1-12">  <span class="fu" style="color: #4758AB;">summarise</span>(<span class="at" style="color: #657422;">m =</span> <span class="fu" style="color: #4758AB;">mean</span>(sample),</span>
-<span id="cb1-13">            <span class="at" style="color: #657422;">m2 =</span> <span class="fu" style="color: #4758AB;">mean</span>(sample2),</span>
-<span id="cb1-14">            <span class="at" style="color: #657422;">var_bias =</span> <span class="fu" style="color: #4758AB;">mean</span>((sample <span class="sc" style="color: #5E5E5E;">-</span> m)<span class="sc" style="color: #5E5E5E;">^</span><span class="dv" style="color: #AD0000;">2</span>),</span>
-<span id="cb1-15">            <span class="at" style="color: #657422;">z_bias =</span> m <span class="sc" style="color: #5E5E5E;">/</span> <span class="fu" style="color: #4758AB;">sqrt</span>(<span class="fu" style="color: #4758AB;">mean</span>(var_bias)),</span>
-<span id="cb1-16">            <span class="at" style="color: #657422;">z =</span> m2 <span class="sc" style="color: #5E5E5E;">/</span> <span class="fu" style="color: #4758AB;">sd</span>(sample2))</span>
-<span id="cb1-17"></span>
-<span id="cb1-18"></span>
-<span id="cb1-19">compare <span class="sc" style="color: #5E5E5E;">%&gt;%</span> </span>
-<span id="cb1-20">  <span class="fu" style="color: #4758AB;">ggplot</span>(<span class="fu" style="color: #4758AB;">aes</span>(<span class="fu" style="color: #4758AB;">sort</span>(z), <span class="fu" style="color: #4758AB;">sort</span>(z_bias))) <span class="sc" style="color: #5E5E5E;">+</span></span>
-<span id="cb1-21">  <span class="fu" style="color: #4758AB;">geom_point</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
-<span id="cb1-22">  <span class="fu" style="color: #4758AB;">geom_abline</span>(<span class="at" style="color: #657422;">slope =</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="at" style="color: #657422;">intercept =</span> <span class="dv" style="color: #AD0000;">0</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
-<span id="cb1-23">  <span class="fu" style="color: #4758AB;">theme_bw</span>() <span class="sc" style="color: #5E5E5E;">+</span> </span>
-<span id="cb1-24">  <span class="fu" style="color: #4758AB;">coord_fixed</span>(<span class="at" style="color: #657422;">xlim =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="sc" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">2</span>), <span class="at" style="color: #657422;">y =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="sc" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">2</span>))</span></code></pre></div>
-<div class="cell-output-display">
-<p><img src="https://dansblog.netlify.app/posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid" width="672"></p>
-</div>
-</div>
-<p>Well that is clear. There is not.</p>
-<p>Or, well, there is a <em>small</em> difference.</p>
-<p>But to see it, you need a lot of samples! Why? Well the easy answer is maths.</p>
-<p>For one thing, when <img src="https://latex.codecogs.com/png.latex?n=10">, <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B1%7D%7Bn%7D%20-%20%5Cfrac%7B1%7D%7Bn-1%7D%20=%20%5Cfrac%7B1%7D%7B90%7D%20=%200.01.%0A"> This does not compare well against the sampling variance, which (assuming <img src="https://latex.codecogs.com/png.latex?%5Csigma%5E2%5Capprox%201">, which is usual if you’ve scaled your problem correctly) is about <img src="https://latex.codecogs.com/png.latex?0.3">.</p>
-<p>But we could choose to do it properly. The bias in the MLE (aka the divide by <img src="https://latex.codecogs.com/png.latex?n">) variance estimate is <img src="https://latex.codecogs.com/png.latex?%0A-%5Cfrac%7B%5Csigma%5E2%7D%7Bn%7D.%0A"> This is a lot smaller than the sampling variability of the estimate (aka how much uncertainty you have because of the finite sample), which is <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B%5Csigma%7D%7B%5Csqrt%7Bn%7D%7D.%0A"></p>
-<p>And that’s the whole story. Dividing by <img src="https://latex.codecogs.com/png.latex?n"> instead of <img src="https://latex.codecogs.com/png.latex?(n-1)"> leaves you with a <em>slightly</em> biased estimate. But the bias if <em>fucking tiny</em>. It is possibly moving your second decimal place by about 1 number (assume our population variance is one). The sampling variably is moving the <em>first</em> decimal place by several digits.</p>
-<p>Truly. What is the point. The old guys<sup>4</sup> who went wild about bias are now mostly dead. Or they’ve changed their minds (which is, you know, a reasonable thing to do as information about best practice is updated). The war against bias was lost before your undergraduates were born.</p>
-</section>
-<section id="even-in-crisis-i-maintain" class="level3">
-<h3 class="anchored" data-anchor-id="even-in-crisis-i-maintain">Even in crisis, I maintain</h3>
-<p>But nevertheless, this whole DIVIDE BY N-1 OR THE BIAS MONSTER IS GONNA GET YA bullshit continues.</p>
-<p>And to some extent, maybe I shouldn’t care. I definitely shouldn’t care this many words about it.</p>
-<p>But I do. And I do for a couple of reasons.</p>
-<p><strong>Reason One:</strong> What is the point teaching students about uncertainty and that you can’t just say “this number is different” because the estimate on a single sample is different. If I am to say that I need things to be <em>at least</em><sup>5</sup> <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(n%5E%7B-1/2%7D)"> apart before I’m willing to say they are maybe different, then why am I harping on about the much smaller difference?</p>
-<p><strong>Reason Two:</strong> It’s a shitty example. Bias and bias corrections have a role to play in statistics<sup>6</sup>. But if this is your first introduction to bias correction, you are going to teach either:</p>
-<ol type="a">
-<li>Bias is always bad, regardless of context / sampling variance / etc</li>
-<li>Bias can be corrected, but it’s trivial and small.</li>
-</ol>
-<p>Both of those things are bullshit. Just teach them how to bootstrap and teach the damn thing properly. You do not have to go very far to show bias actually making a difference!</p>
-<p><em>Maybe</em> the only place the difference will be noticed is if you compare against the in-build <code>var</code> or <code>sd</code> functions. This is not the use case I would build my class around, but it is a thing you would need to be aware of.</p>
-</section>
-<section id="the-worlds-is-a-question-this-room-is-an-answer.-and-the-answer-is-no." class="level3">
-<h3 class="anchored" data-anchor-id="the-worlds-is-a-question-this-room-is-an-answer.-and-the-answer-is-no.">The worlds is a question, this room is an answer. And the answer is no.</h3>
-<p>If you are going to teach statistics as more than just stale incantations and over-done fear-mongering, you need to construct the types of stakes that are simply not present in the <img src="https://latex.codecogs.com/png.latex?n"> vs <img src="https://latex.codecogs.com/png.latex?n-1"> bullshit.</p>
-<p>It is present when you are teaching the normal vs t distribution. You are teaching that the design of your experiment changes the possible extreme behaviour and sometimes it can change <em>a lot</em>.</p>
-<p>The <img src="https://latex.codecogs.com/png.latex?n"> vs <img src="https://latex.codecogs.com/png.latex?(n-1)"> denominator for a variance estimator is a curiosity. It is the source of thrilling<sup>7</sup> exercises or exam questions. But it is not interesting.</p>
-<p>It could maybe set up the idea that MLEs are not unbiased. But even then, the useless correction term is not needed. Just let it be slightly biased and move on with your life.</p>
-<p>Because if that is the biggest bias in your analysis, you are truly blessed.</p>
-<p>In real life, bias is the price you pay for being good at statistics. And like any market, if you pay too much you’re maybe not that good. But if you pay nothing at all, you don’t get to play.</p>
-
-
-</section>
-
-
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
-
-<ol>
-<li id="fn1"><p>To paraphrase Jimmy Somerville, tell me <em>whyyyyyyyyy</em> about 90% of the bootstrap material on the web is … misguided. And why <code>tidymodels</code> only has the shit bootstrap in it?↩︎</p></li>
-<li id="fn2"><p>Ok. Straight up, <em>“[Intro to statistics] is a commentary on the various and continuing incapabilities of men”</em> would’ve also worked.↩︎</p></li>
-<li id="fn3"><p>This course stands on the shoulders of giants: Di Cook and Catherine Forbes gave me a great base. And of course every single textbook (shout out to the OpenIntro crew!), blog post, weird subsection of some other book, paper from 1987 on some weird bootstrap, etc that I have used to make a course!↩︎</p></li>
-<li id="fn4"><p>Yes. I used the word on purpose.↩︎</p></li>
-<li id="fn5"><p><img src="https://latex.codecogs.com/png.latex?n"> is the size of the sample.↩︎</p></li>
-<li id="fn6"><p>I spend most of my time doing Bayes shit, and we play this game somewhat differently. But the gist is the same.↩︎</p></li>
-<li id="fn7"><p>Not thrilling.↩︎</p></li>
-</ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2021,
-  author = {Dan Simpson},
-  editor = {},
-  title = {\$(N-1)\$-Sane in the Membrane},
-  date = {2021-10-14},
-  url = {https://dansblog.netlify.app/n-sane-in-the-membrane},
-  langid = {en}
-}
-</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2021" class="csl-entry quarto-appendix-citeas">
-Dan Simpson. 2021. <span>“$(N-1)$-Sane in the Membrane.”</span> October
-14, 2021. <a href="https://dansblog.netlify.app/n-sane-in-the-membrane">https://dansblog.netlify.app/n-sane-in-the-membrane</a>.
-</div></div></section></div> ]]></description>
-  <category>Teaching</category>
-  <category>Fundamentals</category>
-  <category>Opinionated</category>
-  <guid>https://dansblog.netlify.app/posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html</guid>
-  <pubDate>Wed, 13 Oct 2021 13:00:00 GMT</pubDate>
-  <media:content url="https://dansblog.netlify.app/posts/2021-10-11-n-sane-in-the-membrane/police.JPG" medium="image"/>
 </item>
 </channel>
 </rss>
