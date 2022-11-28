@@ -1,0 +1,410 @@
+---
+title: "Sparse matrices part 7: Making peace with those weird JAX loops"
+description: |
+  I work in R a lot so I should be used to weird syntax.
+date: 2022-11-23
+image: elvira.jpg
+categories: [Fundamentals, MCMC, Bayes]
+twitter-card:
+  title: "MCMC with the wrong acceptance probability"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html
+format: 
+  html:
+    df-print: paged
+jupyter: python3
+
+draft: false
+
+---
+
+The time has come once more to resume my journey into sparse matrices. There's been a bit of a pause, mostly because I realised that I didn't know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But not the time has come. It is time for me to get on top of JAX's weird fucking loops.
+
+And, along the way, I'm going to re-do the sparse Cholesky factorisation to make it, well, better.
+
+## Loops in JAX
+
+The first an most important rule of programming with JAX is that loops will break your heart. I mean, whatever, I guess they're fine. But there's a problem. Imagine the following function
+
+```{python}
+#| eval: false
+def f(x: jax.Array, n: Int) -> jax.Array:
+  out = jnp.zeros_like(x)
+  for j in range(n):
+    out = out + x
+  return out
+```
+
+This is, basically, the worst implementation of multiplication by an integer that you can possibly imagine. This code will run fine in Python, but if you try to JIT compile it, JAX is gonna get _angry_. It will produce the machine code equivalent of 
+
+```{python}
+#| eval: false
+def f_n(x):
+  out = x
+  out = out + x
+  out = out + x
+  // do this n times
+  return out
+```
+
+There are two bad things happening here. First, note that the "compiled" code depends on `n` and will have to be compiled anew each time `n` changes. Secondly, the loop has been replaced by `n` copies of the loop body. This is called _loop unrolling_ and, when used judiciously by a clever compiler, is a great way to speed up code. When done completely for _every_ loop this is a nightmare and the corresponding code will take a geological amount of time to compile.
+
+A similar thing^[If a person who actually knows how the JAX autodiff works happens across this blog, I'm so sorry.] happens when you need to run autodiff on `f(x,n)`. For each `n` an expression graph is constructed that contains the unrolled for loop. This suggests that autodiff might also end up being quite slow (or, more problematically, more memory-hungry).
+
+So the first rule of JAX is to avoid for loops. But if you can't do that, there are three built-in loop structures that play nicely with JIT compilation and sometimes^[omg you guys. So many details] differentiation. These three constructs are
+
+1. A while loop `jax.lax.while(cond_func, body_func, init)`
+2. An accumulator `jax.lax.scan(body_func, init, xs)`
+3. A for loop `jax.lax.fori_loop(lower, upper, body_fun, init)`
+
+Of those three, the first and third work mostly as you'd expect, while the second is a bit more hairy. The `while` function is roughly equivalent to 
+```{python}
+#| eval: false
+
+def jax_lax_while(cond_func, body_func, init):
+  x  = init
+  while cond_func(x):
+    x = body_func(x)
+  return body_func
+```
+So basically it's just a while loop. The thing that's important is that it compiles down to a single XLA operation^[These are referred to as HLOs (Higher-level operations)] instead of some unrolled mess. 
+
+One thing that is important to realise is that while loops are only forwards-mode differentiable, which means that it is _very_ expensive^[Instead of doing one pass of reverse-mode, you would need to do $d$ passes of forwards mode to get the gradient with respect to a d-dimensional parameter.] to compute gradients. The reason for this is that we simply do not know how long that loop actually is and so it's impossible to build a fixed-size expression graph.
+
+The `jax.lax.scan` function is probably the one that people will be least familiar with. That said, it's also the one that is roughly "how a for loop should work". The concept that's important here is a for-loop with _carry over_. Carry over is information that changes from one step of the loop to the next. This is what separates us from a `map` statement, which would apply the same function independently to each element of a list.
+
+The scan function looks like 
+```{python}
+#| eval: false
+
+def jax_lax_scan(body_func, init, xs):
+  len_x0 = len(x0)
+  if not all(len(x) == len_x0 for x in xs):
+    raise ValueError("All x must have the same length!!")
+  carry = init
+  ys = []
+  for x in xs:
+    carry, y = body_func(carry, x)
+    ys.append(y)
+  
+  return carry, np.stack(ys)
+```
+
+A critically important limitation to `jax.lax.scan` is that  is that every `x` in `xs` must have the same shape! This mean, for example, that 
+```{python}
+#| eval: false
+xs = [[1], [2,3], [4], 5,6,7]
+```
+is not a valid argument. Like all limitations in JAX, this serves to make the code transformable into efficiently compiled code across various different processors.
+
+For example, if I wanted to use `jax.lax.scan` on my example from before I would get
+```{python}
+from jax import lax
+from jax import numpy as jnp
+
+def f(x, n):
+  init = jnp.zeros_like(x)
+  xs = jnp.repeat(x, n)
+  def body_func(carry, y):
+    val = carry + y
+    return (val, val)
+  
+  final, journey = lax.scan(body_func, init, xs)
+  return (final, journey)
+
+final, journey = f(1.2, 7)
+print(final)
+print(journey)
+```
+
+This translation is a bit awkward compared to the for loop but it's the sort of thing that you get used to.
+
+This function can be differentiated^[Unlike `jax.lax.while`, which is only forwards differentiable, `jax.lax.scan` is fully differentiable.] and compiled. To differentiate it, I need a version that returns a scalar, which is easy enough to do with a lambda.
+
+```{python}
+#| error: true
+from jax import jit, grad
+
+f2 = lambda x, n: f(x,n)[0]
+f2_grad = grad(f2, argnums = 0)
+
+print(f2_grad(1.2, 7))
+```
+
+The `argnums` option tells JAX that we are only differentiating wrt the first argument.
+
+JIT compilation is a timy bit more delicate. If we try the natural thing, we are going to get an error.
+
+```{python}
+#| error: true
+f_jit_bad = jit(f)
+bad = f_jit_bad(1.2, 7)
+```
+
+In order to compile a function, JAX needs to know how big everything is. And right now it does not know what `n` is. This shows itself through the `ConcretizationTypeError`, which basically says that as JAX was looking through your code it found something it can't manipulate. In this case, it was in the `jnp.repeat` function.
+
+We can fix this problem by declaring this parameter `static`.
+
+
+```{python}
+f_jit = jit(f, static_argnums=(1,))
+print(f_jit(1.2,7)[0])
+
+```
+
+ A static parameter is a parameter value that is known at compile time. If we define `n` to be static, then the first time you call `f_jit(x, 7)` it will compile and then it will reuse the compiled code for any other value of `x`. If we then call `f_jit(x, 9)`, the code will _compile again_. 
+
+ To see this, we can make use of a JAX oddity: if a function prints something^[In general, if the function has state.], then it will only be printed upon compilation and never again. This means that we can't do _debug by print_. But on the upside, it's easy to check, when things are compiling.
+
+```{python}
+def f2(x, n):
+  print(f"compiling: n = {n}")
+  return f(x,n)[0]
+
+f2_jit = jit(f2, static_argnums=(1,))
+print(f2_jit(1.2,7))
+print(f2_jit(1.8,7))
+print(f2_jit(1.2,9))
+print(f2_jit(1.8,7))
+
+```
+
+This is a perfectly ok solution as long as the static parameters don't change very often. In our context, this is going to have to do with the sparsity pattern.
+
+Finally, we can talk about `jax.lax.fori_loop`, the in-built for loop. This is basically a convenience wrapper for `jax.lax.scan` (when `lower` and `upper` are static) or `jax.lax.while` (when they are not). The Python pseudocode is 
+```{python}
+#| eval: false
+def jax_lax_fori_loop(lower, upper, body_func, init):
+  out = init
+  for i in range(lower, upper):
+    out = body_func(out)
+  return out
+```
+
+## Building a JAX-traceable sparse Choleksy factorisation
+
+In order to build a JAX-traceable sparse Cholesky factorisation $A = LL^T$, we are going to need to build up a few moving parts.
+
+1. Build the elimination tree of $A$ and find the number of non-zeros in each column of $L$
+
+2. Build the _symbolic factorisation_^[This is the version of the symbolic factorisation that is most appropriate for us, as we will be doing a lot of Cholesky factorisations with the same sparstiy structure. If we rearrange the algorithm to the up-looking Cholesky decomposition, we only need the column counts and this is also called the symbolic factorisation. This is, incidentally, how Eigen's sparse Cholesky works.] of $L$ (aka the location of the non-zeros of $L$)
+
+3. Do the actual numerical decomposition.
+
+In the [previous post](https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html) we did not explictly form the elimination tree. Instead, I used dynamic memory allocation. This time I'm being more mature.
+
+### Building the expression graph
+
+The elimination tree^[Actually it's a forest] $\mathcal{T}_A$ is a (forest of) rooted tree(s) that compactly represent the non-zero pattern of the Cholesky factor $L$. In particular, the elmination tree has the property that, for any $k > j$ , $L_{kj} \neq 0$ if and only if there is a path from $j$ to $k$ in the tree. Or, in the language of trees, $L_{kj} \neq 0$ if and only if $j$ is a descendant of $k$ in the tree $\mathcal{T}_A$.
+
+We can describe^[Because we are talking about a tree, each child node has at most one parent. If it doesn't have a parent it's the root of the tree. I remember a lecturer saying that it should be called "father and son" or "mother and daughter" because every child has 2 parents but only one mother or one father. The 2000s were a wild time.] $\mathcal{T}_A$ by listing the parent of each node. The parent node of $j$ in the tree is the smallest $i > j$ with $L_{ij} \neq 0$.
+
+We can turn this into an algorithm. An efficent version, which is described in Tim Davies book takes about $\mathcal{O(\text{nnz}(A))}$ operations. But I'm going to program up a slower one that takes $\mathcal{O(\text{nnz}(L))}$ operations, but has the added benifit^[These can also be computed in approxximately $\mathcal{O(\text{nnz}(A))}$ time, which is much faster. But the algorithm is, frankly, pretty tricky and I'm not in the mood to program it up. This difference would be quite important if I wasn't storing the full symbolic factorisation and was instead computing it every time, but in my context it is less clear that this is worth the effort.] of giving me the column counts for free.
+
+To do this, we are going to walk the tree and dynamically add up the column counts as we go. 
+
+To start off, let's do this in standard python so that we can see what the algorithm look like. The key concept is that if we write $\mathcal{T}_{j-1}$ as the elimination tree encoding the structure of^[Python notation! This is rows/cols 0 to `j-1`] `L[:j, :j]`, then we can ask about how this tree connects with node `j`.
+
+A theorem gives a very simple answer to this.
+
+::: {#thm-tree}
+If $j > i$, then $A_{j,i} \neq 0$ implies that $i$ is a descendant of $j$ in $\mathcal{T}_A$. In particular, that means that there is a directed path in $\mathcal{T}_A$ from $i$ to $j$.
+:::
+
+This tells us that the connection between $\mathcal{T}_{j-1}$ and node $j$ is that for each non-zero elements $i$ of the $j$th row of $A$, we can walk $\mathcal{T} must have a path in $\mathcal{T}_{j-1}$ from $i$ and we will eventually get to a node that has no parent in $\{0,\ldots, j-1\}$. Because there _must_ be a path from $i$ to $j$ in $T_j$, it means that the parent of this terminal node must be $j$.
+
+As with everything Cholesky related, this works because the algorithm procedes from left to right, which in this case means that the node label assocated with _any_ descendent of $j$ is always less than $j$.
+
+The algorithm is then a fairly run-of-the-mill^[Python, it turns out, does not have a `do while` construct because, apparently, everything is empty and life is meaningless.] tree traversal, where we keep track of where we have been so we don't double count our columns.
+
+Probably the most important thing here is that I am using the _full_ sparse matrix rather than just its lower triangle. This is, basically, convenience. I need access to the left half of the $j$th row of $A$, which is conveniently the same as the top half of the $j$th column. And sometimes you just don't want to be dicking around with swapping between row- and column-based representations.
+
+```{python}
+import numpy as np
+
+def etree_base(A_indices, A_indptr):
+  n = len(A_indptr) - 1
+  parent = [-1] * n
+  mark = [-1] * n
+  col_count = [1] * n
+  for j in range(n):
+    mark[j] = j
+    for indptr in range(A_indptr[j], A_indptr[j+1]):
+      node = A_indices[indptr]
+      while node < j:
+        if parent[node] == -1:
+          parent[node] = j
+
+        if mark[node] == j:
+          break
+         
+        mark[node] = j
+        col_count[node] += 1
+        node = parent[node]
+  return (parent, col_count)
+```
+
+To convince ourselves this works, let's run an example and compare the column counts we get to our previous method.
+
+```{python}
+#| code-fold: true
+#| code-summary: "Some boilerplate from previous editions."
+      
+from scipy import sparse
+import scipy as sp
+    
+
+def make_matrix(n):
+  one_d = sparse.diags([[-1.]*(n-1), [2.]*n, [-1.]*(n-1)], [-1,0,1])
+  A = (sparse.kronsum(one_d, one_d) + sparse.eye(n*n))
+  A_csc = A.tocsc()
+  A_csc.eliminate_zeros()
+  A_lower = sparse.tril(A_csc, format = "csc")
+  A_index = A_lower.indices
+  A_indptr = A_lower.indptr
+  A_x = A_lower.data
+  return (A_index, A_indptr, A_x, A_csc)
+
+def _symbolic_factor(A_indices, A_indptr):
+  # Assumes A_indices and A_indptr index the lower triangle of $A$ ONLY.
+  n = len(A_indptr) - 1
+  L_sym = [np.array([], dtype=int) for j in range(n)]
+  children = [np.array([], dtype=int) for j in range(n)]
+  
+  for j in range(n):
+    L_sym[j] = A_indices[A_indptr[j]:A_indptr[j + 1]]
+    for child in children[j]:
+      tmp = L_sym[child][L_sym[child] > j]
+      L_sym[j] = np.unique(np.append(L_sym[j], tmp))
+    if len(L_sym[j]) > 1:
+      p = L_sym[j][1]
+      children[p] = np.append(children[p], j)
+        
+  L_indptr = np.zeros(n+1, dtype=int)
+  L_indptr[1:] = np.cumsum([len(x) for x in L_sym])
+  L_indices = np.concatenate(L_sym)
+  
+  return L_indices, L_indptr
+```
+
+```{python}
+# A_indices/A_indptr are the lower triangle, A is the entire matrix
+A_indices, A_indptr, A_x, A = make_matrix(17)
+parent, col_count = etree_base(A.indices, A.indptr)
+L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
+
+true_parent = L_indices[L_indptr[:-2] + 1]
+print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
+
+true_col_count  = np.diff(L_indptr)
+print(all(true_col_count == col_count))
+```
+
+Excellent. Now we just need to convert it to JAX. 
+
+Or do we?
+
+To be honest, this is a little pointless. This function is only run once per matrix so we won't really get much speedup^[The argument for JIT works by amortizing the compile time over several function evaluations. If I wanted to speed this algortihm up, I'd implement the more complex $\mathcal{O}(\operatorname{nnz}(A))$ version.] from compilation.
+
+Nevertheless, we might try.
+
+```{python}
+@jit
+def etree(A_indices, A_indptr):
+  print("(Re-)compiling etree(A_indices, A_indptr)")
+  ## innermost while loop
+  ## Slightly different: I'm tracking the last case manually to avoid the break statement
+  def body_while(val):
+    j, node, parent, col_count, mark = val
+    update_parent = lambda x: x[0].at[x[1]].set(x[2])
+    parent = lax.cond(lax.eq(parent[node], -1), update_parent, lambda x: x[0], (parent, node, j))
+    mark = mark.at[node].set(j)
+    col_count = col_count.at[node].add(1)
+    return (j, parent[node], parent, col_count, mark)
+
+  def cond_while(val):
+    j, node, _parent_, _, mark = val
+    return lax.bitwise_and(lax.lt(node, j), lax.ne(mark[node], j))
+
+  ## Inner for loop
+  def body_inner_for(indptr, val):
+    j, A_indices, A_indptr, *extra = val
+    node = A_indices[A_indptr[indptr]]
+    _, node, parent, col_count, mark = lax.while_loop(cond_while, body_while, (j, node, *extra))
+    
+    # Tail of the while loop. This is messy but it avoids a `break`
+    update_parent = lambda x: x[0].at[x[1]].set(x[2])
+    parent = lax.cond(lax.eq(parent[node], -1), update_parent, lambda x: x[0], (parent, node, j))
+
+    return (j, A_indptr, A_indices, parent, col_count, mark)
+  
+  ## Outer for loop
+  def body_out_for(j, val):
+     A_indices, A_indptr, *extra, mark = val
+     mark = mark.at[j].set(j)
+     _, _, _, parent, col_count, mark = lax.fori_loop(A_indptr[j], A_indptr[j+1], body_inner_for, (j, A_indices, A_indices, *extra, mark))
+     return (A_indices, A_indptr, parent, col_count, mark)
+
+  n = len(A_indptr) - 1
+  parent = jnp.repeat(-1, n)
+  mark = jnp.repeat(-1, n)
+  col_count = jnp.repeat(1,  n)
+  init = (A_indices, A_indptr, parent, col_count, mark)
+  _, _, parent, col_count, mark = lax.fori_loop(0, n, body_out_for, init)
+  return parent, col_count
+```
+
+Wow. That is _ugly_. But let's see if it works!
+
+```{python}
+parent_jax, col_count_jax = etree(A.indices, A.indptr)
+
+print(all(x == y for (x,y) in zip(parent_jax[:-1], true_parent)))
+print(all(true_col_count == col_count_jax))
+```
+
+
+Success!
+
+I guess we could ask ourselves if we gained any speed.
+
+Here is the pure python code.
+
+```{python}
+import timeit
+A_indices, A_indptr, A_x, A = make_matrix(20)
+times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+
+```
+
+And here is our JAX'd and JIT'd code.
+
+```{python}
+import timeit
+A_indices, A_indptr, A_x, A = make_matrix(20)
+times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+```
+
+You can see that there is some good speedup for large matrices, but for smaller ones we aren't getting much. It's also worth noting that the function is being recompiled every time the structure of `A` changes.

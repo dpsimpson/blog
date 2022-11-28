@@ -78,7 +78,7 @@
   </url>
   <url>
     <loc>https://dansblog.netlify.app/index.html</loc>
-    <lastmod>2022-11-23T11:59:35.395Z</lastmod>
+    <lastmod>2022-11-28T12:57:49.031Z</lastmod>
   </url>
   <url>
     <loc>https://dansblog.netlify.app/about.html</loc>
@@ -91,5 +91,9 @@
   <url>
     <loc>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</loc>
     <lastmod>2022-11-23T11:59:34.576Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html</loc>
+    <lastmod>2022-11-28T12:57:48.221Z</lastmod>
   </url>
 </urlset>
