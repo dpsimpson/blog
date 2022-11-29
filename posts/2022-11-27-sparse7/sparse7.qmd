@@ -15,7 +15,7 @@ format:
     df-print: paged
 jupyter: python3
 
-draft: false
+draft: true
 
 ---
 
@@ -62,11 +62,11 @@ Of those three, the first and third work mostly as you'd expect, while the secon
 ```{python}
 #| eval: false
 
-def jax_lax_while(cond_func, body_func, init):
+def jax_lax_while_loop(cond_func, body_func, init):
   x  = init
   while cond_func(x):
     x = body_func(x)
-  return body_func
+  return x
 ```
 So basically it's just a while loop. The thing that's important is that it compiles down to a single XLA operation^[These are referred to as HLOs (Higher-level operations)] instead of some unrolled mess. 
 
@@ -178,8 +178,19 @@ Finally, we can talk about `jax.lax.fori_loop`, the in-built for loop. This is b
 def jax_lax_fori_loop(lower, upper, body_func, init):
   out = init
   for i in range(lower, upper):
-    out = body_func(out)
+    out = body_func(i, out)
   return out
+```
+
+To close out this bit where I repeat hte docs, there is also a traceable if/esle: `jax.lax.cond` which has the pseudocode
+```{python}
+#| eval: false 
+
+def jax_lax_cond(pred, true_fun, false_fun, val):
+  if pred:
+    return true_fun(val)
+  else:
+    return false_fun(val)
 ```
 
 ## Building a JAX-traceable sparse Choleksy factorisation
@@ -232,13 +243,9 @@ def etree_base(A_indices, A_indptr):
     mark[j] = j
     for indptr in range(A_indptr[j], A_indptr[j+1]):
       node = A_indices[indptr]
-      while node < j:
+      while node < j and mark[node]!=j:
         if parent[node] == -1:
           parent[node] = j
-
-        if mark[node] == j:
-          break
-         
         mark[node] = j
         col_count[node] += 1
         node = parent[node]
@@ -256,7 +263,7 @@ import scipy as sp
     
 
 def make_matrix(n):
-  one_d = sparse.diags([[-1.]*(n-1), [2.]*n, [-1.]*(n-1)], [-1,0,1])
+  one_d = sparse.diags([[-1.]*(n-2), [2.]*n, [-1.]*(n-2)], [-2,0,2])
   A = (sparse.kronsum(one_d, one_d) + sparse.eye(n*n))
   A_csc = A.tocsc()
   A_csc.eliminate_zeros()
@@ -290,7 +297,7 @@ def _symbolic_factor(A_indices, A_indptr):
 
 ```{python}
 # A_indices/A_indptr are the lower triangle, A is the entire matrix
-A_indices, A_indptr, A_x, A = make_matrix(17)
+A_indices, A_indptr, A_x, A = make_matrix(37)
 parent, col_count = etree_base(A.indices, A.indptr)
 L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
 
@@ -314,8 +321,8 @@ Nevertheless, we might try.
 def etree(A_indices, A_indptr):
   print("(Re-)compiling etree(A_indices, A_indptr)")
   ## innermost while loop
-  ## Slightly different: I'm tracking the last case manually to avoid the break statement
   def body_while(val):
+  #  print(val)
     j, node, parent, col_count, mark = val
     update_parent = lambda x: x[0].at[x[1]].set(x[2])
     parent = lax.cond(lax.eq(parent[node], -1), update_parent, lambda x: x[0], (parent, node, j))
@@ -324,34 +331,30 @@ def etree(A_indices, A_indptr):
     return (j, parent[node], parent, col_count, mark)
 
   def cond_while(val):
-    j, node, _parent_, _, mark = val
+    j, node, parent, col_count, mark = val
     return lax.bitwise_and(lax.lt(node, j), lax.ne(mark[node], j))
 
   ## Inner for loop
   def body_inner_for(indptr, val):
-    j, A_indices, A_indptr, *extra = val
-    node = A_indices[A_indptr[indptr]]
-    _, node, parent, col_count, mark = lax.while_loop(cond_while, body_while, (j, node, *extra))
-    
-    # Tail of the while loop. This is messy but it avoids a `break`
-    update_parent = lambda x: x[0].at[x[1]].set(x[2])
-    parent = lax.cond(lax.eq(parent[node], -1), update_parent, lambda x: x[0], (parent, node, j))
-
-    return (j, A_indptr, A_indices, parent, col_count, mark)
+    j, A_indices, A_indptr, parent, col_count, mark = val
+    node = A_indices[indptr]
+    j, node, parent, col_count, mark = lax.while_loop(cond_while, body_while, (j, node, parent, col_count, mark))
+    return (j, A_indices, A_indptr, parent, col_count, mark)
   
   ## Outer for loop
   def body_out_for(j, val):
-     A_indices, A_indptr, *extra, mark = val
+     A_indices, A_indptr, parent, col_count, mark = val
      mark = mark.at[j].set(j)
-     _, _, _, parent, col_count, mark = lax.fori_loop(A_indptr[j], A_indptr[j+1], body_inner_for, (j, A_indices, A_indices, *extra, mark))
+     j, A_indices, A_indptr, parent, col_count, mark = lax.fori_loop(A_indptr[j], A_indptr[j+1], body_inner_for, (j, A_indices, A_indptr, parent, col_count, mark))
      return (A_indices, A_indptr, parent, col_count, mark)
 
+  ## Body of code
   n = len(A_indptr) - 1
   parent = jnp.repeat(-1, n)
   mark = jnp.repeat(-1, n)
   col_count = jnp.repeat(1,  n)
   init = (A_indices, A_indptr, parent, col_count, mark)
-  _, _, parent, col_count, mark = lax.fori_loop(0, n, body_out_for, init)
+  A_indices, A_indptr, parent, col_count, mark = lax.fori_loop(0, n, body_out_for, init)
   return parent, col_count
 ```
 
@@ -359,6 +362,7 @@ Wow. That is _ugly_. But let's see if it works!
 
 ```{python}
 parent_jax, col_count_jax = etree(A.indices, A.indptr)
+
 
 print(all(x == y for (x,y) in zip(parent_jax[:-1], true_parent)))
 print(all(true_col_count == col_count_jax))
@@ -372,8 +376,11 @@ I guess we could ask ourselves if we gained any speed.
 Here is the pure python code.
 
 ```{python}
+
+
 import timeit
 A_indices, A_indptr, A_x, A = make_matrix(20)
+
 times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
@@ -386,13 +393,25 @@ A_indices, A_indptr, A_x, A = make_matrix(200)
 times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
+
+parent, col_count= etree_base(A.indices, A.indptr)
+L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
+
+true_parent = L_indices[L_indptr[:-2] + 1]
+print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
+
+true_col_count  = np.diff(L_indptr)
+print(all(true_col_count == col_count))
+
+print(true_col_count[:5])
+print(col_count[:5])
 
 ```
 
 And here is our JAX'd and JIT'd code.
 
 ```{python}
-import timeit
+
 A_indices, A_indptr, A_x, A = make_matrix(20)
 times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
@@ -405,6 +424,22 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 A_indices, A_indptr, A_x, A = make_matrix(200)
 times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+
+parent, col_count= etree(A.indices, A.indptr)
+L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
+
+true_parent = L_indices[L_indptr[:-2] + 1]
+print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
+
+true_col_count  = np.diff(L_indptr)
+print(all(true_col_count == col_count))
+
+print(true_col_count[:5])
+print(col_count[:5])
+
+print(true_parent[:5])
+print(parent[:5])
 ```
 
-You can see that there is some good speedup for large matrices, but for smaller ones we aren't getting much. It's also worth noting that the function is being recompiled every time the structure of `A` changes.
+You can see that there is some good speedup for large matrices, but for smaller ones we aren't getting much. It's also worth noting that the function is being recompiled every time the structure of `A` changes. The essentially consstant time for the JIT'd version strongly suggests that for this problem size most of the time is spent on bookkeeping and memory stuff. 
