@@ -17,426 +17,6 @@
 <generator>quarto-1.2.15</generator>
 <lastBuildDate>Tue, 22 Nov 2022 13:00:00 GMT</lastBuildDate>
 <item>
-  <title>Sparse matrices part 7: Making peace with those weird JAX loops</title>
-  <dc:creator>Dan Simpson</dc:creator>
-  <link>https://dansblog.netlify.app/posts/2022-11-27-sparse7/check.html</link>
-  <description><![CDATA[ 
-
-
-
-
-<p>The time has come once more to resume my journey into sparse matrices. There’s been a bit of a pause, mostly because I realised that I didn’t know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But not the time has come. It is time for me to get on top of JAX’s weird fucking loops.</p>
-<p>And, along the way, I’m going to re-do the sparse Cholesky factorisation to make it, well, better.</p>
-<section id="loops-in-jax" class="level2">
-<h2 class="anchored" data-anchor-id="loops-in-jax">Loops in JAX</h2>
-<p>The first an most important rule of programming with JAX is that loops will break your heart. I mean, whatever, I guess they’re fine. But there’s a problem. Imagine the following function</p>
-<div class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="kw" style="color: #003B4F;">def</span> f(x: jax.Array, n: Int) <span class="op" style="color: #5E5E5E;">-&gt;</span> jax.Array:</span>
-<span id="cb1-2">  out <span class="op" style="color: #5E5E5E;">=</span> jnp.zeros_like(x)</span>
-<span id="cb1-3">  <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n):</span>
-<span id="cb1-4">    out <span class="op" style="color: #5E5E5E;">=</span> out <span class="op" style="color: #5E5E5E;">+</span> x</span>
-<span id="cb1-5">  <span class="cf" style="color: #003B4F;">return</span> out</span></code></pre></div>
-</div>
-<p>This is, basically, the worst implementation of multiplication by an integer that you can possibly imagine. This code will run fine in Python, but if you try to JIT compile it, JAX is gonna get <em>angry</em>. It will produce the machine code equivalent of</p>
-<div class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">def</span> f_n(x):</span>
-<span id="cb2-2">  out <span class="op" style="color: #5E5E5E;">=</span> x</span>
-<span id="cb2-3">  out <span class="op" style="color: #5E5E5E;">=</span> out <span class="op" style="color: #5E5E5E;">+</span> x</span>
-<span id="cb2-4">  out <span class="op" style="color: #5E5E5E;">=</span> out <span class="op" style="color: #5E5E5E;">+</span> x</span>
-<span id="cb2-5">  <span class="op" style="color: #5E5E5E;">//</span> do this n times</span>
-<span id="cb2-6">  <span class="cf" style="color: #003B4F;">return</span> out</span></code></pre></div>
-</div>
-<p>There are two bad things happening here. First, note that the “compiled” code depends on <code>n</code> and will have to be compiled anew each time <code>n</code> changes. Secondly, the loop has been replaced by <code>n</code> copies of the loop body. This is called <em>loop unrolling</em> and, when used judiciously by a clever compiler, is a great way to speed up code. When done completely for <em>every</em> loop this is a nightmare and the corresponding code will take a geological amount of time to compile.</p>
-<p>A similar thing<sup>1</sup> happens when you need to run autodiff on <code>f(x,n)</code>. For each <code>n</code> an expression graph is constructed that contains the unrolled for loop. This suggests that autodiff might also end up being quite slow (or, more problematically, more memory-hungry).</p>
-<p>So the first rule of JAX is to avoid for loops. But if you can’t do that, there are three built-in loop structures that play nicely with JIT compilation and sometimes<sup>2</sup> differentiation. These three constructs are</p>
-<ol type="1">
-<li>A while loop <code>jax.lax.while(cond_func, body_func, init)</code></li>
-<li>An accumulator <code>jax.lax.scan(body_func, init, xs)</code></li>
-<li>A for loop <code>jax.lax.fori_loop(lower, upper, body_fun, init)</code></li>
-</ol>
-<p>Of those three, the first and third work mostly as you’d expect, while the second is a bit more hairy. The <code>while</code> function is roughly equivalent to</p>
-<div class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> jax_lax_while(cond_func, body_func, init):</span>
-<span id="cb3-2">  x  <span class="op" style="color: #5E5E5E;">=</span> init</span>
-<span id="cb3-3">  <span class="cf" style="color: #003B4F;">while</span> cond_func(x):</span>
-<span id="cb3-4">    x <span class="op" style="color: #5E5E5E;">=</span> body_func(x)</span>
-<span id="cb3-5">  <span class="cf" style="color: #003B4F;">return</span> body_func</span></code></pre></div>
-</div>
-<p>So basically it’s just a while loop. The thing that’s important is that it compiles down to a single XLA operation<sup>3</sup> instead of some unrolled mess.</p>
-<p>One thing that is important to realise is that while loops are only forwards-mode differentiable, which means that it is <em>very</em> expensive<sup>4</sup> to compute gradients. The reason for this is that we simply do not know how long that loop actually is and so it’s impossible to build a fixed-size expression graph.</p>
-<p>The <code>jax.lax.scan</code> function is probably the one that people will be least familiar with. That said, it’s also the one that is roughly “how a for loop should work”. The concept that’s important here is a for-loop with <em>carry over</em>. Carry over is information that changes from one step of the loop to the next. This is what separates us from a <code>map</code> statement, which would apply the same function independently to each element of a list.</p>
-<p>The scan function looks like</p>
-<div class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="kw" style="color: #003B4F;">def</span> jax_lax_scan(body_func, init, xs):</span>
-<span id="cb4-2">  len_x0 <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(x0)</span>
-<span id="cb4-3">  <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> <span class="bu" style="color: null;">all</span>(<span class="bu" style="color: null;">len</span>(x) <span class="op" style="color: #5E5E5E;">==</span> len_x0 <span class="cf" style="color: #003B4F;">for</span> x <span class="kw" style="color: #003B4F;">in</span> xs):</span>
-<span id="cb4-4">    <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(<span class="st" style="color: #20794D;">"All x must have the same length!!"</span>)</span>
-<span id="cb4-5">  carry <span class="op" style="color: #5E5E5E;">=</span> init</span>
-<span id="cb4-6">  ys <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb4-7">  <span class="cf" style="color: #003B4F;">for</span> x <span class="kw" style="color: #003B4F;">in</span> xs:</span>
-<span id="cb4-8">    carry, y <span class="op" style="color: #5E5E5E;">=</span> body_func(carry, x)</span>
-<span id="cb4-9">    ys.append(y)</span>
-<span id="cb4-10">  </span>
-<span id="cb4-11">  <span class="cf" style="color: #003B4F;">return</span> carry, np.stack(ys)</span></code></pre></div>
-</div>
-<p>A critically important limitation to <code>jax.lax.scan</code> is that is that every <code>x</code> in <code>xs</code> must have the same shape! This mean, for example, that</p>
-<div class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1">xs <span class="op" style="color: #5E5E5E;">=</span> [[<span class="dv" style="color: #AD0000;">1</span>], [<span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">3</span>], [<span class="dv" style="color: #AD0000;">4</span>], <span class="dv" style="color: #AD0000;">5</span>,<span class="dv" style="color: #AD0000;">6</span>,<span class="dv" style="color: #AD0000;">7</span>]</span></code></pre></div>
-</div>
-<p>is not a valid argument. Like all limitations in JAX, this serves to make the code transformable into efficiently compiled code across various different processors.</p>
-<p>For example, if I wanted to use <code>jax.lax.scan</code> on my example from before I would get</p>
-<div class="cell" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="im" style="color: #00769E;">from</span> jax <span class="im" style="color: #00769E;">import</span> lax</span>
-<span id="cb6-2"><span class="im" style="color: #00769E;">from</span> jax <span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> jnp</span>
-<span id="cb6-3"></span>
-<span id="cb6-4"><span class="kw" style="color: #003B4F;">def</span> f(x, n):</span>
-<span id="cb6-5">  init <span class="op" style="color: #5E5E5E;">=</span> jnp.zeros_like(x)</span>
-<span id="cb6-6">  xs <span class="op" style="color: #5E5E5E;">=</span> jnp.repeat(x, n)</span>
-<span id="cb6-7">  <span class="kw" style="color: #003B4F;">def</span> body_func(carry, y):</span>
-<span id="cb6-8">    val <span class="op" style="color: #5E5E5E;">=</span> carry <span class="op" style="color: #5E5E5E;">+</span> y</span>
-<span id="cb6-9">    <span class="cf" style="color: #003B4F;">return</span> (val, val)</span>
-<span id="cb6-10">  </span>
-<span id="cb6-11">  final, journey <span class="op" style="color: #5E5E5E;">=</span> lax.scan(body_func, init, xs)</span>
-<span id="cb6-12">  <span class="cf" style="color: #003B4F;">return</span> (final, journey)</span>
-<span id="cb6-13"></span>
-<span id="cb6-14">final, journey <span class="op" style="color: #5E5E5E;">=</span> f(<span class="fl" style="color: #AD0000;">1.2</span>, <span class="dv" style="color: #AD0000;">7</span>)</span>
-<span id="cb6-15"><span class="bu" style="color: null;">print</span>(final)</span>
-<span id="cb6-16"><span class="bu" style="color: null;">print</span>(journey)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>8.4
-[1.2       2.4       3.6000001 4.8       6.        7.2       8.4      ]</code></pre>
-</div>
-</div>
-<p>This translation is a bit awkward compared to the for loop but it’s the sort of thing that you get used to.</p>
-<p>This function can be differentiated<sup>5</sup> and compiled. To differentiate it, I need a version that returns a scalar, which is easy enough to do with a lambda.</p>
-<div class="cell" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><span class="im" style="color: #00769E;">from</span> jax <span class="im" style="color: #00769E;">import</span> jit, grad</span>
-<span id="cb8-2"></span>
-<span id="cb8-3">f2 <span class="op" style="color: #5E5E5E;">=</span> <span class="kw" style="color: #003B4F;">lambda</span> x, n: f(x,n)[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb8-4">f2_grad <span class="op" style="color: #5E5E5E;">=</span> grad(f2, argnums <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb8-5"></span>
-<span id="cb8-6"><span class="bu" style="color: null;">print</span>(f2_grad(<span class="fl" style="color: #AD0000;">1.2</span>, <span class="dv" style="color: #AD0000;">7</span>))</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>7.0</code></pre>
-</div>
-</div>
-<p>The <code>argnums</code> option tells JAX that we are only differentiating wrt the first argument.</p>
-<p>JIT compilation is a timy bit more delicate. If we try the natural thing, we are going to get an error.</p>
-<div class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1">f_jit_bad <span class="op" style="color: #5E5E5E;">=</span> jit(f)</span>
-<span id="cb10-2">bad <span class="op" style="color: #5E5E5E;">=</span> f_jit_bad(<span class="fl" style="color: #AD0000;">1.2</span>, <span class="dv" style="color: #AD0000;">7</span>)</span></code></pre></div>
-<div class="cell-output cell-output-error">
-<pre><code>ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: Traced&lt;ShapedArray(int32[], weak_type=True)&gt;with&lt;DynamicJaxprTrace(level=0/1)&gt;
-When jit-compiling jnp.repeat, the total number of repeats must be static. To fix this, either specify a static value for `repeats`, or pass a static value to `total_repeat_length`.
-The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_66626/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
-
-See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError</code></pre>
-</div>
-</div>
-<p>In order to compile a function, JAX needs to know how big everything is. And right now it does not know what <code>n</code> is. This shows itself through the <code>ConcretizationTypeError</code>, which basically says that as JAX was looking through your code it found something it can’t manipulate. In this case, it was in the <code>jnp.repeat</code> function.</p>
-<p>We can fix this problem by declaring this parameter <code>static</code>.</p>
-<div class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb12-1">f_jit <span class="op" style="color: #5E5E5E;">=</span> jit(f, static_argnums<span class="op" style="color: #5E5E5E;">=</span>(<span class="dv" style="color: #AD0000;">1</span>,))</span>
-<span id="cb12-2"><span class="bu" style="color: null;">print</span>(f_jit(<span class="fl" style="color: #AD0000;">1.2</span>,<span class="dv" style="color: #AD0000;">7</span>)[<span class="dv" style="color: #AD0000;">0</span>])</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>8.4</code></pre>
-</div>
-</div>
-<p>A static parameter is a parameter value that is known at compile time. If we define <code>n</code> to be static, then the first time you call <code>f_jit(x, 7)</code> it will compile and then it will reuse the compiled code for any other value of <code>x</code>. If we then call <code>f_jit(x, 9)</code>, the code will <em>compile again</em>.</p>
-<p>To see this, we can make use of a JAX oddity: if a function prints something<sup>6</sup>, then it will only be printed upon compilation and never again. This means that we can’t do <em>debug by print</em>. But on the upside, it’s easy to check, when things are compiling.</p>
-<div class="cell" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb14-1"><span class="kw" style="color: #003B4F;">def</span> f2(x, n):</span>
-<span id="cb14-2">  <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"compiling: n = </span><span class="sc" style="color: #5E5E5E;">{</span>n<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb14-3">  <span class="cf" style="color: #003B4F;">return</span> f(x,n)[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb14-4"></span>
-<span id="cb14-5">f2_jit <span class="op" style="color: #5E5E5E;">=</span> jit(f2, static_argnums<span class="op" style="color: #5E5E5E;">=</span>(<span class="dv" style="color: #AD0000;">1</span>,))</span>
-<span id="cb14-6"><span class="bu" style="color: null;">print</span>(f2_jit(<span class="fl" style="color: #AD0000;">1.2</span>,<span class="dv" style="color: #AD0000;">7</span>))</span>
-<span id="cb14-7"><span class="bu" style="color: null;">print</span>(f2_jit(<span class="fl" style="color: #AD0000;">1.8</span>,<span class="dv" style="color: #AD0000;">7</span>))</span>
-<span id="cb14-8"><span class="bu" style="color: null;">print</span>(f2_jit(<span class="fl" style="color: #AD0000;">1.2</span>,<span class="dv" style="color: #AD0000;">9</span>))</span>
-<span id="cb14-9"><span class="bu" style="color: null;">print</span>(f2_jit(<span class="fl" style="color: #AD0000;">1.8</span>,<span class="dv" style="color: #AD0000;">7</span>))</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>compiling: n = 7
-8.4
-12.6
-compiling: n = 9
-10.799999
-12.6</code></pre>
-</div>
-</div>
-<p>This is a perfectly ok solution as long as the static parameters don’t change very often. In our context, this is going to have to do with the sparsity pattern.</p>
-<p>Finally, we can talk about <code>jax.lax.fori_loop</code>, the in-built for loop. This is basically a convenience wrapper for <code>jax.lax.scan</code> (when <code>lower</code> and <code>upper</code> are static) or <code>jax.lax.while</code> (when they are not). The Python pseudocode is</p>
-<div class="cell" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb16-1"><span class="kw" style="color: #003B4F;">def</span> jax_lax_fori_loop(lower, upper, body_func, init):</span>
-<span id="cb16-2">  out <span class="op" style="color: #5E5E5E;">=</span> init</span>
-<span id="cb16-3">  <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(lower, upper):</span>
-<span id="cb16-4">    out <span class="op" style="color: #5E5E5E;">=</span> body_func(out)</span>
-<span id="cb16-5">  <span class="cf" style="color: #003B4F;">return</span> out</span></code></pre></div>
-</div>
-</section>
-<section id="building-a-jax-traceable-sparse-choleksy-factorisation" class="level2">
-<h2 class="anchored" data-anchor-id="building-a-jax-traceable-sparse-choleksy-factorisation">Building a JAX-traceable sparse Choleksy factorisation</h2>
-<p>In order to build a JAX-traceable sparse Cholesky factorisation <img src="https://latex.codecogs.com/png.latex?A%20=%20LL%5ET">, we are going to need to build up a few moving parts.</p>
-<ol type="1">
-<li><p>Build the elimination tree of <img src="https://latex.codecogs.com/png.latex?A"> and find the number of non-zeros in each column of <img src="https://latex.codecogs.com/png.latex?L"></p></li>
-<li><p>Build the <em>symbolic factorisation</em><sup>7</sup> of <img src="https://latex.codecogs.com/png.latex?L"> (aka the location of the non-zeros of <img src="https://latex.codecogs.com/png.latex?L">)</p></li>
-<li><p>Do the actual numerical decomposition.</p></li>
-</ol>
-<p>In the <a href="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">previous post</a> we did not explictly form the elimination tree. Instead, I used dynamic memory allocation. This time I’m being more mature.</p>
-<section id="building-the-expression-graph" class="level3">
-<h3 class="anchored" data-anchor-id="building-the-expression-graph">Building the expression graph</h3>
-<p>The elimination tree<sup>8</sup> <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_A"> is a (forest of) rooted tree(s) that compactly represent the non-zero pattern of the Cholesky factor <img src="https://latex.codecogs.com/png.latex?L">. In particular, the elmination tree has the property that, for any <img src="https://latex.codecogs.com/png.latex?k%20%3E%20j"> , <img src="https://latex.codecogs.com/png.latex?L_%7Bkj%7D%20%5Cneq%200"> if and only if there is a path from <img src="https://latex.codecogs.com/png.latex?j"> to <img src="https://latex.codecogs.com/png.latex?k"> in the tree. Or, in the language of trees, <img src="https://latex.codecogs.com/png.latex?L_%7Bkj%7D%20%5Cneq%200"> if and only if <img src="https://latex.codecogs.com/png.latex?j"> is a descendant of <img src="https://latex.codecogs.com/png.latex?k"> in the tree <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_A">.</p>
-<p>We can describe<sup>9</sup> <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_A"> by listing the parent of each node. The parent node of <img src="https://latex.codecogs.com/png.latex?j"> in the tree is the smallest <img src="https://latex.codecogs.com/png.latex?i%20%3E%20j"> with <img src="https://latex.codecogs.com/png.latex?L_%7Bij%7D%20%5Cneq%200">.</p>
-<p>We can turn this into an algorithm. An efficent version, which is described in Tim Davies book takes about <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO(%5Ctext%7Bnnz%7D(A))%7D"> operations. But I’m going to program up a slower one that takes <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO(%5Ctext%7Bnnz%7D(L))%7D"> operations, but has the added benifit<sup>10</sup> of giving me the column counts for free.</p>
-<p>To do this, we are going to walk the tree and dynamically add up the column counts as we go.</p>
-<p>To start off, let’s do this in standard python so that we can see what the algorithm look like. The key concept is that if we write <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_%7Bj-1%7D"> as the elimination tree encoding the structure of<sup>11</sup> <code>L[:j, :j]</code>, then we can ask about how this tree connects with node <code>j</code>.</p>
-<p>A theorem gives a very simple answer to this.</p>
-<div id="thm-tree" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 1 </strong></span>If <img src="https://latex.codecogs.com/png.latex?j%20%3E%20i">, then <img src="https://latex.codecogs.com/png.latex?A_%7Bj,i%7D%20%5Cneq%200"> implies that <img src="https://latex.codecogs.com/png.latex?i"> is a descendant of <img src="https://latex.codecogs.com/png.latex?j"> in <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_A">. In particular, that means that there is a directed path in <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_A"> from <img src="https://latex.codecogs.com/png.latex?i"> to <img src="https://latex.codecogs.com/png.latex?j">.</p>
-</div>
-<p>This tells us that the connection between <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_%7Bj-1%7D"> and node <img src="https://latex.codecogs.com/png.latex?j"> is that for each non-zero elements <img src="https://latex.codecogs.com/png.latex?i"> of the <img src="https://latex.codecogs.com/png.latex?j">th row of <img src="https://latex.codecogs.com/png.latex?A">, we can walk $ must have a path in <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_%7Bj-1%7D"> from <img src="https://latex.codecogs.com/png.latex?i"> and we will eventually get to a node that has no parent in <img src="https://latex.codecogs.com/png.latex?%5C%7B0,%5Cldots,%20j-1%5C%7D">. Because there <em>must</em> be a path from <img src="https://latex.codecogs.com/png.latex?i"> to <img src="https://latex.codecogs.com/png.latex?j"> in <img src="https://latex.codecogs.com/png.latex?T_j">, it means that the parent of this terminal node must be <img src="https://latex.codecogs.com/png.latex?j">.</p>
-<p>As with everything Cholesky related, this works because the algorithm procedes from left to right, which in this case means that the node label assocated with <em>any</em> descendent of <img src="https://latex.codecogs.com/png.latex?j"> is always less than <img src="https://latex.codecogs.com/png.latex?j">.</p>
-<p>The algorithm is then a fairly run-of-the-mill<sup>12</sup> tree traversal, where we keep track of where we have been so we don’t double count our columns.</p>
-<p>Probably the most important thing here is that I am using the <em>full</em> sparse matrix rather than just its lower triangle. This is, basically, convenience. I need access to the left half of the <img src="https://latex.codecogs.com/png.latex?j">th row of <img src="https://latex.codecogs.com/png.latex?A">, which is conveniently the same as the top half of the <img src="https://latex.codecogs.com/png.latex?j">th column. And sometimes you just don’t want to be dicking around with swapping between row- and column-based representations.</p>
-<div class="cell" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb17-1"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
-<span id="cb17-2"></span>
-<span id="cb17-3"><span class="kw" style="color: #003B4F;">def</span> etree_base(A_indices, A_indptr):</span>
-<span id="cb17-4">  n <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(A_indptr) <span class="op" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb17-5">  parent <span class="op" style="color: #5E5E5E;">=</span> [<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>] <span class="op" style="color: #5E5E5E;">*</span> n</span>
-<span id="cb17-6">  mark <span class="op" style="color: #5E5E5E;">=</span> [<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>] <span class="op" style="color: #5E5E5E;">*</span> n</span>
-<span id="cb17-7">  col_count <span class="op" style="color: #5E5E5E;">=</span> [<span class="dv" style="color: #AD0000;">1</span>] <span class="op" style="color: #5E5E5E;">*</span> n</span>
-<span id="cb17-8">  <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n):</span>
-<span id="cb17-9">    mark[j] <span class="op" style="color: #5E5E5E;">=</span> j</span>
-<span id="cb17-10">    <span class="cf" style="color: #003B4F;">for</span> indptr <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(A_indptr[j], A_indptr[j<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>]):</span>
-<span id="cb17-11">      node <span class="op" style="color: #5E5E5E;">=</span> A_indices[indptr]</span>
-<span id="cb17-12">      <span class="cf" style="color: #003B4F;">while</span> node <span class="op" style="color: #5E5E5E;">&lt;</span> j:</span>
-<span id="cb17-13">        <span class="cf" style="color: #003B4F;">if</span> parent[node] <span class="op" style="color: #5E5E5E;">==</span> <span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>:</span>
-<span id="cb17-14">          parent[node] <span class="op" style="color: #5E5E5E;">=</span> j</span>
-<span id="cb17-15"></span>
-<span id="cb17-16">        <span class="cf" style="color: #003B4F;">if</span> mark[node] <span class="op" style="color: #5E5E5E;">==</span> j:</span>
-<span id="cb17-17">          <span class="cf" style="color: #003B4F;">break</span></span>
-<span id="cb17-18">         </span>
-<span id="cb17-19">        mark[node] <span class="op" style="color: #5E5E5E;">=</span> j</span>
-<span id="cb17-20">        col_count[node] <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb17-21">        node <span class="op" style="color: #5E5E5E;">=</span> parent[node]</span>
-<span id="cb17-22">  <span class="cf" style="color: #003B4F;">return</span> (parent, col_count)</span></code></pre></div>
-</div>
-<p>To convince ourselves this works, let’s run an example and compare the column counts we get to our previous method.</p>
-<div class="cell" data-execution_count="13">
-<details>
-<summary>Some boilerplate from previous editions.</summary>
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb18-1"><span class="im" style="color: #00769E;">from</span> scipy <span class="im" style="color: #00769E;">import</span> sparse</span>
-<span id="cb18-2"><span class="im" style="color: #00769E;">import</span> scipy <span class="im" style="color: #00769E;">as</span> sp</span>
-<span id="cb18-3">    </span>
-<span id="cb18-4"></span>
-<span id="cb18-5"><span class="kw" style="color: #003B4F;">def</span> make_matrix(n):</span>
-<span id="cb18-6">  one_d <span class="op" style="color: #5E5E5E;">=</span> sparse.diags([[<span class="op" style="color: #5E5E5E;">-</span><span class="fl" style="color: #AD0000;">1.</span>]<span class="op" style="color: #5E5E5E;">*</span>(n<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>), [<span class="fl" style="color: #AD0000;">2.</span>]<span class="op" style="color: #5E5E5E;">*</span>n, [<span class="op" style="color: #5E5E5E;">-</span><span class="fl" style="color: #AD0000;">1.</span>]<span class="op" style="color: #5E5E5E;">*</span>(n<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>)], [<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>,<span class="dv" style="color: #AD0000;">0</span>,<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb18-7">  A <span class="op" style="color: #5E5E5E;">=</span> (sparse.kronsum(one_d, one_d) <span class="op" style="color: #5E5E5E;">+</span> sparse.eye(n<span class="op" style="color: #5E5E5E;">*</span>n))</span>
-<span id="cb18-8">  A_csc <span class="op" style="color: #5E5E5E;">=</span> A.tocsc()</span>
-<span id="cb18-9">  A_csc.eliminate_zeros()</span>
-<span id="cb18-10">  A_lower <span class="op" style="color: #5E5E5E;">=</span> sparse.tril(A_csc, <span class="bu" style="color: null;">format</span> <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"csc"</span>)</span>
-<span id="cb18-11">  A_index <span class="op" style="color: #5E5E5E;">=</span> A_lower.indices</span>
-<span id="cb18-12">  A_indptr <span class="op" style="color: #5E5E5E;">=</span> A_lower.indptr</span>
-<span id="cb18-13">  A_x <span class="op" style="color: #5E5E5E;">=</span> A_lower.data</span>
-<span id="cb18-14">  <span class="cf" style="color: #003B4F;">return</span> (A_index, A_indptr, A_x, A_csc)</span>
-<span id="cb18-15"></span>
-<span id="cb18-16"><span class="kw" style="color: #003B4F;">def</span> _symbolic_factor(A_indices, A_indptr):</span>
-<span id="cb18-17">  <span class="co" style="color: #5E5E5E;"># Assumes A_indices and A_indptr index the lower triangle of $A$ ONLY.</span></span>
-<span id="cb18-18">  n <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(A_indptr) <span class="op" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb18-19">  L_sym <span class="op" style="color: #5E5E5E;">=</span> [np.array([], dtype<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">int</span>) <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n)]</span>
-<span id="cb18-20">  children <span class="op" style="color: #5E5E5E;">=</span> [np.array([], dtype<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">int</span>) <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n)]</span>
-<span id="cb18-21">  </span>
-<span id="cb18-22">  <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n):</span>
-<span id="cb18-23">    L_sym[j] <span class="op" style="color: #5E5E5E;">=</span> A_indices[A_indptr[j]:A_indptr[j <span class="op" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span>]]</span>
-<span id="cb18-24">    <span class="cf" style="color: #003B4F;">for</span> child <span class="kw" style="color: #003B4F;">in</span> children[j]:</span>
-<span id="cb18-25">      tmp <span class="op" style="color: #5E5E5E;">=</span> L_sym[child][L_sym[child] <span class="op" style="color: #5E5E5E;">&gt;</span> j]</span>
-<span id="cb18-26">      L_sym[j] <span class="op" style="color: #5E5E5E;">=</span> np.unique(np.append(L_sym[j], tmp))</span>
-<span id="cb18-27">    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">len</span>(L_sym[j]) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">1</span>:</span>
-<span id="cb18-28">      p <span class="op" style="color: #5E5E5E;">=</span> L_sym[j][<span class="dv" style="color: #AD0000;">1</span>]</span>
-<span id="cb18-29">      children[p] <span class="op" style="color: #5E5E5E;">=</span> np.append(children[p], j)</span>
-<span id="cb18-30">        </span>
-<span id="cb18-31">  L_indptr <span class="op" style="color: #5E5E5E;">=</span> np.zeros(n<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>, dtype<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">int</span>)</span>
-<span id="cb18-32">  L_indptr[<span class="dv" style="color: #AD0000;">1</span>:] <span class="op" style="color: #5E5E5E;">=</span> np.cumsum([<span class="bu" style="color: null;">len</span>(x) <span class="cf" style="color: #003B4F;">for</span> x <span class="kw" style="color: #003B4F;">in</span> L_sym])</span>
-<span id="cb18-33">  L_indices <span class="op" style="color: #5E5E5E;">=</span> np.concatenate(L_sym)</span>
-<span id="cb18-34">  </span>
-<span id="cb18-35">  <span class="cf" style="color: #003B4F;">return</span> L_indices, L_indptr</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb19-1"><span class="co" style="color: #5E5E5E;"># A_indices/A_indptr are the lower triangle, A is the entire matrix</span></span>
-<span id="cb19-2">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">17</span>)</span>
-<span id="cb19-3">parent, col_count <span class="op" style="color: #5E5E5E;">=</span> etree_base(A.indices, A.indptr)</span>
-<span id="cb19-4">L_indices, L_indptr <span class="op" style="color: #5E5E5E;">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb19-5"></span>
-<span id="cb19-6">true_parent <span class="op" style="color: #5E5E5E;">=</span> L_indices[L_indptr[:<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">2</span>] <span class="op" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span>]</span>
-<span id="cb19-7"><span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">all</span>(x <span class="op" style="color: #5E5E5E;">==</span> y <span class="cf" style="color: #003B4F;">for</span> (x,y) <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(parent[:<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>], true_parent)))</span>
-<span id="cb19-8"></span>
-<span id="cb19-9">true_col_count  <span class="op" style="color: #5E5E5E;">=</span> np.diff(L_indptr)</span>
-<span id="cb19-10"><span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">all</span>(true_col_count <span class="op" style="color: #5E5E5E;">==</span> col_count))</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>True
-True</code></pre>
-</div>
-</div>
-<p>Excellent. Now we just need to convert it to JAX.</p>
-<p>Or do we?</p>
-<p>To be honest, this is a little pointless. This function is only run once per matrix so we won’t really get much speedup<sup>13</sup> from compilation.</p>
-<p>Nevertheless, we might try.</p>
-<div class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb21-1"><span class="at" style="color: #657422;">@jit</span></span>
-<span id="cb21-2"><span class="kw" style="color: #003B4F;">def</span> etree(A_indices, A_indptr):</span>
-<span id="cb21-3">  <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"(Re-)compiling etree(A_indices, A_indptr)"</span>)</span>
-<span id="cb21-4">  <span class="co" style="color: #5E5E5E;">## innermost while loop</span></span>
-<span id="cb21-5">  <span class="co" style="color: #5E5E5E;">## Slightly different: I'm tracking the last case manually to avoid the break statement</span></span>
-<span id="cb21-6">  <span class="kw" style="color: #003B4F;">def</span> body_while(val):</span>
-<span id="cb21-7">    j, node, parent, col_count, mark <span class="op" style="color: #5E5E5E;">=</span> val</span>
-<span id="cb21-8">    update_parent <span class="op" style="color: #5E5E5E;">=</span> <span class="kw" style="color: #003B4F;">lambda</span> x: x[<span class="dv" style="color: #AD0000;">0</span>].at[x[<span class="dv" style="color: #AD0000;">1</span>]].<span class="bu" style="color: null;">set</span>(x[<span class="dv" style="color: #AD0000;">2</span>])</span>
-<span id="cb21-9">    parent <span class="op" style="color: #5E5E5E;">=</span> lax.cond(lax.eq(parent[node], <span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>), update_parent, <span class="kw" style="color: #003B4F;">lambda</span> x: x[<span class="dv" style="color: #AD0000;">0</span>], (parent, node, j))</span>
-<span id="cb21-10">    mark <span class="op" style="color: #5E5E5E;">=</span> mark.at[node].<span class="bu" style="color: null;">set</span>(j)</span>
-<span id="cb21-11">    col_count <span class="op" style="color: #5E5E5E;">=</span> col_count.at[node].add(<span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb21-12">    <span class="cf" style="color: #003B4F;">return</span> (j, parent[node], parent, col_count, mark)</span>
-<span id="cb21-13"></span>
-<span id="cb21-14">  <span class="kw" style="color: #003B4F;">def</span> cond_while(val):</span>
-<span id="cb21-15">    j, node, _parent_, _, mark <span class="op" style="color: #5E5E5E;">=</span> val</span>
-<span id="cb21-16">    <span class="cf" style="color: #003B4F;">return</span> lax.bitwise_and(lax.lt(node, j), lax.ne(mark[node], j))</span>
-<span id="cb21-17"></span>
-<span id="cb21-18">  <span class="co" style="color: #5E5E5E;">## Inner for loop</span></span>
-<span id="cb21-19">  <span class="kw" style="color: #003B4F;">def</span> body_inner_for(indptr, val):</span>
-<span id="cb21-20">    j, A_indices, A_indptr, <span class="op" style="color: #5E5E5E;">*</span>extra <span class="op" style="color: #5E5E5E;">=</span> val</span>
-<span id="cb21-21">    node <span class="op" style="color: #5E5E5E;">=</span> A_indices[A_indptr[indptr]]</span>
-<span id="cb21-22">    _, node, parent, col_count, mark <span class="op" style="color: #5E5E5E;">=</span> lax.while_loop(cond_while, body_while, (j, node, <span class="op" style="color: #5E5E5E;">*</span>extra))</span>
-<span id="cb21-23">    </span>
-<span id="cb21-24">    <span class="co" style="color: #5E5E5E;"># Tail of the while loop. This is messy but it avoids a `break`</span></span>
-<span id="cb21-25">    update_parent <span class="op" style="color: #5E5E5E;">=</span> <span class="kw" style="color: #003B4F;">lambda</span> x: x[<span class="dv" style="color: #AD0000;">0</span>].at[x[<span class="dv" style="color: #AD0000;">1</span>]].<span class="bu" style="color: null;">set</span>(x[<span class="dv" style="color: #AD0000;">2</span>])</span>
-<span id="cb21-26">    parent <span class="op" style="color: #5E5E5E;">=</span> lax.cond(lax.eq(parent[node], <span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>), update_parent, <span class="kw" style="color: #003B4F;">lambda</span> x: x[<span class="dv" style="color: #AD0000;">0</span>], (parent, node, j))</span>
-<span id="cb21-27"></span>
-<span id="cb21-28">    <span class="cf" style="color: #003B4F;">return</span> (j, A_indptr, A_indices, parent, col_count, mark)</span>
-<span id="cb21-29">  </span>
-<span id="cb21-30">  <span class="co" style="color: #5E5E5E;">## Outer for loop</span></span>
-<span id="cb21-31">  <span class="kw" style="color: #003B4F;">def</span> body_out_for(j, val):</span>
-<span id="cb21-32">     A_indices, A_indptr, <span class="op" style="color: #5E5E5E;">*</span>extra, mark <span class="op" style="color: #5E5E5E;">=</span> val</span>
-<span id="cb21-33">     mark <span class="op" style="color: #5E5E5E;">=</span> mark.at[j].<span class="bu" style="color: null;">set</span>(j)</span>
-<span id="cb21-34">     _, _, _, parent, col_count, mark <span class="op" style="color: #5E5E5E;">=</span> lax.fori_loop(A_indptr[j], A_indptr[j<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>], body_inner_for, (j, A_indices, A_indices, <span class="op" style="color: #5E5E5E;">*</span>extra, mark))</span>
-<span id="cb21-35">     <span class="cf" style="color: #003B4F;">return</span> (A_indices, A_indptr, parent, col_count, mark)</span>
-<span id="cb21-36"></span>
-<span id="cb21-37">  n <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(A_indptr) <span class="op" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb21-38">  parent <span class="op" style="color: #5E5E5E;">=</span> jnp.repeat(<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>, n)</span>
-<span id="cb21-39">  mark <span class="op" style="color: #5E5E5E;">=</span> jnp.repeat(<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>, n)</span>
-<span id="cb21-40">  col_count <span class="op" style="color: #5E5E5E;">=</span> jnp.repeat(<span class="dv" style="color: #AD0000;">1</span>,  n)</span>
-<span id="cb21-41">  init <span class="op" style="color: #5E5E5E;">=</span> (A_indices, A_indptr, parent, col_count, mark)</span>
-<span id="cb21-42">  _, _, parent, col_count, mark <span class="op" style="color: #5E5E5E;">=</span> lax.fori_loop(<span class="dv" style="color: #AD0000;">0</span>, n, body_out_for, init)</span>
-<span id="cb21-43">  <span class="cf" style="color: #003B4F;">return</span> parent, col_count</span></code></pre></div>
-</div>
-<p>Wow. That is <em>ugly</em>. But let’s see if it works!</p>
-<div class="cell" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb22-1">parent_jax, col_count_jax <span class="op" style="color: #5E5E5E;">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb22-2"></span>
-<span id="cb22-3"><span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">all</span>(x <span class="op" style="color: #5E5E5E;">==</span> y <span class="cf" style="color: #003B4F;">for</span> (x,y) <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(parent_jax[:<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>], true_parent)))</span>
-<span id="cb22-4"><span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">all</span>(true_col_count <span class="op" style="color: #5E5E5E;">==</span> col_count_jax))</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>(Re-)compiling etree(A_indices, A_indptr)</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>False
-False</code></pre>
-</div>
-</div>
-<p>Success!</p>
-<p>I guess we could ask ourselves if we gained any speed.</p>
-<p>Here is the pure python code.</p>
-<div class="cell" data-execution_count="17">
-<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="im" style="color: #00769E;">import</span> timeit</span>
-<span id="cb25-2">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">20</span>)</span>
-<span id="cb25-3">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree_base(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb25-4"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb25-5"></span>
-<span id="cb25-6">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">50</span>)</span>
-<span id="cb25-7">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree_base(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb25-8"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb25-9"></span>
-<span id="cb25-10"></span>
-<span id="cb25-11">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">200</span>)</span>
-<span id="cb25-12">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree_base(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb25-13"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>n = 400: [0.0, 0.0, 0.0, 0.0, 0.0]
-n = 2500: [0.04, 0.03, 0.03, 0.03, 0.03]</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [1.34, 1.38, 1.41, 1.43, 1.42]</code></pre>
-</div>
-</div>
-<p>And here is our JAX’d and JIT’d code.</p>
-<div class="cell" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb28-1"><span class="im" style="color: #00769E;">import</span> timeit</span>
-<span id="cb28-2">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">20</span>)</span>
-<span id="cb28-3">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb28-4"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb28-5"></span>
-<span id="cb28-6">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">50</span>)</span>
-<span id="cb28-7">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb28-8"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb28-9"></span>
-<span id="cb28-10"></span>
-<span id="cb28-11">A_indices, A_indptr, A_x, A <span class="op" style="color: #5E5E5E;">=</span> make_matrix(<span class="dv" style="color: #AD0000;">200</span>)</span>
-<span id="cb28-12">times <span class="op" style="color: #5E5E5E;">=</span> timeit.repeat(<span class="kw" style="color: #003B4F;">lambda</span>: etree(A.indices, A.indptr),number <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb28-13"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"n = </span><span class="sc" style="color: #5E5E5E;">{</span>A<span class="sc" style="color: #5E5E5E;">.</span>shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: </span><span class="sc" style="color: #5E5E5E;">{</span>[<span class="bu" style="color: null;">round</span>(t,<span class="dv" style="color: #AD0000;">2</span>) <span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> times]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>(Re-)compiling etree(A_indices, A_indptr)
-n = 400: [0.16, 0.0, 0.0, 0.0, 0.0]
-(Re-)compiling etree(A_indices, A_indptr)</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.17, 0.0, 0.0, 0.0, 0.0]
-(Re-)compiling etree(A_indices, A_indptr)
-n = 40000: [0.15, 0.0, 0.0, 0.0, 0.0]</code></pre>
-</div>
-</div>
-<p>You can see that there is some good speedup for large matrices, but for smaller ones we aren’t getting much. It’s also worth noting that the function is being recompiled every time the structure of <code>A</code> changes.</p>
-
-
-</section>
-</section>
-
-
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
-
-<ol>
-<li id="fn1"><p>If a person who actually knows how the JAX autodiff works happens across this blog, I’m so sorry.↩︎</p></li>
-<li id="fn2"><p>omg you guys. So many details↩︎</p></li>
-<li id="fn3"><p>These are referred to as HLOs (Higher-level operations)↩︎</p></li>
-<li id="fn4"><p>Instead of doing one pass of reverse-mode, you would need to do <img src="https://latex.codecogs.com/png.latex?d"> passes of forwards mode to get the gradient with respect to a d-dimensional parameter.↩︎</p></li>
-<li id="fn5"><p>Unlike <code>jax.lax.while</code>, which is only forwards differentiable, <code>jax.lax.scan</code> is fully differentiable.↩︎</p></li>
-<li id="fn6"><p>In general, if the function has state.↩︎</p></li>
-<li id="fn7"><p>This is the version of the symbolic factorisation that is most appropriate for us, as we will be doing a lot of Cholesky factorisations with the same sparstiy structure. If we rearrange the algorithm to the up-looking Cholesky decomposition, we only need the column counts and this is also called the symbolic factorisation. This is, incidentally, how Eigen’s sparse Cholesky works.↩︎</p></li>
-<li id="fn8"><p>Actually it’s a forest↩︎</p></li>
-<li id="fn9"><p>Because we are talking about a tree, each child node has at most one parent. If it doesn’t have a parent it’s the root of the tree. I remember a lecturer saying that it should be called “father and son” or “mother and daughter” because every child has 2 parents but only one mother or one father. The 2000s were a wild time.↩︎</p></li>
-<li id="fn10"><p>These can also be computed in approxximately <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO(%5Ctext%7Bnnz%7D(A))%7D"> time, which is much faster. But the algorithm is, frankly, pretty tricky and I’m not in the mood to program it up. This difference would be quite important if I wasn’t storing the full symbolic factorisation and was instead computing it every time, but in my context it is less clear that this is worth the effort.↩︎</p></li>
-<li id="fn11"><p>Python notation! This is rows/cols 0 to <code>j-1</code>↩︎</p></li>
-<li id="fn12"><p>Python, it turns out, does not have a <code>do while</code> construct because, apparently, everything is empty and life is meaningless.↩︎</p></li>
-<li id="fn13"><p>The argument for JIT works by amortizing the compile time over several function evaluations. If I wanted to speed this algortihm up, I’d implement the more complex <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(%5Coperatorname%7Bnnz%7D(A))"> version.↩︎</p></li>
-</ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
-  author = {Dan Simpson},
-  editor = {},
-  title = {Sparse Matrices Part 7: {Making} Peace with Those Weird {JAX}
-    Loops},
-  date = {2022-11-23},
-  url = {https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html},
-  langid = {en}
-}
-</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas">
-Dan Simpson. 2022. <span>“Sparse Matrices Part 7: Making Peace with
-Those Weird JAX Loops.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</a>.
-</div></div></section></div> ]]></description>
-  <category>Fundamentals</category>
-  <category>MCMC</category>
-  <category>Bayes</category>
-  <guid>https://dansblog.netlify.app/posts/2022-11-27-sparse7/check.html</guid>
-  <pubDate>Tue, 22 Nov 2022 13:00:00 GMT</pubDate>
-  <media:content url="https://dansblog.netlify.app/posts/2022-11-27-sparse7/elvira.jpg" medium="image" type="image/jpeg"/>
-</item>
-<item>
   <title>MCMC with the wrong acceptance probability</title>
   <dc:creator>Dan Simpson</dc:creator>
   <link>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</link>
@@ -7024,6 +6604,111 @@ October 16, 2021. <a href="https://dansblog.netlify.app/priors2">https://dansblo
   <guid>https://dansblog.netlify.app/posts/2021-10-14-priors2/priors2.html</guid>
   <pubDate>Fri, 15 Oct 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors2/nun.JPG" medium="image"/>
+</item>
+<item>
+  <title>Priors: Night work (Track 1)</title>
+  <dc:creator>Dan Simpson</dc:creator>
+  <link>https://dansblog.netlify.app/posts/2021-10-14-priors1/priors1.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<p>I have feelings. Too many feelings. And ninety six point seven three percent of them are about prior distributions<sup>1</sup>. So I am going to write a few blog posts about prior distributions.</p>
+<p>To be very honest, this is mostly a writing exercise<sup>2</sup> to get me out of a slump.</p>
+<p>So let’s do this.</p>
+<section id="no-love-deep-web" class="level2">
+<h2 class="anchored" data-anchor-id="no-love-deep-web">No love, deep web</h2>
+<p>As far as I am concerned it’s really fucking stupid to try to write about priors on their own. They are meaningless outside of their context. But, you know, this is a blog. So I get to be stupid.</p>
+<p>So what is a prior distribution? It is whatever you want it to be. It is a probability distribution<sup>3</sup> that … I don’t know. Exists<sup>4</sup>.</p>
+<p>Ok. This is not going well. Let’s try again.</p>
+<p>A prior distribution is, most of the time, a probability distribution on the parameters of a statistical model. For all practical purposes, we tend to work with its density, so if the parameter <img src="https://latex.codecogs.com/png.latex?%5Ctheta">, which could be a scalar but, in any interesting case, isn’t, has prior <img src="https://latex.codecogs.com/png.latex?p(%5Ctheta)">.</p>
+</section>
+<section id="captain-fantastic-and-the-brown-dirt-cowboy" class="level2">
+<h2 class="anchored" data-anchor-id="captain-fantastic-and-the-brown-dirt-cowboy">Captain fantastic and the brown dirt cowboy</h2>
+<p>But what does it all meeeeeeeean?</p>
+<p>We have a prior distribution specified, gloriously, by it’s density. And unlike destiny, density is meaningless. It only makes sense when we integrate it up to get a probability <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(A)%20=%20%5Cint_A%20p(%5Ctheta)%5C,d%5Ctheta.%0A"></p>
+<p>So what does the prior probabilty <img src="https://latex.codecogs.com/png.latex?%5CPr(A)"> of a set <img src="https://latex.codecogs.com/png.latex?A"> actually mean in real life? The answer may shock you: it means something between nothing and everything.</p>
+<p><strong>Scenario 1:</strong> Let’s imagine that we were trying to estimate the probability that someone in some relative homogeneous subgroup of customers completed a purchase on our website. It’s a binary process, so the parameter of interest can probably just be the probability that a sale is made. While we don’t know what the probability of a sale is for the subgroup of interest, we know a lot sales on our website in general (in particular, we know that about 3% of visits result in sales). So if I also believe that it would be wildly unlikely for 20% of visits to result in a sale, I could posit a prior like a <img src="https://latex.codecogs.com/png.latex?%5Ctext%7BBeta%7D(0.4,5)"> prior that captures (a version of) these two pieces of information.</p>
+<div class="cell" data-code_folding="true">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb1-1">  <span class="do" style="color: #5E5E5E;
+font-style: italic;">## Step 1: </span></span>
+<span id="cb1-2">  </span>
+<span id="cb1-3">fn <span class="ot" style="color: #003B4F;">&lt;-</span> \(x) (<span class="fu" style="color: #4758AB;">qbeta</span>(<span class="fl" style="color: #AD0000;">0.5</span>,x[<span class="dv" style="color: #AD0000;">1</span>], x[<span class="dv" style="color: #AD0000;">2</span>]) <span class="sc" style="color: #5E5E5E;">-</span> <span class="fl" style="color: #AD0000;">0.02</span>)<span class="sc" style="color: #5E5E5E;">^</span><span class="dv" style="color: #AD0000;">2</span> <span class="sc" style="color: #5E5E5E;">+</span> </span>
+<span id="cb1-4">  (<span class="fu" style="color: #4758AB;">qbeta</span>(<span class="fl" style="color: #AD0000;">0.9</span>, x[<span class="dv" style="color: #AD0000;">1</span>], x[<span class="dv" style="color: #AD0000;">2</span>]) <span class="sc" style="color: #5E5E5E;">-</span> <span class="fl" style="color: #AD0000;">0.2</span>)<span class="sc" style="color: #5E5E5E;">^</span><span class="dv" style="color: #AD0000;">2</span></span>
+<span id="cb1-5"></span>
+<span id="cb1-6">best <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">optim</span>(<span class="fu" style="color: #4758AB;">c</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">2</span>), fn)</span>
+<span id="cb1-7"></span>
+<span id="cb1-8"><span class="do" style="color: #5E5E5E;
+font-style: italic;">## Step 3: Profit.</span></span>
+<span id="cb1-9"><span class="do" style="color: #5E5E5E;
+font-style: italic;">## (AKA round and check)</span></span>
+<span id="cb1-10"><span class="fu" style="color: #4758AB;">qbeta</span>(<span class="fl" style="color: #AD0000;">0.9</span>, <span class="fl" style="color: #AD0000;">0.4</span>, <span class="dv" style="color: #AD0000;">5</span>)</span>
+<span id="cb1-11"><span class="fu" style="color: #4758AB;">qbeta</span>(<span class="fl" style="color: #AD0000;">0.5</span>, <span class="fl" style="color: #AD0000;">0.4</span>, <span class="dv" style="color: #AD0000;">5</span>)</span></code></pre></div>
+</div>
+<p><strong>Scenario 2:</strong> Let’s imagine I want to do variable selection. I don’t know why. I was just told I want to do variable selection. So I fire up the <a href="https://statmodeling.stat.columbia.edu/2017/11/02/king-must-die/">Bayesian Lasso</a><sup>5</sup> and then threshold in some way. In this case, the prior encode a hoped-for property of my posterior. (To paraphrase Lana, hope is a dangerous thing for a woman like you to have because the Bayeisan Lasso does not work to the point that the original paper doesn’t even suggest using it for variable selection<sup>6</sup> it just, idk, liked the name. Statistics is wild.)</p>
+<p><strong>Scenario 3:</strong> I’m doing a regression with just one variable (because why not) and I think that the relationship between the response <img src="https://latex.codecogs.com/png.latex?y"> and the covariate <img src="https://latex.codecogs.com/png.latex?x"> is non-linear. That is, I think there is some unknown to me function <img src="https://latex.codecogs.com/png.latex?f(x)"> such that <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D(y_i)%20=%20f(x_i)">. So I ask a friend and they tell me to use a Gaussian Process prior for <img src="https://latex.codecogs.com/png.latex?f(%5Ccdot)"> with an exponential covariance function.</p>
+<p>While I can write down the density for the joint prior of <img src="https://latex.codecogs.com/png.latex?(f(x_1),%20f(x_2,),%20%5Cldots,%20f(x_n))">, I do not know<sup>7</sup> what this prior means in any substantive sense. But I can tell you, you’re gonna need that maths degree to even try.</p>
+<p>And should you look deeper, you will find more and more scenarios where priors are doing different things for different reasons<sup>8</sup>. For each of these priors in each of these scenarios, we will be able to compute the posterior (or a reasonable computational approximation to it) and then work with that posterior to answer our questions.</p>
+<p>Different people<sup>9</sup> will use priors different ways even for very similar problems<sup>10</sup>. This remains true even though they are nominally working under the same inferential framework.</p>
+<p><em>Bayesians are chaotic.</em></p>
+</section>
+<section id="mapping-out-a-sky-what-you-feel-like-planning-a-sky" class="level2">
+<h2 class="anchored" data-anchor-id="mapping-out-a-sky-what-you-feel-like-planning-a-sky">Mapping out a sky / What you feel like, planning a sky</h2>
+<p><a href="https://www.youtube.com/watch?v=ducG55pfCMQ">Sondheim’s ode to pointillism</a> feels relevant here. The reality of the prior distribution—and the whole reason the concept is so slippery and chaotic—is that you are, dot by dot, constructing the world of your inference. This act of construction is fundamental to understanding how Bayesian methods work, how to justify your choices, and how to use a <a href="https://arxiv.org/abs/2011.01808">Bayesian workflow</a> to solve complex problems.</p>
+<p>To torture the metaphor, our prior distribution is just our paint, unmixed, slowly congealing, possibly made of <a href="https://en.wikipedia.org/wiki/Mummy_brown">ground up mummys</a>. It is nothing without a painter and a brush.</p>
+<p>The painter is the likelihood or, more generally, the generative link between the parameter values and the actual data, <img src="https://latex.codecogs.com/png.latex?p(y%20%5Cmid%20%5Ctheta)">. The brush is the computational engine you use to actually produce the posterior painting<sup>11</sup>.</p>
+<p>This then speaks to the core challenge with writing about priors: it depends on how you use them. It is a fallacy, or perhaps a foolishness, or perhaps a heresy<sup>12</sup>. Hell, when trying to understand a single inference <a href="https://www.mdpi.com/1099-4300/19/10/555">The Prior Can Only Be Understood In The Context Of The Likelihood</a><sup>13</sup>. In the context of an entire <em>workflow</em>, <a href="https://link.springer.com/article/10.1007/s42113-019-00051-0">The Experiment is just as Important as the Likelihood in Understanding the Prior</a>.</p>
+<p>For instance, using independent Cauchy priors for the coefficients in a linear regression model will result in a perfectly ok posterior. Whereas the same priors used in a logistic regression, <a href="https://projecteuclid.org/journals/bayesian-analysis/volume-13/issue-2/On-the-Use-of-Cauchy-Prior-Distributions-for-Bayesian-Logistic/10.1214/17-BA1051.full">you may end up with posteriors with such heavy tails that they don’t have a mean</a>! (Do we care? Well, yes. If we want reasonable uncertainty intervals we probably want 2 or so moments otherwise those large deviations are gonna getcha!)</p>
+</section>
+<section id="so-what" class="level2">
+<h2 class="anchored" data-anchor-id="so-what">So what?</h2>
+<p>All of this is fascinating. And it is a lot less chaotic than it initially sounds.</p>
+<p>The reality is that while two Bayesians may use different priors and, hence, produce different posteriors for the same data set.This can be extreme. For example, if I am trying to estimate the mean of data generated by <img src="https://latex.codecogs.com/png.latex?y_i%20%5Csim%20N(%5Cmu,%201)">, then I can choose a prior<sup>14</sup> (that depends on the data) so that the posterior mean <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D(%5Cmu%20%5Cmid%20y)%20=1">. Or, to put it differently, I can get any answer I want if I choose an prior carefully (and in a data-dependent manner).</p>
+<p>But this isn’t necessarily a problem. This is because the posteriors produced by two <em>sensible</em> priors for the same problem will produce fairly similar results<sup>15</sup>. The prior I used to cheat in the previous example would not be considered sensible by anyone looking at it<sup>16</sup>.</p>
+<p>But what is a sensible prior? Can you tell if a prior is sensible or not in its particular context? Well honey, how long have you got. The thing about starting a (potential) series of blog posts is that I don’t really know how far I’m going to get, but I would really like to talk a lot about that over the next little while.</p>
+
+
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>The rest are about the night I saw Patti LuPone trying to get through the big final scene in War Paint as part of her costume loudly disintegrated.↩︎</p></li>
+<li id="fn2"><p>I’m told it’s useful to warm up sometimes because this pandemic has me ice cold.↩︎</p></li>
+<li id="fn3"><p>Sometimes.↩︎</p></li>
+<li id="fn4"><p>Except, and I cannot stress this enough, when it doesn’t.↩︎</p></li>
+<li id="fn5"><p>Please do not do this!↩︎</p></li>
+<li id="fn6"><p>Except for once in the abstract in a sentence that is in no way shape or formed backed up in the text. <a href="https://people.eecs.berkeley.edu/~jordan/courses/260-spring09/other-readings/park-casella.pdf">Park and Casella (2008)</a>↩︎</p></li>
+<li id="fn7"><p>I do know. I know a very large amount about Gaussian processes. But lord in heaven I have seen the greatest minds of my generation subtly fuck up the interpretation of GP priors. Because it’s increadibly hard. Maybe I’ll blog about it one day. Because this is in markdown so I can haz equations.↩︎</p></li>
+<li id="fn8"><p>Some reasons are excellent. Some, like the poor Bayesian Lasso, are simply misguided.↩︎</p></li>
+<li id="fn9"><p>or the same person in different contexts↩︎</p></li>
+<li id="fn10"><p>Are any two statistical problems ever <em>the same</em>?↩︎</p></li>
+<li id="fn11"><p>Yes. I have a lot of feelings about this too, but meh. A good artist can make great art with minimal equipment (see When Doves Cry), but most people are not the genius Prince was so just use good tools and stress less!↩︎</p></li>
+<li id="fn12"><p>I have written extensively about priors in the context of the Arianist heresy because of course I fucking have. <a href="https://statmodeling.stat.columbia.edu/2018/08/21/against-arianism/">Part 1</a>, <a href="https://statmodeling.stat.columbia.edu/2018/09/12/against-arianism-2-arianism-grande/">Part 2</a>, <a href="https://statmodeling.stat.columbia.edu/2019/05/24/against-arianism-3-consider-the-cognitive-models-of-the-field/">Part 3</a>. Apologies for mathematics eaten by a recent formatting change!↩︎</p></li>
+<li id="fn13"><p>Editors forced the word often into the published title and, like, who’s going to fight?↩︎</p></li>
+<li id="fn14"><p><img src="https://latex.codecogs.com/png.latex?N(2-%5Cbar%7By%7D,n%5E%7B-1%7D)">↩︎</p></li>
+<li id="fn15"><p>What does this even mean? Depends on your context really. But a working definition is that the big picture features of the posterior are similar enough that if you were to use it to make a decision, that decision doesn’t change very much.↩︎</p></li>
+<li id="fn16"><p>But omg subtle high dimensional stuff and I guess I’ll talk about that later maybe too?↩︎</p></li>
+</ol>
+</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2021,
+  author = {Dan Simpson},
+  editor = {},
+  title = {Priors: {Night} Work {(Track} 1)},
+  date = {2021-10-15},
+  url = {https://dansblog.netlify.app/priors1},
+  langid = {en}
+}
+</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2021" class="csl-entry quarto-appendix-citeas">
+Dan Simpson. 2021. <span>“Priors: Night Work (Track 1).”</span> October
+15, 2021. <a href="https://dansblog.netlify.app/priors1">https://dansblog.netlify.app/priors1</a>.
+</div></div></section></div> ]]></description>
+  <category>Prior distributions</category>
+  <category>Fundamentals</category>
+  <guid>https://dansblog.netlify.app/posts/2021-10-14-priors1/priors1.html</guid>
+  <pubDate>Thu, 14 Oct 2021 13:00:00 GMT</pubDate>
+  <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors1/perm.JPG" medium="image"/>
 </item>
 </channel>
 </rss>

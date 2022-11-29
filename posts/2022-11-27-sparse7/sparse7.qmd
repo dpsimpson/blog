@@ -14,9 +14,9 @@ format:
   html:
     df-print: paged
 jupyter: python3
-
 draft: true
-
+execute:
+  eval: false
 ---
 
 The time has come once more to resume my journey into sparse matrices. There's been a bit of a pause, mostly because I realised that I didn't know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But not the time has come. It is time for me to get on top of JAX's weird fucking loops.
@@ -243,9 +243,11 @@ def etree_base(A_indices, A_indptr):
     mark[j] = j
     for indptr in range(A_indptr[j], A_indptr[j+1]):
       node = A_indices[indptr]
-      while node < j and mark[node]!=j:
+      while node < j:
         if parent[node] == -1:
           parent[node] = j
+        if mark[node]==j:
+          break
         mark[node] = j
         col_count[node] += 1
         node = parent[node]
@@ -389,7 +391,7 @@ times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
 
-A_indices, A_indptr, A_x, A = make_matrix(200)
+A_indices, A_indptr, A_x, A = make_matrix(4)
 times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
@@ -403,9 +405,8 @@ print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
 true_col_count  = np.diff(L_indptr)
 print(all(true_col_count == col_count))
 
-print(true_col_count[:5])
-print(col_count[:5])
-
+print(true_parent)
+print(parent)
 ```
 
 And here is our JAX'd and JIT'd code.
