@@ -16,14 +16,15 @@ format:
 jupyter: python3
 draft: true
 execute:
-  eval: false
+  eval: true
+keep-ipynb: true
 ---
 
 The time has come once more to resume my journey into sparse matrices. There's been a bit of a pause, mostly because I realised that I didn't know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But not the time has come. It is time for me to get on top of JAX's weird fucking loops.
 
 And, along the way, I'm going to re-do the sparse Cholesky factorisation to make it, well, better.
 
-## Loops in JAX
+## Control flow of the damned
 
 The first an most important rule of programming with JAX is that loops will break your heart. I mean, whatever, I guess they're fine. But there's a problem. Imagine the following function
 
@@ -243,11 +244,9 @@ def etree_base(A_indices, A_indptr):
     mark[j] = j
     for indptr in range(A_indptr[j], A_indptr[j+1]):
       node = A_indices[indptr]
-      while node < j:
+      while node < j and mark[node] != j:
         if parent[node] == -1:
           parent[node] = j
-        if mark[node]==j:
-          break
         mark[node] = j
         col_count[node] += 1
         node = parent[node]
@@ -304,6 +303,7 @@ parent, col_count = etree_base(A.indices, A.indptr)
 L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
 
 true_parent = L_indices[L_indptr[:-2] + 1]
+true_parent[np.where(np.diff(L_indptr[:-1]) == 1)] = -1
 print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
 
 true_col_count  = np.diff(L_indptr)
@@ -360,11 +360,10 @@ def etree(A_indices, A_indptr):
   return parent, col_count
 ```
 
-Wow. That is _ugly_. But let's see if it works!
+Wow. That is _ugly_. But let's see^[Obviously it did not work the first time. A good way to debug JIT'd code is to use the python translations of the control flow literals. Why? Well for one thing there is an annoying tendency for JAX to fail silently when their is an out-of-bounds indexing error. Which happens, just for example, if you reolace `node = A_indices[indptr]` with `node = A_indices[A_indptr[indptr]]` because you got a text message half way through the line.] if it works!
 
 ```{python}
 parent_jax, col_count_jax = etree(A.indices, A.indptr)
-
 
 print(all(x == y for (x,y) in zip(parent_jax[:-1], true_parent)))
 print(all(true_col_count == col_count_jax))
@@ -378,8 +377,6 @@ I guess we could ask ourselves if we gained any speed.
 Here is the pure python code.
 
 ```{python}
-
-
 import timeit
 A_indices, A_indptr, A_x, A = make_matrix(20)
 
@@ -395,18 +392,6 @@ A_indices, A_indptr, A_x, A = make_matrix(4)
 times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
-
-parent, col_count= etree_base(A.indices, A.indptr)
-L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
-
-true_parent = L_indices[L_indptr[:-2] + 1]
-print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
-
-true_col_count  = np.diff(L_indptr)
-print(all(true_col_count == col_count))
-
-print(true_parent)
-print(parent)
 ```
 
 And here is our JAX'd and JIT'd code.
@@ -426,21 +411,248 @@ A_indices, A_indptr, A_x, A = make_matrix(200)
 times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
-
 parent, col_count= etree(A.indices, A.indptr)
 L_indices, L_indptr = _symbolic_factor(A_indices, A_indptr)
 
-true_parent = L_indices[L_indptr[:-2] + 1]
-print(all(x == y for (x,y) in zip(parent[:-1], true_parent)))
+A_indices, A_indptr, A_x, A = make_matrix(1000)
+times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
-true_col_count  = np.diff(L_indptr)
-print(all(true_col_count == col_count))
-
-print(true_col_count[:5])
-print(col_count[:5])
-
-print(true_parent[:5])
-print(parent[:5])
 ```
 
-You can see that there is some good speedup for large matrices, but for smaller ones we aren't getting much. It's also worth noting that the function is being recompiled every time the structure of `A` changes. The essentially consstant time for the JIT'd version strongly suggests that for this problem size most of the time is spent on bookkeeping and memory stuff. 
+You can see that there is some decent speedup. For the first three examples, the computation time is dominated by the compilation time, but we see when the matrix has a million unknowns the compilation time is negligible. At this scale it would probably be worth using the fancy algorithm. That said, it is probably not worth sweating a three second that is only done once when your problem is that big! 
+
+## The non-zero pattern of $L$
+
+Now that we know how many non-zeros there are, it's time to populate them. Last time, I used some dynammic memory allocation to make this work, but JAX is certainly not going to allow me to do that. So instead I'm going to have to do the worst thing possible: think.
+
+The way that we went about it last time was, to be honest, a bit arse-backwards. The main reason for this is that I did not have access to the elimination tree. But now we do, we can actually use it.
+
+The trick is to slightly rearrange^[We will still use the left-looking algorithm for the numerical computation. The two algorithms are equivalent in exact arithmetic and, in particular, have identical sparsity structures.] the order of operations to get something that is more convenient for working out the structure. 
+
+Recall from last time that we used the _left-looking_ Cholesky factorisation, which can be written in the dense case as 
+```{python}
+def dense_left_cholesky(A):
+  n = A.shape[0]
+  L = np.zeros_like(A)
+  for j in range(n):
+    L[j,j] = np.sqrt(A[j,j] - np.inner(L[j, :j], L[j, :j]))
+    L[(j+1):, j] = (A[(j+1):, j] - L[(j+1):, :j] @ L[j, :j].transpose()) / L[j,j]
+  return L
+
+```
+
+This is not the only way to organise those operations. An alternative is the _up-looking_ Cholesky factorisation, which can be implemented in the dense case as
+```{python}
+def dense_up_cholesky(A):
+  n = A.shape[0]
+  L = np.zeros_like(A)
+  L[0,0] = np.sqrt(A[0,0])
+  for i in range(1,n):
+    #if i > 0:
+    L[i, :i] = (np.linalg.solve(L[:i, :i], A[:i,i])).transpose()
+    L[i, i] = np.sqrt(A[i,i] - np.inner(L[i, :i], L[i, :i]))
+  return L
+
+```
+
+This is quite a different looking beast! It scans row by row rather than column by column. And while the left-looking algorithm is based on matrix-vector multiplies, the up-looking algorithm is based on triangular solves. So maybe we should pause for a moment to check that these are the same algorithm!
+
+```{python}
+A = np.random.rand(15, 15)
+A = A + A.transpose()
+A = A.transpose() @ A + 1*np.eye(15)
+
+L_left = dense_left_cholesky(A)
+L_up = dense_up_cholesky(A)
+
+print(round(sum(sum(abs((L_left - L_up)[:])))),2)
+
+```
+
+They are the same!!
+
+The reason for considering the up-looking algorithm is that it gives a slightly nicer description of the non-zeros of row `i`, which will let us find the location of the non-zeros in the whole matrix. In particular, the non-zeros to the left of the diagonal on row `i` correspond to the non-zero indices of the solution to  the lower triangular linear system^[I'm mixing 1-based indexing in the maths with 0-based in the code because I think we need more chaos in our lives.] 
+$$
+L_{1:(i-1),1:(i-1)} x^{(i)} = A_{1:i-1, i}.
+$$
+Because $A$ is sparse, this is a system of $\operatorname{nnz}(A_{1:i-1,i})$ linear equations, rather than $(i-1)$ equations that we would have in the dense case. That means that the sparsity pattern of $x^{(i)}$ will be the union of the sparsity patterns of the columns of $L_{1:(i-1),1:(i-1)}$  that correspond to the non-zero entries of $A_{1:i-1, i}$.
+
+This means two things. Firstly, if $A_{ji}\neq 0$, then $x^{(i)}_j \neq 0$. Secondly, if $x^{(i)}_j \neq 0 $ _and_ $L_{kj}\neq 0$, then $x_k \neq 0$. These two facts give us a way of finding the non-zero set of $x^{(i)}$ if we remember just one more fact: a definition of the elimination tree is that $L_{kj} \neq 0$ if $j$ is a descendent of $k$ in the elimination tree.
+
+This reduces the problem of finding the non-zero elements of $x^{(i)}$ to the problem of finding all of the descendents of $\{j: A_{ji} \neq 0\}$ in the subtree $\mathcal{T}_{i-1}$. And if there is one thing that people who are ok at programming are _excellent_ at it is walking down a damn tree.
+
+So let's do that. Well, I've already done it. In fact, that was how I found the column counts in the first place! With this interpretation, the outer loop is taking us across the rows. And once I am in row `j`^[Yes. I know. I'm swapping the meaning of $i$ and $j$ but you know that's because in a symmetric matrix rows and columns are a bit similar. The upper half of column $$ is the left half of row $j$ after all.], I then find a starting node `node` (which is a non-zero in $A_{1:(i-1),i}$) and I walk along that node checking each time if I've actually seen that node^[If `mark[node]==j` then I have already found `node` and all of its anscestors in my sweep of row `j`] before. If I haven't seen it before, I added one to the column count of column `node`^[This is because `L[j,node] != 0` by our logic.]. 
+
+To allocate the non-zero structure, I just need to replace that counter increment with an assignment.
+
+We will do the pure python version first.
+```{python}
+def symbolic_cholesky_base(A_indices, A_indptr, parent, col_count):
+  n = len(A_indptr) - 1
+  col_ptr = np.repeat(1, n+1)
+  col_ptr[1:] += np.cumsum(col_count) 
+  L_indices = np.zeros(sum(col_count), dtype=int)
+  L_indptr = np.zeros(n+1, dtype=int)
+  L_indptr[1:] = np.cumsum(col_count)
+  mark = [-1] * n
+
+  for i in range(n):
+    mark[i] = i
+    L_indices[L_indptr[i]] = i
+
+    for indptr in range(A_indptr[i], A_indptr[i+1]):
+      node = A_indices[indptr]
+      while node < i and mark[node] != i:
+        mark[node] = i
+        L_indices[col_ptr[node]] = i
+        col_ptr[node] += 1
+        node = parent[node]
+  
+  return (L_indices, L_indptr)
+
+```
+
+Does it work?
+
+```{python}
+A_indices, A_indptr, A_x, A = make_matrix(157)
+parent, col_count = etree_base(A.indices, A.indptr)
+
+L_indices, L_indptr = symbolic_cholesky_base(A.indices, A.indptr, parent, col_count)
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+
+print(all(x==y for (x,y) in zip(L_indices, L_indices_true)))
+print(all(x==y for (x,y) in zip(L_indptr, L_indptr_true)))
+
+```
+
+Fabulosa!
+
+Now let's do the compiled version.
+
+```{python}
+from functools import partial
+@partial(jit, static_argnums = (4,))
+def symbolic_cholesky(A_indices, A_indptr, L_indptr, parent, nnz = L_indptr[-1]):
+  
+  ## innermost while loop
+  def body_while(val):
+    print("compile while")
+  #  print(val)
+    i, L_indices, L_indptr, node, parent, col_ptr, mark = val
+    mark = mark.at[node].set(i)
+    #p = 
+    L_indices = L_indices.at[col_ptr[node]].set(i)
+    col_ptr = col_ptr.at[node].add(1)
+    return (i, L_indices, L_indptr, parent[node], parent, col_ptr, mark)
+
+  def cond_while(val):
+    i, L_indices, L_indptr, node, parent, col_ptr, mark = val
+    return lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))
+
+  ## Inner for loop
+  def body_inner_for(indptr, val):
+    print("compile inner for")
+    i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark = val
+    node = A_indices[indptr]
+    i, L_indices, L_indptr, node, parent, col_ptr, mark = lax.while_loop(cond_while, body_while, (i, L_indices, L_indptr, node, parent, col_ptr, mark))
+    return (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)
+  
+  ## Outer for loop
+  def body_out_for(i, val):
+     print("compile outer for")
+     A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark = val
+     mark = mark.at[i].set(i)
+     L_indices = L_indices.at[L_indptr[i]].set(i)
+     i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark = lax.fori_loop(A_indptr[i], A_indptr[i+1], body_inner_for, (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark))
+     return (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)
+
+  ## Body of code
+  n = len(A_indptr) - 1
+  col_ptr = L_indptr + 1
+  L_indices = jnp.zeros(nnz, dtype=int)
+  
+  mark = jnp.repeat(-1, n)
+  
+  init = (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)
+  A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark = lax.fori_loop(0, n, body_out_for, init)
+  return L_indices
+```
+
+Now let's check it works
+
+```{python}
+import jax 
+parent, col_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+
+
+L_indices = symbolic_cholesky(A_indices, A_indptr, L_indptr, parent, nnz = L_indptr[-1])
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+
+print(all(x==y for (x,y) in zip(L_indices, L_indices_true)))
+print(all(x==y for (x,y) in zip(L_indptr, L_indptr_true)))
+
+print(jax.make_jaxpr(partial(symbolic_cholesky,A.indices, A.indptr, parent, col_count))())
+```
+
+Success!
+
+I guess we could ask ourselves if we gained any speed.
+
+Here is the pure python code.
+
+```{python}
+#| eval: false
+import timeit
+A_indices, A_indptr, A_x, A = make_matrix(20)
+parent, col_count = etree_base(A.indices, A.indptr)
+times = timeit.repeat(lambda: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+parent, col_count = etree_base(A.indices, A.indptr)
+times = timeit.repeat(lambda: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+parent, col_count = etree_base(A.indices, A.indptr)
+times = timeit.repeat(lambda: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+```
+
+And here is our JAX'd and JIT'd code.
+
+```{python}
+#| eval: false
+
+A_indices, A_indptr, A_x, A = make_matrix(20)
+parent, col_count = etree(A.indices, A.indptr)
+
+
+times = timeit.repeat(lambda: symbolic_cholesky(A.indices, A.indptr, parent, col_count),number = 1, repeat = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+parent, col_count = etree(A.indices, A.indptr)
+times = timeit.repeat(lambda: symbolic_cholesky(A.indices, A.indptr, parent, col_count),number = 1, repeat = 1)
+
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+parent, col_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+
+times = timeit.repeat(lambda: symbolic_cholesky(A_indices, A_indptr, L_indptr, parent, L_indptr[-1]),number = 1, repeat=1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(1000)
+times = timeit.repeat(lambda: etree(A.indices, A.indptr),number = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+```
+
