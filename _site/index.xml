@@ -15,7 +15,7 @@
 <link>https://dansblog.netlify.app/index.html</link>
 </image>
 <generator>quarto-1.2.15</generator>
-<lastBuildDate>Tue, 22 Nov 2022 13:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 22 Nov 2022 16:00:00 GMT</lastBuildDate>
 <item>
   <title>MCMC with the wrong acceptance probability</title>
   <dc:creator>Dan Simpson</dc:creator>
@@ -166,7 +166,7 @@ Probability.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/
   <category>MCMC</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</guid>
-  <pubDate>Tue, 22 Nov 2022 13:00:00 GMT</pubDate>
+  <pubDate>Tue, 22 Nov 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -365,7 +365,7 @@ For.”</span> November 15, 2022. <a href="https://dansblog.netlify.app/posts/20
   <category>MRP</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/robins-ritov.html</guid>
-  <pubDate>Mon, 14 Nov 2022 13:00:00 GMT</pubDate>
+  <pubDate>Mon, 14 Nov 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/misandrists.JPG" medium="image"/>
 </item>
 <item>
@@ -1264,7 +1264,7 @@ Process.”</span> September 27, 2022. <a href="https://dansblog.netlify.app/pos
   <category>Gaussian Processes</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html</guid>
-  <pubDate>Mon, 26 Sep 2022 14:00:00 GMT</pubDate>
+  <pubDate>Mon, 26 Sep 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-07-priors5/chair.JPG" medium="image"/>
 </item>
 <item>
@@ -2094,7 +2094,7 @@ September 6, 2022. <a href="https://dansblog.netlify.app/2022-09-04-everybodys-g
   <category>Prior distributions</category>
   <category>fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html</guid>
-  <pubDate>Mon, 05 Sep 2022 14:00:00 GMT</pubDate>
+  <pubDate>Mon, 05 Sep 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png" medium="image" type="image/png" height="81" width="144"/>
 </item>
 <item>
@@ -2414,7 +2414,7 @@ Appropriately Penalise Complexity.”</span> September 3, 2022. <a href="https:/
   <category>fundamentals</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-08-29-priors4/priors4.html</guid>
-  <pubDate>Fri, 02 Sep 2022 14:00:00 GMT</pubDate>
+  <pubDate>Fri, 02 Sep 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-08-29-priors4/tina.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -2742,7 +2742,7 @@ Etimators: A Bit of Theory.”</span> June 15, 2022. <a href="https://dansblog.n
   <category>Pareto smoothed importance sampling</category>
   <category>PSIS</category>
   <guid>https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/that-psis-proof.html</guid>
-  <pubDate>Tue, 14 Jun 2022 14:00:00 GMT</pubDate>
+  <pubDate>Tue, 14 Jun 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/judy.JPG" medium="image"/>
 </item>
 <item>
@@ -3770,7 +3770,7 @@ First You’ve Got to Think Like a Derivative.”</span> May 30, 2022. <a href="
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html</guid>
-  <pubDate>Sun, 29 May 2022 14:00:00 GMT</pubDate>
+  <pubDate>Sun, 29 May 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/sob.JPG" medium="image"/>
 </item>
 <item>
@@ -4099,7 +4099,7 @@ May 20, 2022. <a href="https://dansblog.netlify.app/2022-05-18-sparse4-some-prim
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html</guid>
-  <pubDate>Thu, 19 May 2022 14:00:00 GMT</pubDate>
+  <pubDate>Thu, 19 May 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/nancy.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -4237,7 +4237,7 @@ Passion.”</span> May 16, 2022. <a href="https://dansblog.netlify.app/2022-05-1
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html</guid>
-  <pubDate>Sun, 15 May 2022 14:00:00 GMT</pubDate>
+  <pubDate>Sun, 15 May 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/scrod.JPG" medium="image"/>
 </item>
 <item>
@@ -4542,7 +4542,7 @@ Dan Simpson. 2022. <span>“Sparse Matrices 3: Failing at JAX.”</span> May
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html</guid>
-  <pubDate>Fri, 13 May 2022 14:00:00 GMT</pubDate>
+  <pubDate>Fri, 13 May 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/alien.JPG" medium="image"/>
 </item>
 <item>
@@ -4986,7 +4986,7 @@ Cholesky Factorisation.”</span> March 31, 2022. <a href="https://dansblog.netl
   <category>Sparse Cholesky factorisation</category>
   <category>Python</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html</guid>
-  <pubDate>Wed, 30 Mar 2022 13:00:00 GMT</pubDate>
+  <pubDate>Wed, 30 Mar 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/tori.JPG" medium="image"/>
 </item>
 <item>
@@ -5226,7 +5226,7 @@ Linear Mixed Effects Models and Their Generalisations.”</span> March 22,
   <category>Sparse matrices</category>
   <category>Linear mixed models</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html</guid>
-  <pubDate>Mon, 21 Mar 2022 13:00:00 GMT</pubDate>
+  <pubDate>Mon, 21 Mar 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/patti.JPG" medium="image"/>
 </item>
 <item>
@@ -5411,7 +5411,7 @@ Alike Contest (Repost).”</span> January 26, 2022. <a href="https://dansblog.ne
   <category>Computation</category>
   <category>Assessing algorithms</category>
   <guid>https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html</guid>
-  <pubDate>Tue, 25 Jan 2022 13:00:00 GMT</pubDate>
+  <pubDate>Tue, 25 Jan 2022 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/yetta.JPG" medium="image"/>
 </item>
 <item>
@@ -5592,7 +5592,7 @@ Dan Simpson, and Dan Simpson. 2021. <span>“Why Won’t You Cheat with Me?
   <category>Fundamentals</category>
   <category>Design dependence</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html</guid>
-  <pubDate>Wed, 08 Dec 2021 13:00:00 GMT</pubDate>
+  <pubDate>Wed, 08 Dec 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" medium="image"/>
 </item>
 <item>
@@ -5728,7 +5728,7 @@ Dan Simpson, and Dan Simpson. 2021. <span>“The King Must Die
   <category>Theory</category>
   <category>Things that don't work</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html</guid>
-  <pubDate>Tue, 07 Dec 2021 13:00:00 GMT</pubDate>
+  <pubDate>Tue, 07 Dec 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -6056,7 +6056,7 @@ When You Approximate a Gaussian Process.”</span> November 24, 2021. <a href="h
   <category>Fundamentals</category>
   <category>Theory</category>
   <guid>https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html</guid>
-  <pubDate>Tue, 23 Nov 2021 13:00:00 GMT</pubDate>
+  <pubDate>Tue, 23 Nov 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/pika.JPG" medium="image"/>
 </item>
 <item>
@@ -6392,7 +6392,7 @@ November 3, 2021. <a href="https://dansblog.netlify.app/yes-but-what-is-a-gaussi
   <category>Theory</category>
   <category>Deep dive</category>
   <guid>https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html</guid>
-  <pubDate>Tue, 02 Nov 2021 13:00:00 GMT</pubDate>
+  <pubDate>Tue, 02 Nov 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/beaches.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -6491,7 +6491,7 @@ October 17, 2021. <a href="https://dansblog.netlify.app/priors3">https://dansblo
   <category>Prior distributions</category>
   <category>Fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2021-10-15-priors3/priors3.html</guid>
-  <pubDate>Sat, 16 Oct 2021 13:00:00 GMT</pubDate>
+  <pubDate>Sat, 16 Oct 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-15-priors3/strictly.JPG" medium="image"/>
 </item>
 <item>
@@ -6602,7 +6602,7 @@ October 16, 2021. <a href="https://dansblog.netlify.app/priors2">https://dansblo
   <category>Prior distributions</category>
   <category>Fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2021-10-14-priors2/priors2.html</guid>
-  <pubDate>Fri, 15 Oct 2021 13:00:00 GMT</pubDate>
+  <pubDate>Fri, 15 Oct 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors2/nun.JPG" medium="image"/>
 </item>
 <item>
@@ -6707,7 +6707,7 @@ Dan Simpson. 2021. <span>“Priors: Night Work (Track 1).”</span> October
   <category>Prior distributions</category>
   <category>Fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2021-10-14-priors1/priors1.html</guid>
-  <pubDate>Thu, 14 Oct 2021 13:00:00 GMT</pubDate>
+  <pubDate>Thu, 14 Oct 2021 16:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors1/perm.JPG" medium="image"/>
 </item>
 </channel>
