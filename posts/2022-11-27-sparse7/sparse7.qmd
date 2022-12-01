@@ -67,7 +67,7 @@ So the first rule of JAX is to avoid for loops. But if you can't do that, there 
 Of those three, the first and third work mostly as you'd expect, while the second is a bit more hairy. The `while` function is roughly equivalent to 
 ```{python}
 #| eval: false
-
+`
 def jax_lax_while_loop(cond_func, body_func, init):
   x  = init
   while cond_func(x):
@@ -393,7 +393,7 @@ times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
 
-A_indices, A_indptr, A_x, A = make_matrix(4)
+A_indices, A_indptr, A_x, A = make_matrix(200)
 times = timeit.repeat(lambda: etree_base(A.indices, A.indptr),number = 1)
 print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
@@ -427,7 +427,7 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
 You can see that there is some decent speedup. For the first three examples, the computation time is dominated by the compilation time, but we see when the matrix has a million unknowns the compilation time is negligible. At this scale it would probably be worth using the fancy algorithm. That said, it is probably not worth sweating a three second that is only done once when your problem is that big! 
 
-## The non-zero pattern of $L$
+### The non-zero pattern of $L$
 
 Now that we know how many non-zeros there are, it's time to populate them. Last time, I used some dynammic memory allocation to make this work, but JAX is certainly not going to allow me to do that. So instead I'm going to have to do the worst thing possible: think.
 
@@ -490,6 +490,8 @@ This reduces the problem of finding the non-zero elements of $x^{(i)}$ to the pr
 So let's do that. Well, I've already done it. In fact, that was how I found the column counts in the first place! With this interpretation, the outer loop is taking us across the rows. And once I am in row `j`^[Yes. I know. I'm swapping the meaning of $i$ and $j$ but you know that's because in a symmetric matrix rows and columns are a bit similar. The upper half of column $$ is the left half of row $j$ after all.], I then find a starting node `node` (which is a non-zero in $A_{1:(i-1),i}$) and I walk along that node checking each time if I've actually seen that node^[If `mark[node]==j` then I have already found `node` and all of its anscestors in my sweep of row `j`] before. If I haven't seen it before, I added one to the column count of column `node`^[This is because `L[j,node] != 0` by our logic.]. 
 
 To allocate the non-zero structure, I just need to replace that counter increment with an assignment.
+
+### Attempt 1: Lord that's slow
 
 We will do the pure python version first.
 ```{python}
@@ -614,6 +616,7 @@ Success!
 One _minor_ problem. This is slow. as. balls.
 
 ```{python}
+#| eval: true
 A_indices, A_indptr, A_x, A = make_matrix(50)
 parent, col_count = etree_base(A.indices, A.indptr)
 times = timeit.repeat(lambda: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number = 1)
@@ -629,6 +632,7 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 And here is our JAX'd and JIT'd code.
 
 ```{python}
+#| eval: true
 A_indices, A_indptr, A_x, A = make_matrix(50)
 parent, col_count = etree(A.indices, A.indptr)
 L_indptr = np.zeros(A.shape[0]+1, dtype=int)
@@ -647,10 +651,13 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 
 Oooof. Something is going horribly wrong.
 
+### Why is it so slow?
+
 The first thing to check is if it's the compile time. We can do this by explictly _lowering_ the the JIT'd function to its XLA representation and then compiling it.
 
 
 ```{python}
+#| eval: true
 A_indices, A_indptr, A_x, A = make_matrix(50)
 parent, col_count = etree(A.indices, A.indptr)
 L_indptr = np.zeros(A.shape[0]+1, dtype=int)
@@ -742,6 +749,8 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 That isn't conclusive, but it does indicate that this might^[I mean, I'm pretty sure it is. I'm writing this post in order, so I don't know yet. But surely the compiler can't reason about the possible values of `node`, which would be the only thing that would speed this up.] be the problem. 
 
 And this is a _big_ problem for us! The sparse Cholesky algorithm has similar amounts of indirection. So we need to fix it.
+
+### Attempt 2: After some careful thought, things stayed the same
 
 Now. I want to pretend that I've got elegant ideas about this. But I don't. So let's just do it. The most obvious thing to do is to use the algorithm to get the non-zero structure of the _rows_ of $L$. These are the things that are being indexed by `col_ptr[node]]`, so if we have these explicitly we don't need multiple indirection. We also don't need a while loop.
 
@@ -927,7 +936,7 @@ def symbolic_cholesky2(A_indices, A_indptr, L_indptr, row_count, parent, nnz, ma
   return L_indices
 ```
 
-Ok. Let's see if that helped.
+Ok. Let's see if that worked.
 
 ```{python}
 A_indices, A_indptr, A_x, A = make_matrix(20)
@@ -956,6 +965,7 @@ print(all(L_indptr == L_indptr_true))
 Ok. Once more into the breach. Is this any better?
 
 ```{python}
+#| eval: true
 A_indices, A_indptr, A_x, A = make_matrix(50)
 parent, col_count, row_count = etree(A.indices, A.indptr)
 L_indptr = np.zeros(A.shape[0]+1, dtype=int)
@@ -979,3 +989,305 @@ print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
 ```
 
 Fuck. 
+
+### Attempt 3: A desperate attempt to make this
+
+Right. Let's try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO^[COO stands for _coordinate list_ and it's the least space-efficient of our options. It directly stores 3 length `n` vectors `(row, col, value)`. It's great for specifying matrices and it's pretty easy to convert from this format to any of the others.] format. The `jax.experimental.sparse` module has support for (blocked) COO objects but doesn't implement this transformation. `scipy.sparse` has a fast conversion routine so I'm going to use it. In the interest of being 100% JAX, I tried a version with `jnp.lexsort`^[`index[1][jnp.lexsort((index[1], index[0]))]`], which basically does the same thing but it's a lot slower.
+
+```{python}
+def symbolic_cholesky3(A_indices, A_indptr, L_indptr, parent, nnz):
+  @partial(jit, static_argnums = (4,))
+  def _inner(A_indices_, A_indptr_, L_indptr, parent, nnz):
+    ## Make everything a jnp array. Really should use jaxtyping
+    A_indices_ = jnp.array(A_indices_)
+    A_indptr_ = jnp.array(A_indptr_)
+    L_indptr = jnp.array(L_indptr)
+    parent = jnp.array(parent)
+
+    ## innermost while loop
+    def body_while(val):
+      index, i, counter,  node,  mark = val
+      mark = mark.at[node].set(i)
+      index[0] = index[0].at[counter].set(node) #column
+      index[1] = index[1].at[counter].set(i) # row
+      return (index, i, counter + 1, parent[node], mark)
+
+    def cond_while(val):
+      index, i, counter,  node,  mark = val
+      return lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))
+
+    ## Inner for loop
+    def body_inner_for(indptr, val):
+      index, i, counter, mark = val
+      node = A_indices_[indptr]
+      
+      index, i, counter,  node,  mark = lax.while_loop(cond_while, body_while, (index, i, counter,  node,  mark))
+      return (index, i, counter,  mark)
+    
+    ## Outer for loop
+    def body_out_for(i, val):
+      index, counter,  mark = val
+      mark = mark.at[i].set(i)
+      index[0] = index[0].at[counter].set(i)
+      index[1] = index[1].at[counter].set(i)
+      counter = counter + 1
+      index, i, counter, mark = lax.fori_loop(A_indptr_[i], A_indptr_[i+1], body_inner_for, (index, i, counter,  mark))
+
+      return (index, counter,  mark)
+
+    ## Body of code
+    n = len(A_indptr_) - 1
+    mark = jnp.repeat(-1, n)
+
+    index = [jnp.zeros(nnz, dtype=int), jnp.zeros(nnz, dtype=int)]
+    counter = 0
+
+    init = (index, counter, mark)
+    index, counter, mark = lax.fori_loop(0, n, body_out_for, init)
+    
+    return index
+  n = len(A_indptr) - 1
+  index = _inner(A_indices, A_indptr, L_indptr, parent, nnz)
+  return sparse.coo_array((np.ones(nnz), (index[1], index[0])), shape = (n,n)).tocsc().indices
+
+```
+
+First things first, let's check how fast this is.
+
+```{python}
+A_indices, A_indptr, A_x, A = make_matrix(15)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+L_indices = symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1]))
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+print(all(L_indices == L_indices_true))
+print(all(L_indptr == L_indptr_true))
+
+A_indices, A_indptr, A_x, A = make_matrix(31)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+L_indices = symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1]))
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+print(all(L_indices == L_indices_true))
+print(all(L_indptr == L_indptr_true))
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1])),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1])),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(300)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1])),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(1000)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz = int(L_indptr[-1])),number = 1, repeat = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+```
+
+You know what? I'll take it.
+
+## The numerical factorisation
+
+Finally we have made it here!
+
+
+
+<!-- Let's discover how fast `jnp.lexsort` is!
+
+
+```{python}
+#| echo: false
+#| eval: false
+@partial(jit, static_argnums = (5, 6))
+def symbolic_cholesky3(A_indices_, A_indptr_, L_indptr, row_count, parent, nnz, max_row):
+  print("compiling symb3")
+
+  ## innermost while loop
+  def body_while(val):
+    which_col, which_row, i, counter,  node, col_ptr, mark = val
+    #print(f"{counter}: ({node}-> {parent[node]}), {i} , {type(node)} & {cond_while(val)}")
+    mark = mark.at[node].set(i)
+    which_row = which_row.at[counter].set(node.copy())
+    which_col = which_col.at[counter].set(i)
+    col_ptr = col_ptr.at[node].add(1)
+    inext = parent[node]
+    return (which_col, which_row, i, counter + 1, inext, col_ptr, mark)
+
+  def cond_while(val):
+    which_col, which_row, i, counter,  node, col_ptr, mark = val
+    return lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))
+
+  ## Inner for loop
+  def body_inner_for(indptr, val):
+     which_col, which_row, i, counter, col_ptr, mark = val
+     node = A_indices_[indptr]
+     
+     which_col, which_row, i, counter,  node, col_ptr, mark = lax.while_loop(cond_while, body_while, (which_col, which_row, i, counter,  node, col_ptr, mark))
+     return (which_col, which_row, i, counter, col_ptr, mark)
+  
+  ## Outer for loop
+  def body_out_for(i, val):
+     which_col, which_row, counter, L_indices, col_ptr, mark = val
+     mark = mark.at[i].set(i)
+     which_row = which_row.at[counter].set(i)
+     which_col = which_col.at[counter].set(i)
+     counter = counter+1
+
+     which_col, which_row, i, counter, col_ptr, mark = lax.fori_loop(A_indptr_[i], A_indptr_[i+1], body_inner_for, (which_col, which_row, i, counter, col_ptr, mark))
+
+     return (which_col, which_row, counter, L_indices, col_ptr, mark)
+
+  ## Body of code
+  n = len(A_indptr_) - 1
+
+  col_ptr = jnp.array(L_indptr + 1)
+  L_indices = jnp.ones(nnz, dtype=int) * (-1)
+  mark = jnp.repeat(-1, n)
+
+  ## Make everything a jnp array. Really should use jaxtyping
+  A_indices_ = jnp.array(A_indices_)
+  A_indptr_ = jnp.array(A_indptr_)
+  L_indptr = jnp.array(L_indptr)
+  row_count = jnp.array(row_count)
+  parent = jnp.array(parent)
+
+  which_col = jnp.ones(nnz, dtype=int) *(-1)
+  which_row = jnp.ones(nnz, dtype=int)* (-1)
+  counter = 0
+
+  init = (which_col, which_row, counter, L_indices, col_ptr, mark)
+  which_col, which_row, counter, L_indices, col_ptr, mark = lax.fori_loop(0, n, body_out_for, init)
+  return (which_col[jnp.lexsort((which_col, which_row))], counter, which_col, which_row)
+  
+```
+
+
+```{python}
+#| echo: false
+#| eval: false
+A_indices, A_indptr, A_x, A = make_matrix(15)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+L_indices, counter, which_col, which_row = symbolic_cholesky3(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count)))
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+print(all(L_indices == L_indices_true))
+print(all(L_indptr == L_indptr_true))
+
+A_indices, A_indptr, A_x, A = make_matrix(31)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+L_indices, counter, which_col, which_row = symbolic_cholesky3(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count)))
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+print(all(L_indices == L_indices_true))
+print(all(L_indptr == L_indptr_true))
+
+```
+
+
+```{python}
+#| echo: false
+#| eval: false
+A_indices, A_indptr, A_x, A = make_matrix(50)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda:symbolic_cholesky3(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(200)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda:symbolic_cholesky3(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+A_indices, A_indptr, A_x, A = make_matrix(300)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda:symbolic_cholesky3(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 5)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+```
+
+
+Well thank Christ for that. I mean, it's not perfect but I've definitely seen worse! A quick compare with the pure python implementation suggests that we are doing ok.
+
+
+```{python}
+#| echo: false
+#} eval: false
+def symbolic_cholesky3_base(A_indices, A_indptr, L_indptr, row_count, parent, nnz):
+
+  n = len(A_indptr) - 1
+  col_ptr = L_indptr + 1
+  L_indices = np.zeros(L_indptr[-1], dtype=int)
+  mark = [-1] * n
+  which_col = np.zeros(nnz, dtype=int)
+  which_row = np.zeros(nnz, dtype=int)
+  counter = 0
+
+  for i in range(n):
+    mark[i] = i
+    which_col[counter] = i
+    which_row[counter] = i 
+    counter = counter + 1
+    
+    for indptr in range(A_indptr[i], A_indptr[i+1]):
+      node = A_indices[indptr]
+      while node < i and mark[node] != i:
+        mark[node] = i
+        which_row[counter] = node
+        which_col[counter] = i
+        counter = counter + 1
+        node = parent[node]
+  
+  return which_col[np.array(np.lexsort((which_col, which_row)))]
+
+
+A_indices, A_indptr, A_x, A = make_matrix(13)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+
+
+L_indices = symbolic_cholesky3_base(A.indices, A.indptr, L_indptr, row_count, parent, L_indptr[-1])
+L_indices_true, L_indptr_true = _symbolic_factor(A_indices, A_indptr)
+
+print(all(x==y for (x,y) in zip(L_indices, L_indices_true)))
+print(all(x==y for (x,y) in zip(L_indptr, L_indptr_true)))
+
+A_indices, A_indptr, A_x, A = make_matrix(50)
+parent, col_count, row_count = etree(A.indices, A.indptr)
+L_indptr = np.zeros(A.shape[0]+1, dtype=int)
+L_indptr[1:] = np.cumsum(col_count)
+times = timeit.repeat(lambda:symbolic_cholesky3_base(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1])),number = 1, repeat = 1)
+print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")
+
+```
+
+Ok. So that works well enough. I'm not thrilled^[It's still much slower than pure python.] with it, but it at least solves the problem and does not have catastrophic scaling. 
+
+That said, I was talking to Junpeng and he suggested I try an `jnp.where` rather than all of those damn `.at`s. So let's see how that compares. Writing this blog, as I do, sequentially, I have suspicions^[Junpeng is a professional JAX-er. I'm unemployed. We are not the same.]. I've might have wasted^[I'm on a flight from Melbourne to New York right now so I promise you there is nothing better that I could be doing. I'm also drinking.] my time.
+
+
+**do this later** -->

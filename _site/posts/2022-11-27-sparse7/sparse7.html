@@ -233,8 +233,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <li><a href="#building-a-jax-traceable-sparse-choleksy-factorisation" id="toc-building-a-jax-traceable-sparse-choleksy-factorisation" class="nav-link" data-scroll-target="#building-a-jax-traceable-sparse-choleksy-factorisation">Building a JAX-traceable sparse Choleksy factorisation</a>
   <ul class="collapse">
   <li><a href="#building-the-expression-graph" id="toc-building-the-expression-graph" class="nav-link" data-scroll-target="#building-the-expression-graph">Building the expression graph</a></li>
-  </ul></li>
   <li><a href="#the-non-zero-pattern-of-l" id="toc-the-non-zero-pattern-of-l" class="nav-link" data-scroll-target="#the-non-zero-pattern-of-l">The non-zero pattern of <span class="math inline">\(L\)</span></a></li>
+  <li><a href="#attempt-1-lord-thats-slow" id="toc-attempt-1-lord-thats-slow" class="nav-link" data-scroll-target="#attempt-1-lord-thats-slow">Attempt 1: Lord that’s slow</a></li>
+  <li><a href="#why-is-it-so-slow" id="toc-why-is-it-so-slow" class="nav-link" data-scroll-target="#why-is-it-so-slow">Why is it so slow?</a></li>
+  <li><a href="#attempt-2-after-some-careful-thought-things-stayed-the-same" id="toc-attempt-2-after-some-careful-thought-things-stayed-the-same" class="nav-link" data-scroll-target="#attempt-2-after-some-careful-thought-things-stayed-the-same">Attempt 2: After some careful thought, things stayed the same</a></li>
+  <li><a href="#attempt-3-a-desperate-attempt-to-make-this" id="toc-attempt-3-a-desperate-attempt-to-make-this" class="nav-link" data-scroll-target="#attempt-3-a-desperate-attempt-to-make-this">Attempt 3: A desperate attempt to make this</a></li>
+  </ul></li>
+  <li><a href="#the-numerical-factorisation" id="toc-the-numerical-factorisation" class="nav-link" data-scroll-target="#the-numerical-factorisation">The numerical factorisation</a></li>
   </ul>
 </nav>
 </nav>
@@ -281,11 +286,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </ol>
 <p>Of those three, the first and third work mostly as you’d expect, while the second is a bit more hairy. The <code>while</code> function is roughly equivalent to</p>
 <div class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1"></a><span class="kw">def</span> jax_lax_while_loop(cond_func, body_func, init):</span>
-<span id="cb3-2"><a href="#cb3-2"></a>  x  <span class="op">=</span> init</span>
-<span id="cb3-3"><a href="#cb3-3"></a>  <span class="cf">while</span> cond_func(x):</span>
-<span id="cb3-4"><a href="#cb3-4"></a>    x <span class="op">=</span> body_func(x)</span>
-<span id="cb3-5"><a href="#cb3-5"></a>  <span class="cf">return</span> x</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1"></a>`</span>
+<span id="cb3-2"><a href="#cb3-2"></a><span class="kw">def</span> jax_lax_while_loop(cond_func, body_func, init):</span>
+<span id="cb3-3"><a href="#cb3-3"></a>  x  <span class="op">=</span> init</span>
+<span id="cb3-4"><a href="#cb3-4"></a>  <span class="cf">while</span> cond_func(x):</span>
+<span id="cb3-5"><a href="#cb3-5"></a>    x <span class="op">=</span> body_func(x)</span>
+<span id="cb3-6"><a href="#cb3-6"></a>  <span class="cf">return</span> x</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>So basically it’s just a while loop. The thing that’s important is that it compiles down to a single XLA operation<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a> instead of some unrolled mess.</p>
 <p>One thing that is important to realise is that while loops are only forwards-mode differentiable, which means that it is <em>very</em> expensive<a href="#fn5" class="footnote-ref" id="fnref5" role="doc-noteref"><sup>5</sup></a> to compute gradients. The reason for this is that we simply do not know how long that loop actually is and so it’s impossible to build a fixed-size expression graph.</p>
@@ -353,7 +359,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <div class="cell-output cell-output-error">
 <pre><code>ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: Traced&lt;ShapedArray(int32[], weak_type=True)&gt;with&lt;DynamicJaxprTrace(level=0/1)&gt;
 When jit-compiling jnp.repeat, the total number of repeats must be static. To fix this, either specify a static value for `repeats`, or pass a static value to `total_repeat_length`.
-The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_9294/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
+The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_14196/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
 
 See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError</code></pre>
 </div>
@@ -581,87 +587,90 @@ True</code></pre>
 <span id="cb26-9"><a href="#cb26-9"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
 <span id="cb26-10"><a href="#cb26-10"></a></span>
 <span id="cb26-11"><a href="#cb26-11"></a></span>
-<span id="cb26-12"><a href="#cb26-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">4</span>)</span>
+<span id="cb26-12"><a href="#cb26-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
 <span id="cb26-13"><a href="#cb26-13"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree_base(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb26-14"><a href="#cb26-14"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>n = 400: [0.0, 0.0, 0.0, 0.0, 0.0]
-n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]
-n = 16: [0.0, 0.0, 0.0, 0.0, 0.0]</code></pre>
+n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 40000: [0.86, 0.86, 0.84, 0.84, 0.83]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
 <div class="cell" data-execution_count="19">
-<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
-<span id="cb28-2"><a href="#cb28-2"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb28-3"><a href="#cb28-3"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb28-4"><a href="#cb28-4"></a></span>
-<span id="cb28-5"><a href="#cb28-5"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb28-6"><a href="#cb28-6"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb28-7"><a href="#cb28-7"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb28-8"><a href="#cb28-8"></a></span>
-<span id="cb28-9"><a href="#cb28-9"></a></span>
-<span id="cb28-10"><a href="#cb28-10"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb28-11"><a href="#cb28-11"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb28-12"><a href="#cb28-12"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb28-13"><a href="#cb28-13"></a></span>
-<span id="cb28-14"><a href="#cb28-14"></a>parent, col_count<span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb28-15"><a href="#cb28-15"></a>L_indices, L_indptr <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb28-16"><a href="#cb28-16"></a></span>
-<span id="cb28-17"><a href="#cb28-17"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">1000</span>)</span>
-<span id="cb28-18"><a href="#cb28-18"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb28-19"><a href="#cb28-19"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
+<span id="cb29-2"><a href="#cb29-2"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb29-3"><a href="#cb29-3"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb29-4"><a href="#cb29-4"></a></span>
+<span id="cb29-5"><a href="#cb29-5"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb29-6"><a href="#cb29-6"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb29-7"><a href="#cb29-7"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb29-8"><a href="#cb29-8"></a></span>
+<span id="cb29-9"><a href="#cb29-9"></a></span>
+<span id="cb29-10"><a href="#cb29-10"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb29-11"><a href="#cb29-11"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb29-12"><a href="#cb29-12"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb29-13"><a href="#cb29-13"></a></span>
+<span id="cb29-14"><a href="#cb29-14"></a>parent, col_count<span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb29-15"><a href="#cb29-15"></a>L_indices, L_indptr <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb29-16"><a href="#cb29-16"></a></span>
+<span id="cb29-17"><a href="#cb29-17"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">1000</span>)</span>
+<span id="cb29-18"><a href="#cb29-18"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb29-19"><a href="#cb29-19"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 400: [0.13, 0.0, 0.0, 0.0, 0.0]
-n = 2500: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
+<pre><code>n = 400: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 2500: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code>n = 40000: [0.14, 0.02, 0.02, 0.02, 0.02]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 1000000: [2.32, 2.17, 2.17, 2.14, 2.13]</code></pre>
+<pre><code>n = 1000000: [2.31, 2.11, 2.11, 2.11, 2.11]</code></pre>
 </div>
 </div>
 <p>You can see that there is some decent speedup. For the first three examples, the computation time is dominated by the compilation time, but we see when the matrix has a million unknowns the compilation time is negligible. At this scale it would probably be worth using the fancy algorithm. That said, it is probably not worth sweating a three second that is only done once when your problem is that big!</p>
 </section>
-</section>
-<section id="the-non-zero-pattern-of-l" class="level2">
-<h2 class="anchored" data-anchor-id="the-non-zero-pattern-of-l">The non-zero pattern of <span class="math inline">\(L\)</span></h2>
+<section id="the-non-zero-pattern-of-l" class="level3">
+<h3 class="anchored" data-anchor-id="the-non-zero-pattern-of-l">The non-zero pattern of <span class="math inline">\(L\)</span></h3>
 <p>Now that we know how many non-zeros there are, it’s time to populate them. Last time, I used some dynammic memory allocation to make this work, but JAX is certainly not going to allow me to do that. So instead I’m going to have to do the worst thing possible: think.</p>
 <p>The way that we went about it last time was, to be honest, a bit arse-backwards. The main reason for this is that I did not have access to the elimination tree. But now we do, we can actually use it.</p>
 <p>The trick is to slightly rearrange<a href="#fn16" class="footnote-ref" id="fnref16" role="doc-noteref"><sup>16</sup></a> the order of operations to get something that is more convenient for working out the structure.</p>
 <p>Recall from last time that we used the <em>left-looking</em> Cholesky factorisation, which can be written in the dense case as</p>
 <div class="cell" data-execution_count="20">
-<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1"></a><span class="kw">def</span> dense_left_cholesky(A):</span>
-<span id="cb32-2"><a href="#cb32-2"></a>  n <span class="op">=</span> A.shape[<span class="dv">0</span>]</span>
-<span id="cb32-3"><a href="#cb32-3"></a>  L <span class="op">=</span> np.zeros_like(A)</span>
-<span id="cb32-4"><a href="#cb32-4"></a>  <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(n):</span>
-<span id="cb32-5"><a href="#cb32-5"></a>    L[j,j] <span class="op">=</span> np.sqrt(A[j,j] <span class="op">-</span> np.inner(L[j, :j], L[j, :j]))</span>
-<span id="cb32-6"><a href="#cb32-6"></a>    L[(j<span class="op">+</span><span class="dv">1</span>):, j] <span class="op">=</span> (A[(j<span class="op">+</span><span class="dv">1</span>):, j] <span class="op">-</span> L[(j<span class="op">+</span><span class="dv">1</span>):, :j] <span class="op">@</span> L[j, :j].transpose()) <span class="op">/</span> L[j,j]</span>
-<span id="cb32-7"><a href="#cb32-7"></a>  <span class="cf">return</span> L</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1"></a><span class="kw">def</span> dense_left_cholesky(A):</span>
+<span id="cb34-2"><a href="#cb34-2"></a>  n <span class="op">=</span> A.shape[<span class="dv">0</span>]</span>
+<span id="cb34-3"><a href="#cb34-3"></a>  L <span class="op">=</span> np.zeros_like(A)</span>
+<span id="cb34-4"><a href="#cb34-4"></a>  <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(n):</span>
+<span id="cb34-5"><a href="#cb34-5"></a>    L[j,j] <span class="op">=</span> np.sqrt(A[j,j] <span class="op">-</span> np.inner(L[j, :j], L[j, :j]))</span>
+<span id="cb34-6"><a href="#cb34-6"></a>    L[(j<span class="op">+</span><span class="dv">1</span>):, j] <span class="op">=</span> (A[(j<span class="op">+</span><span class="dv">1</span>):, j] <span class="op">-</span> L[(j<span class="op">+</span><span class="dv">1</span>):, :j] <span class="op">@</span> L[j, :j].transpose()) <span class="op">/</span> L[j,j]</span>
+<span id="cb34-7"><a href="#cb34-7"></a>  <span class="cf">return</span> L</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This is not the only way to organise those operations. An alternative is the <em>up-looking</em> Cholesky factorisation, which can be implemented in the dense case as</p>
 <div class="cell" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1"></a><span class="kw">def</span> dense_up_cholesky(A):</span>
-<span id="cb33-2"><a href="#cb33-2"></a>  n <span class="op">=</span> A.shape[<span class="dv">0</span>]</span>
-<span id="cb33-3"><a href="#cb33-3"></a>  L <span class="op">=</span> np.zeros_like(A)</span>
-<span id="cb33-4"><a href="#cb33-4"></a>  L[<span class="dv">0</span>,<span class="dv">0</span>] <span class="op">=</span> np.sqrt(A[<span class="dv">0</span>,<span class="dv">0</span>])</span>
-<span id="cb33-5"><a href="#cb33-5"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>,n):</span>
-<span id="cb33-6"><a href="#cb33-6"></a>    <span class="co">#if i &gt; 0:</span></span>
-<span id="cb33-7"><a href="#cb33-7"></a>    L[i, :i] <span class="op">=</span> (np.linalg.solve(L[:i, :i], A[:i,i])).transpose()</span>
-<span id="cb33-8"><a href="#cb33-8"></a>    L[i, i] <span class="op">=</span> np.sqrt(A[i,i] <span class="op">-</span> np.inner(L[i, :i], L[i, :i]))</span>
-<span id="cb33-9"><a href="#cb33-9"></a>  <span class="cf">return</span> L</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1"></a><span class="kw">def</span> dense_up_cholesky(A):</span>
+<span id="cb35-2"><a href="#cb35-2"></a>  n <span class="op">=</span> A.shape[<span class="dv">0</span>]</span>
+<span id="cb35-3"><a href="#cb35-3"></a>  L <span class="op">=</span> np.zeros_like(A)</span>
+<span id="cb35-4"><a href="#cb35-4"></a>  L[<span class="dv">0</span>,<span class="dv">0</span>] <span class="op">=</span> np.sqrt(A[<span class="dv">0</span>,<span class="dv">0</span>])</span>
+<span id="cb35-5"><a href="#cb35-5"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>,n):</span>
+<span id="cb35-6"><a href="#cb35-6"></a>    <span class="co">#if i &gt; 0:</span></span>
+<span id="cb35-7"><a href="#cb35-7"></a>    L[i, :i] <span class="op">=</span> (np.linalg.solve(L[:i, :i], A[:i,i])).transpose()</span>
+<span id="cb35-8"><a href="#cb35-8"></a>    L[i, i] <span class="op">=</span> np.sqrt(A[i,i] <span class="op">-</span> np.inner(L[i, :i], L[i, :i]))</span>
+<span id="cb35-9"><a href="#cb35-9"></a>  <span class="cf">return</span> L</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This is quite a different looking beast! It scans row by row rather than column by column. And while the left-looking algorithm is based on matrix-vector multiplies, the up-looking algorithm is based on triangular solves. So maybe we should pause for a moment to check that these are the same algorithm!</p>
 <div class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1"></a>A <span class="op">=</span> np.random.rand(<span class="dv">15</span>, <span class="dv">15</span>)</span>
-<span id="cb34-2"><a href="#cb34-2"></a>A <span class="op">=</span> A <span class="op">+</span> A.transpose()</span>
-<span id="cb34-3"><a href="#cb34-3"></a>A <span class="op">=</span> A.transpose() <span class="op">@</span> A <span class="op">+</span> <span class="dv">1</span><span class="op">*</span>np.eye(<span class="dv">15</span>)</span>
-<span id="cb34-4"><a href="#cb34-4"></a></span>
-<span id="cb34-5"><a href="#cb34-5"></a>L_left <span class="op">=</span> dense_left_cholesky(A)</span>
-<span id="cb34-6"><a href="#cb34-6"></a>L_up <span class="op">=</span> dense_up_cholesky(A)</span>
-<span id="cb34-7"><a href="#cb34-7"></a></span>
-<span id="cb34-8"><a href="#cb34-8"></a><span class="bu">print</span>(<span class="bu">round</span>(<span class="bu">sum</span>(<span class="bu">sum</span>(<span class="bu">abs</span>((L_left <span class="op">-</span> L_up)[:])))),<span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1"></a>A <span class="op">=</span> np.random.rand(<span class="dv">15</span>, <span class="dv">15</span>)</span>
+<span id="cb36-2"><a href="#cb36-2"></a>A <span class="op">=</span> A <span class="op">+</span> A.transpose()</span>
+<span id="cb36-3"><a href="#cb36-3"></a>A <span class="op">=</span> A.transpose() <span class="op">@</span> A <span class="op">+</span> <span class="dv">1</span><span class="op">*</span>np.eye(<span class="dv">15</span>)</span>
+<span id="cb36-4"><a href="#cb36-4"></a></span>
+<span id="cb36-5"><a href="#cb36-5"></a>L_left <span class="op">=</span> dense_left_cholesky(A)</span>
+<span id="cb36-6"><a href="#cb36-6"></a>L_up <span class="op">=</span> dense_up_cholesky(A)</span>
+<span id="cb36-7"><a href="#cb36-7"></a></span>
+<span id="cb36-8"><a href="#cb36-8"></a><span class="bu">print</span>(<span class="bu">round</span>(<span class="bu">sum</span>(<span class="bu">sum</span>(<span class="bu">abs</span>((L_left <span class="op">-</span> L_up)[:])))),<span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>0 2</code></pre>
 </div>
@@ -674,41 +683,44 @@ L_{1:(i-1),1:(i-1)} x^{(i)} = A_{1:i-1, i}.
 <p>This reduces the problem of finding the non-zero elements of <span class="math inline">\(x^{(i)}\)</span> to the problem of finding all of the descendents of <span class="math inline">\(\{j: A_{ji} \neq 0\}\)</span> in the subtree <span class="math inline">\(\mathcal{T}_{i-1}\)</span>. And if there is one thing that people who are ok at programming are <em>excellent</em> at it is walking down a damn tree.</p>
 <p>So let’s do that. Well, I’ve already done it. In fact, that was how I found the column counts in the first place! With this interpretation, the outer loop is taking us across the rows. And once I am in row <code>j</code><a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a>, I then find a starting node <code>node</code> (which is a non-zero in <span class="math inline">\(A_{1:(i-1),i}\)</span>) and I walk along that node checking each time if I’ve actually seen that node<a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a> before. If I haven’t seen it before, I added one to the column count of column <code>node</code><a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a>.</p>
 <p>To allocate the non-zero structure, I just need to replace that counter increment with an assignment.</p>
+</section>
+<section id="attempt-1-lord-thats-slow" class="level3">
+<h3 class="anchored" data-anchor-id="attempt-1-lord-thats-slow">Attempt 1: Lord that’s slow</h3>
 <p>We will do the pure python version first.</p>
 <div class="cell" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1"></a><span class="kw">def</span> symbolic_cholesky_base(A_indices, A_indptr, parent, col_count):</span>
-<span id="cb36-2"><a href="#cb36-2"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb36-3"><a href="#cb36-3"></a>  col_ptr <span class="op">=</span> np.repeat(<span class="dv">1</span>, n<span class="op">+</span><span class="dv">1</span>)</span>
-<span id="cb36-4"><a href="#cb36-4"></a>  col_ptr[<span class="dv">1</span>:] <span class="op">+=</span> np.cumsum(col_count) </span>
-<span id="cb36-5"><a href="#cb36-5"></a>  L_indices <span class="op">=</span> np.zeros(<span class="bu">sum</span>(col_count), dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb36-6"><a href="#cb36-6"></a>  L_indptr <span class="op">=</span> np.zeros(n<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb36-7"><a href="#cb36-7"></a>  L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb36-8"><a href="#cb36-8"></a>  mark <span class="op">=</span> [<span class="op">-</span><span class="dv">1</span>] <span class="op">*</span> n</span>
-<span id="cb36-9"><a href="#cb36-9"></a></span>
-<span id="cb36-10"><a href="#cb36-10"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n):</span>
-<span id="cb36-11"><a href="#cb36-11"></a>    mark[i] <span class="op">=</span> i</span>
-<span id="cb36-12"><a href="#cb36-12"></a>    L_indices[L_indptr[i]] <span class="op">=</span> i</span>
-<span id="cb36-13"><a href="#cb36-13"></a></span>
-<span id="cb36-14"><a href="#cb36-14"></a>    <span class="cf">for</span> indptr <span class="kw">in</span> <span class="bu">range</span>(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>]):</span>
-<span id="cb36-15"><a href="#cb36-15"></a>      node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb36-16"><a href="#cb36-16"></a>      <span class="cf">while</span> node <span class="op">&lt;</span> i <span class="kw">and</span> mark[node] <span class="op">!=</span> i:</span>
-<span id="cb36-17"><a href="#cb36-17"></a>        mark[node] <span class="op">=</span> i</span>
-<span id="cb36-18"><a href="#cb36-18"></a>        L_indices[col_ptr[node]] <span class="op">=</span> i</span>
-<span id="cb36-19"><a href="#cb36-19"></a>        col_ptr[node] <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb36-20"><a href="#cb36-20"></a>        node <span class="op">=</span> parent[node]</span>
-<span id="cb36-21"><a href="#cb36-21"></a>  </span>
-<span id="cb36-22"><a href="#cb36-22"></a>  <span class="cf">return</span> (L_indices, L_indptr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1"></a><span class="kw">def</span> symbolic_cholesky_base(A_indices, A_indptr, parent, col_count):</span>
+<span id="cb38-2"><a href="#cb38-2"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb38-3"><a href="#cb38-3"></a>  col_ptr <span class="op">=</span> np.repeat(<span class="dv">1</span>, n<span class="op">+</span><span class="dv">1</span>)</span>
+<span id="cb38-4"><a href="#cb38-4"></a>  col_ptr[<span class="dv">1</span>:] <span class="op">+=</span> np.cumsum(col_count) </span>
+<span id="cb38-5"><a href="#cb38-5"></a>  L_indices <span class="op">=</span> np.zeros(<span class="bu">sum</span>(col_count), dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb38-6"><a href="#cb38-6"></a>  L_indptr <span class="op">=</span> np.zeros(n<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb38-7"><a href="#cb38-7"></a>  L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb38-8"><a href="#cb38-8"></a>  mark <span class="op">=</span> [<span class="op">-</span><span class="dv">1</span>] <span class="op">*</span> n</span>
+<span id="cb38-9"><a href="#cb38-9"></a></span>
+<span id="cb38-10"><a href="#cb38-10"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n):</span>
+<span id="cb38-11"><a href="#cb38-11"></a>    mark[i] <span class="op">=</span> i</span>
+<span id="cb38-12"><a href="#cb38-12"></a>    L_indices[L_indptr[i]] <span class="op">=</span> i</span>
+<span id="cb38-13"><a href="#cb38-13"></a></span>
+<span id="cb38-14"><a href="#cb38-14"></a>    <span class="cf">for</span> indptr <span class="kw">in</span> <span class="bu">range</span>(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>]):</span>
+<span id="cb38-15"><a href="#cb38-15"></a>      node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb38-16"><a href="#cb38-16"></a>      <span class="cf">while</span> node <span class="op">&lt;</span> i <span class="kw">and</span> mark[node] <span class="op">!=</span> i:</span>
+<span id="cb38-17"><a href="#cb38-17"></a>        mark[node] <span class="op">=</span> i</span>
+<span id="cb38-18"><a href="#cb38-18"></a>        L_indices[col_ptr[node]] <span class="op">=</span> i</span>
+<span id="cb38-19"><a href="#cb38-19"></a>        col_ptr[node] <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb38-20"><a href="#cb38-20"></a>        node <span class="op">=</span> parent[node]</span>
+<span id="cb38-21"><a href="#cb38-21"></a>  </span>
+<span id="cb38-22"><a href="#cb38-22"></a>  <span class="cf">return</span> (L_indices, L_indptr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Does it work?</p>
 <div class="cell" data-execution_count="24">
-<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">13</span>)</span>
-<span id="cb37-2"><a href="#cb37-2"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
-<span id="cb37-3"><a href="#cb37-3"></a></span>
-<span id="cb37-4"><a href="#cb37-4"></a>L_indices, L_indptr <span class="op">=</span> symbolic_cholesky_base(A.indices, A.indptr, parent, col_count)</span>
-<span id="cb37-5"><a href="#cb37-5"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb37-6"><a href="#cb37-6"></a></span>
-<span id="cb37-7"><a href="#cb37-7"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indices, L_indices_true)))</span>
-<span id="cb37-8"><a href="#cb37-8"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indptr, L_indptr_true)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">13</span>)</span>
+<span id="cb39-2"><a href="#cb39-2"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
+<span id="cb39-3"><a href="#cb39-3"></a></span>
+<span id="cb39-4"><a href="#cb39-4"></a>L_indices, L_indptr <span class="op">=</span> symbolic_cholesky_base(A.indices, A.indptr, parent, col_count)</span>
+<span id="cb39-5"><a href="#cb39-5"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb39-6"><a href="#cb39-6"></a></span>
+<span id="cb39-7"><a href="#cb39-7"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indices, L_indices_true)))</span>
+<span id="cb39-8"><a href="#cb39-8"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indptr, L_indptr_true)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>True
 True</code></pre>
@@ -717,74 +729,74 @@ True</code></pre>
 <p>Fabulosa!</p>
 <p>Now let’s do the compiled version.</p>
 <div class="cell" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1"></a><span class="im">from</span> functools <span class="im">import</span> partial</span>
-<span id="cb39-2"><a href="#cb39-2"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
-<span id="cb39-3"><a href="#cb39-3"></a><span class="kw">def</span> symbolic_cholesky(A_indices, A_indptr, L_indptr, parent, nnz):</span>
-<span id="cb39-4"><a href="#cb39-4"></a>  </span>
-<span id="cb39-5"><a href="#cb39-5"></a>  <span class="co">## innermost while loop</span></span>
-<span id="cb39-6"><a href="#cb39-6"></a>  <span class="kw">def</span> body_while(val):</span>
-<span id="cb39-7"><a href="#cb39-7"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb39-8"><a href="#cb39-8"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
-<span id="cb39-9"><a href="#cb39-9"></a>    <span class="co">#p = </span></span>
-<span id="cb39-10"><a href="#cb39-10"></a>    L_indices <span class="op">=</span> L_indices.at[col_ptr[node]].<span class="bu">set</span>(i)</span>
-<span id="cb39-11"><a href="#cb39-11"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
-<span id="cb39-12"><a href="#cb39-12"></a>    <span class="cf">return</span> (i, L_indices, L_indptr, parent[node], parent, col_ptr, mark)</span>
-<span id="cb39-13"><a href="#cb39-13"></a></span>
-<span id="cb39-14"><a href="#cb39-14"></a>  <span class="kw">def</span> cond_while(val):</span>
-<span id="cb39-15"><a href="#cb39-15"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb39-16"><a href="#cb39-16"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
-<span id="cb39-17"><a href="#cb39-17"></a></span>
-<span id="cb39-18"><a href="#cb39-18"></a>  <span class="co">## Inner for loop</span></span>
-<span id="cb39-19"><a href="#cb39-19"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
-<span id="cb39-20"><a href="#cb39-20"></a>    i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb39-21"><a href="#cb39-21"></a>    node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb39-22"><a href="#cb39-22"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, L_indices, L_indptr, node, parent, col_ptr, mark))</span>
-<span id="cb39-23"><a href="#cb39-23"></a>    <span class="cf">return</span> (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb39-24"><a href="#cb39-24"></a>  </span>
-<span id="cb39-25"><a href="#cb39-25"></a>  <span class="co">## Outer for loop</span></span>
-<span id="cb39-26"><a href="#cb39-26"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
-<span id="cb39-27"><a href="#cb39-27"></a>     A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb39-28"><a href="#cb39-28"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
-<span id="cb39-29"><a href="#cb39-29"></a>     L_indices <span class="op">=</span> L_indices.at[L_indptr[i]].<span class="bu">set</span>(i)</span>
-<span id="cb39-30"><a href="#cb39-30"></a>     i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark))</span>
-<span id="cb39-31"><a href="#cb39-31"></a>     <span class="cf">return</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb39-32"><a href="#cb39-32"></a></span>
-<span id="cb39-33"><a href="#cb39-33"></a>  <span class="co">## Body of code</span></span>
-<span id="cb39-34"><a href="#cb39-34"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb39-35"><a href="#cb39-35"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
-<span id="cb39-36"><a href="#cb39-36"></a>  L_indices <span class="op">=</span> jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb39-37"><a href="#cb39-37"></a>  </span>
-<span id="cb39-38"><a href="#cb39-38"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
-<span id="cb39-39"><a href="#cb39-39"></a>  </span>
-<span id="cb39-40"><a href="#cb39-40"></a>  init <span class="op">=</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb39-41"><a href="#cb39-41"></a>  A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
-<span id="cb39-42"><a href="#cb39-42"></a>  <span class="cf">return</span> L_indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1"></a><span class="im">from</span> functools <span class="im">import</span> partial</span>
+<span id="cb41-2"><a href="#cb41-2"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
+<span id="cb41-3"><a href="#cb41-3"></a><span class="kw">def</span> symbolic_cholesky(A_indices, A_indptr, L_indptr, parent, nnz):</span>
+<span id="cb41-4"><a href="#cb41-4"></a>  </span>
+<span id="cb41-5"><a href="#cb41-5"></a>  <span class="co">## innermost while loop</span></span>
+<span id="cb41-6"><a href="#cb41-6"></a>  <span class="kw">def</span> body_while(val):</span>
+<span id="cb41-7"><a href="#cb41-7"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb41-8"><a href="#cb41-8"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
+<span id="cb41-9"><a href="#cb41-9"></a>    <span class="co">#p = </span></span>
+<span id="cb41-10"><a href="#cb41-10"></a>    L_indices <span class="op">=</span> L_indices.at[col_ptr[node]].<span class="bu">set</span>(i)</span>
+<span id="cb41-11"><a href="#cb41-11"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
+<span id="cb41-12"><a href="#cb41-12"></a>    <span class="cf">return</span> (i, L_indices, L_indptr, parent[node], parent, col_ptr, mark)</span>
+<span id="cb41-13"><a href="#cb41-13"></a></span>
+<span id="cb41-14"><a href="#cb41-14"></a>  <span class="kw">def</span> cond_while(val):</span>
+<span id="cb41-15"><a href="#cb41-15"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb41-16"><a href="#cb41-16"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
+<span id="cb41-17"><a href="#cb41-17"></a></span>
+<span id="cb41-18"><a href="#cb41-18"></a>  <span class="co">## Inner for loop</span></span>
+<span id="cb41-19"><a href="#cb41-19"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
+<span id="cb41-20"><a href="#cb41-20"></a>    i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb41-21"><a href="#cb41-21"></a>    node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb41-22"><a href="#cb41-22"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, L_indices, L_indptr, node, parent, col_ptr, mark))</span>
+<span id="cb41-23"><a href="#cb41-23"></a>    <span class="cf">return</span> (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb41-24"><a href="#cb41-24"></a>  </span>
+<span id="cb41-25"><a href="#cb41-25"></a>  <span class="co">## Outer for loop</span></span>
+<span id="cb41-26"><a href="#cb41-26"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
+<span id="cb41-27"><a href="#cb41-27"></a>     A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb41-28"><a href="#cb41-28"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
+<span id="cb41-29"><a href="#cb41-29"></a>     L_indices <span class="op">=</span> L_indices.at[L_indptr[i]].<span class="bu">set</span>(i)</span>
+<span id="cb41-30"><a href="#cb41-30"></a>     i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark))</span>
+<span id="cb41-31"><a href="#cb41-31"></a>     <span class="cf">return</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb41-32"><a href="#cb41-32"></a></span>
+<span id="cb41-33"><a href="#cb41-33"></a>  <span class="co">## Body of code</span></span>
+<span id="cb41-34"><a href="#cb41-34"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb41-35"><a href="#cb41-35"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb41-36"><a href="#cb41-36"></a>  L_indices <span class="op">=</span> jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb41-37"><a href="#cb41-37"></a>  </span>
+<span id="cb41-38"><a href="#cb41-38"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb41-39"><a href="#cb41-39"></a>  </span>
+<span id="cb41-40"><a href="#cb41-40"></a>  init <span class="op">=</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb41-41"><a href="#cb41-41"></a>  A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
+<span id="cb41-42"><a href="#cb41-42"></a>  <span class="cf">return</span> L_indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Now let’s check it works</p>
 <div class="cell" data-execution_count="26">
-<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
-<span id="cb40-2"><a href="#cb40-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb40-3"><a href="#cb40-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb40-4"><a href="#cb40-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb40-5"><a href="#cb40-5"></a></span>
-<span id="cb40-6"><a href="#cb40-6"></a></span>
-<span id="cb40-7"><a href="#cb40-7"></a>L_indices <span class="op">=</span> symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
-<span id="cb40-8"><a href="#cb40-8"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb40-9"><a href="#cb40-9"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
-<span id="cb40-10"><a href="#cb40-10"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
-<span id="cb40-11"><a href="#cb40-11"></a></span>
-<span id="cb40-12"><a href="#cb40-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">31</span>)</span>
-<span id="cb40-13"><a href="#cb40-13"></a></span>
-<span id="cb40-14"><a href="#cb40-14"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb40-15"><a href="#cb40-15"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb40-16"><a href="#cb40-16"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb40-17"><a href="#cb40-17"></a></span>
-<span id="cb40-18"><a href="#cb40-18"></a></span>
-<span id="cb40-19"><a href="#cb40-19"></a>L_indices <span class="op">=</span> symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
-<span id="cb40-20"><a href="#cb40-20"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb40-21"><a href="#cb40-21"></a></span>
-<span id="cb40-22"><a href="#cb40-22"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
-<span id="cb40-23"><a href="#cb40-23"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
+<span id="cb42-2"><a href="#cb42-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb42-3"><a href="#cb42-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb42-4"><a href="#cb42-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb42-5"><a href="#cb42-5"></a></span>
+<span id="cb42-6"><a href="#cb42-6"></a></span>
+<span id="cb42-7"><a href="#cb42-7"></a>L_indices <span class="op">=</span> symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb42-8"><a href="#cb42-8"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb42-9"><a href="#cb42-9"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb42-10"><a href="#cb42-10"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
+<span id="cb42-11"><a href="#cb42-11"></a></span>
+<span id="cb42-12"><a href="#cb42-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">31</span>)</span>
+<span id="cb42-13"><a href="#cb42-13"></a></span>
+<span id="cb42-14"><a href="#cb42-14"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb42-15"><a href="#cb42-15"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb42-16"><a href="#cb42-16"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb42-17"><a href="#cb42-17"></a></span>
+<span id="cb42-18"><a href="#cb42-18"></a></span>
+<span id="cb42-19"><a href="#cb42-19"></a>L_indices <span class="op">=</span> symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb42-20"><a href="#cb42-20"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb42-21"><a href="#cb42-21"></a></span>
+<span id="cb42-22"><a href="#cb42-22"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb42-23"><a href="#cb42-23"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>True
 True</code></pre>
@@ -797,65 +809,68 @@ True</code></pre>
 <p>Success!</p>
 <p>One <em>minor</em> problem. This is slow. as. balls.</p>
 <div class="cell" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb43-2"><a href="#cb43-2"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
-<span id="cb43-3"><a href="#cb43-3"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb43-4"><a href="#cb43-4"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb43-5"><a href="#cb43-5"></a></span>
-<span id="cb43-6"><a href="#cb43-6"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb43-7"><a href="#cb43-7"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
-<span id="cb43-8"><a href="#cb43-8"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb43-9"><a href="#cb43-9"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb45-2"><a href="#cb45-2"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
+<span id="cb45-3"><a href="#cb45-3"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb45-4"><a href="#cb45-4"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb45-5"><a href="#cb45-5"></a></span>
+<span id="cb45-6"><a href="#cb45-6"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb45-7"><a href="#cb45-7"></a>parent, col_count <span class="op">=</span> etree_base(A.indices, A.indptr)</span>
+<span id="cb45-8"><a href="#cb45-8"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb45-9"><a href="#cb45-9"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.05, 0.04, 0.04, 0.05, 0.04]</code></pre>
+<pre><code>n = 2500: [0.05, 0.04, 0.05, 0.04, 0.04]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [1.97, 1.99, 1.96, 1.97, 1.97]</code></pre>
+<pre><code>n = 40000: [1.91, 1.91, 1.91, 1.91, 1.91]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
 <div class="cell" data-execution_count="28">
-<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb46-2"><a href="#cb46-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb46-3"><a href="#cb46-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb46-4"><a href="#cb46-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb46-5"><a href="#cb46-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb46-6"><a href="#cb46-6"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb46-7"><a href="#cb46-7"></a></span>
-<span id="cb46-8"><a href="#cb46-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb46-9"><a href="#cb46-9"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb46-10"><a href="#cb46-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb46-11"><a href="#cb46-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb46-12"><a href="#cb46-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb46-13"><a href="#cb46-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb48-2"><a href="#cb48-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb48-3"><a href="#cb48-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb48-4"><a href="#cb48-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb48-5"><a href="#cb48-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb48-6"><a href="#cb48-6"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb48-7"><a href="#cb48-7"></a></span>
+<span id="cb48-8"><a href="#cb48-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb48-9"><a href="#cb48-9"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb48-10"><a href="#cb48-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb48-11"><a href="#cb48-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb48-12"><a href="#cb48-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb48-13"><a href="#cb48-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.15]</code></pre>
+<pre><code>n = 2500: [0.14]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [28.41]</code></pre>
+<pre><code>n = 40000: [27.64]</code></pre>
 </div>
 </div>
 <p>Oooof. Something is going horribly wrong.</p>
+</section>
+<section id="why-is-it-so-slow" class="level3">
+<h3 class="anchored" data-anchor-id="why-is-it-so-slow">Why is it so slow?</h3>
 <p>The first thing to check is if it’s the compile time. We can do this by explictly <em>lowering</em> the the JIT’d function to its XLA representation and then compiling it.</p>
 <div class="cell" data-execution_count="29">
-<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb49-2"><a href="#cb49-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb49-3"><a href="#cb49-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb49-4"><a href="#cb49-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb49-5"><a href="#cb49-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
-<span id="cb49-6"><a href="#cb49-6"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb49-7"><a href="#cb49-7"></a></span>
-<span id="cb49-8"><a href="#cb49-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb49-9"><a href="#cb49-9"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb49-10"><a href="#cb49-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb49-11"><a href="#cb49-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb49-12"><a href="#cb49-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
-<span id="cb49-13"><a href="#cb49-13"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb51-2"><a href="#cb51-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb51-3"><a href="#cb51-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb51-4"><a href="#cb51-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb51-5"><a href="#cb51-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb51-6"><a href="#cb51-6"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb51-7"><a href="#cb51-7"></a></span>
+<span id="cb51-8"><a href="#cb51-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb51-9"><a href="#cb51-9"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb51-10"><a href="#cb51-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb51-11"><a href="#cb51-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb51-12"><a href="#cb51-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb51-13"><a href="#cb51-13"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 2500: [0.19, 0.15, 0.16, 0.15, 0.15]</code></pre>
+<pre><code>Compilation time: n = 2500: [0.14, 0.13, 0.14, 0.14, 0.13]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 40000: [0.16, 0.16, 0.15, 0.15, 0.15]</code></pre>
+<pre><code>Compilation time: n = 40000: [0.14, 0.14, 0.14, 0.14, 0.14]</code></pre>
 </div>
 </div>
 <p>It is not the compile time.</p>
@@ -863,134 +878,137 @@ True</code></pre>
 <p>Instead I thought <em>if I were a clever, efficient compiler, what would I have problems with?</em>. And the answer is the classic sparse matrix answer: indirect indexing.</p>
 <p>The only structural difference between the <code>etree</code> function and the <code>symbolic_cholesky</code> function is this line in the <code>body_while()</code> function:</p>
 <div class="cell" data-execution_count="30">
-<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1"></a> L_indices <span class="op">=</span> L_indices.at[col_ptr[node]].<span class="bu">set</span>(i)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1"></a> L_indices <span class="op">=</span> L_indices.at[col_ptr[node]].<span class="bu">set</span>(i)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>In order to evaluate this code, the compiler has to resolve <em>two levels</em> of indirection. By contrast, the indexing in <code>etree()</code> was always direct. So let’s see what happens if we take the same function and remove that double indirection.</p>
 <div class="cell" data-execution_count="31">
-<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
-<span id="cb53-2"><a href="#cb53-2"></a><span class="kw">def</span> test_fun(A_indices, A_indptr, L_indptr, parent, nnz):</span>
-<span id="cb53-3"><a href="#cb53-3"></a>  </span>
-<span id="cb53-4"><a href="#cb53-4"></a>  <span class="co">## innermost while loop</span></span>
-<span id="cb53-5"><a href="#cb53-5"></a>  <span class="kw">def</span> body_while(val):</span>
-<span id="cb53-6"><a href="#cb53-6"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb53-7"><a href="#cb53-7"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
-<span id="cb53-8"><a href="#cb53-8"></a>    L_indices <span class="op">=</span> L_indices.at[node].<span class="bu">set</span>(i)</span>
-<span id="cb53-9"><a href="#cb53-9"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
-<span id="cb53-10"><a href="#cb53-10"></a>    <span class="cf">return</span> (i, L_indices, L_indptr, parent[node], parent, col_ptr, mark)</span>
-<span id="cb53-11"><a href="#cb53-11"></a></span>
-<span id="cb53-12"><a href="#cb53-12"></a>  <span class="kw">def</span> cond_while(val):</span>
-<span id="cb53-13"><a href="#cb53-13"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb53-14"><a href="#cb53-14"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
-<span id="cb53-15"><a href="#cb53-15"></a></span>
-<span id="cb53-16"><a href="#cb53-16"></a>  <span class="co">## Inner for loop</span></span>
-<span id="cb53-17"><a href="#cb53-17"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
-<span id="cb53-18"><a href="#cb53-18"></a>    i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb53-19"><a href="#cb53-19"></a>    node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb53-20"><a href="#cb53-20"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, L_indices, L_indptr, node, parent, col_ptr, mark))</span>
-<span id="cb53-21"><a href="#cb53-21"></a>    <span class="cf">return</span> (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb53-22"><a href="#cb53-22"></a>  </span>
-<span id="cb53-23"><a href="#cb53-23"></a>  <span class="co">## Outer for loop</span></span>
-<span id="cb53-24"><a href="#cb53-24"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
-<span id="cb53-25"><a href="#cb53-25"></a>     A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb53-26"><a href="#cb53-26"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
-<span id="cb53-27"><a href="#cb53-27"></a>     L_indices <span class="op">=</span> L_indices.at[L_indptr[i]].<span class="bu">set</span>(i)</span>
-<span id="cb53-28"><a href="#cb53-28"></a>     i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark))</span>
-<span id="cb53-29"><a href="#cb53-29"></a>     <span class="cf">return</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb53-30"><a href="#cb53-30"></a></span>
-<span id="cb53-31"><a href="#cb53-31"></a>  <span class="co">## Body of code</span></span>
-<span id="cb53-32"><a href="#cb53-32"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb53-33"><a href="#cb53-33"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
-<span id="cb53-34"><a href="#cb53-34"></a>  L_indices <span class="op">=</span> jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb53-35"><a href="#cb53-35"></a>  </span>
-<span id="cb53-36"><a href="#cb53-36"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
-<span id="cb53-37"><a href="#cb53-37"></a>  </span>
-<span id="cb53-38"><a href="#cb53-38"></a>  init <span class="op">=</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
-<span id="cb53-39"><a href="#cb53-39"></a>  A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
-<span id="cb53-40"><a href="#cb53-40"></a>  <span class="cf">return</span> L_indices</span>
-<span id="cb53-41"><a href="#cb53-41"></a></span>
-<span id="cb53-42"><a href="#cb53-42"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb53-43"><a href="#cb53-43"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb53-44"><a href="#cb53-44"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb53-45"><a href="#cb53-45"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb53-46"><a href="#cb53-46"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb53-47"><a href="#cb53-47"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb53-48"><a href="#cb53-48"></a></span>
-<span id="cb53-49"><a href="#cb53-49"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb53-50"><a href="#cb53-50"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb53-51"><a href="#cb53-51"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb53-52"><a href="#cb53-52"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb53-53"><a href="#cb53-53"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb53-54"><a href="#cb53-54"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
+<span id="cb55-2"><a href="#cb55-2"></a><span class="kw">def</span> test_fun(A_indices, A_indptr, L_indptr, parent, nnz):</span>
+<span id="cb55-3"><a href="#cb55-3"></a>  </span>
+<span id="cb55-4"><a href="#cb55-4"></a>  <span class="co">## innermost while loop</span></span>
+<span id="cb55-5"><a href="#cb55-5"></a>  <span class="kw">def</span> body_while(val):</span>
+<span id="cb55-6"><a href="#cb55-6"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb55-7"><a href="#cb55-7"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
+<span id="cb55-8"><a href="#cb55-8"></a>    L_indices <span class="op">=</span> L_indices.at[node].<span class="bu">set</span>(i)</span>
+<span id="cb55-9"><a href="#cb55-9"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
+<span id="cb55-10"><a href="#cb55-10"></a>    <span class="cf">return</span> (i, L_indices, L_indptr, parent[node], parent, col_ptr, mark)</span>
+<span id="cb55-11"><a href="#cb55-11"></a></span>
+<span id="cb55-12"><a href="#cb55-12"></a>  <span class="kw">def</span> cond_while(val):</span>
+<span id="cb55-13"><a href="#cb55-13"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb55-14"><a href="#cb55-14"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
+<span id="cb55-15"><a href="#cb55-15"></a></span>
+<span id="cb55-16"><a href="#cb55-16"></a>  <span class="co">## Inner for loop</span></span>
+<span id="cb55-17"><a href="#cb55-17"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
+<span id="cb55-18"><a href="#cb55-18"></a>    i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb55-19"><a href="#cb55-19"></a>    node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb55-20"><a href="#cb55-20"></a>    i, L_indices, L_indptr, node, parent, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, L_indices, L_indptr, node, parent, col_ptr, mark))</span>
+<span id="cb55-21"><a href="#cb55-21"></a>    <span class="cf">return</span> (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb55-22"><a href="#cb55-22"></a>  </span>
+<span id="cb55-23"><a href="#cb55-23"></a>  <span class="co">## Outer for loop</span></span>
+<span id="cb55-24"><a href="#cb55-24"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
+<span id="cb55-25"><a href="#cb55-25"></a>     A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb55-26"><a href="#cb55-26"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
+<span id="cb55-27"><a href="#cb55-27"></a>     L_indices <span class="op">=</span> L_indices.at[L_indptr[i]].<span class="bu">set</span>(i)</span>
+<span id="cb55-28"><a href="#cb55-28"></a>     i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark))</span>
+<span id="cb55-29"><a href="#cb55-29"></a>     <span class="cf">return</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb55-30"><a href="#cb55-30"></a></span>
+<span id="cb55-31"><a href="#cb55-31"></a>  <span class="co">## Body of code</span></span>
+<span id="cb55-32"><a href="#cb55-32"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb55-33"><a href="#cb55-33"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb55-34"><a href="#cb55-34"></a>  L_indices <span class="op">=</span> jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb55-35"><a href="#cb55-35"></a>  </span>
+<span id="cb55-36"><a href="#cb55-36"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb55-37"><a href="#cb55-37"></a>  </span>
+<span id="cb55-38"><a href="#cb55-38"></a>  init <span class="op">=</span> (A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark)</span>
+<span id="cb55-39"><a href="#cb55-39"></a>  A_indices, A_indptr, L_indices, L_indptr, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
+<span id="cb55-40"><a href="#cb55-40"></a>  <span class="cf">return</span> L_indices</span>
+<span id="cb55-41"><a href="#cb55-41"></a></span>
+<span id="cb55-42"><a href="#cb55-42"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb55-43"><a href="#cb55-43"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb55-44"><a href="#cb55-44"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb55-45"><a href="#cb55-45"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb55-46"><a href="#cb55-46"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb55-47"><a href="#cb55-47"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb55-48"><a href="#cb55-48"></a></span>
+<span id="cb55-49"><a href="#cb55-49"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb55-50"><a href="#cb55-50"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb55-51"><a href="#cb55-51"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb55-52"><a href="#cb55-52"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb55-53"><a href="#cb55-53"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb55-54"><a href="#cb55-54"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.14]</code></pre>
+<pre><code>n = 2500: [0.13]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.16]</code></pre>
+<pre><code>n = 40000: [0.15]</code></pre>
 </div>
 </div>
 <p>That isn’t conclusive, but it does indicate that this might<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a> be the problem.</p>
 <p>And this is a <em>big</em> problem for us! The sparse Cholesky algorithm has similar amounts of indirection. So we need to fix it.</p>
+</section>
+<section id="attempt-2-after-some-careful-thought-things-stayed-the-same" class="level3">
+<h3 class="anchored" data-anchor-id="attempt-2-after-some-careful-thought-things-stayed-the-same">Attempt 2: After some careful thought, things stayed the same</h3>
 <p>Now. I want to pretend that I’ve got elegant ideas about this. But I don’t. So let’s just do it. The most obvious thing to do is to use the algorithm to get the non-zero structure of the <em>rows</em> of <span class="math inline">\(L\)</span>. These are the things that are being indexed by <code>col_ptr[node]]</code>, so if we have these explicitly we don’t need multiple indirection. We also don’t need a while loop.</p>
 <p>In fact, if we have the non-zero structure of the rows of <span class="math inline">\(L\)</span>, we can turn that into the non-zero structure of the columns in linear-ish<a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a> time.</p>
 <p>All we need to do is make sure that our <code>etree()</code> function is also counting the number of nonzeros in each row.</p>
 <div class="cell" data-execution_count="32">
-<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1"></a><span class="at">@jit</span></span>
-<span id="cb56-2"><a href="#cb56-2"></a><span class="kw">def</span> etree(A_indices, A_indptr):</span>
-<span id="cb56-3"><a href="#cb56-3"></a> <span class="co"># print("(Re-)compiling etree(A_indices, A_indptr)")</span></span>
-<span id="cb56-4"><a href="#cb56-4"></a>  <span class="co">## innermost while loop</span></span>
-<span id="cb56-5"><a href="#cb56-5"></a>  <span class="kw">def</span> body_while(val):</span>
-<span id="cb56-6"><a href="#cb56-6"></a>  <span class="co">#  print(val)</span></span>
-<span id="cb56-7"><a href="#cb56-7"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> val</span>
-<span id="cb56-8"><a href="#cb56-8"></a>    update_parent <span class="op">=</span> <span class="kw">lambda</span> x: x[<span class="dv">0</span>].at[x[<span class="dv">1</span>]].<span class="bu">set</span>(x[<span class="dv">2</span>])</span>
-<span id="cb56-9"><a href="#cb56-9"></a>    parent <span class="op">=</span> lax.cond(lax.eq(parent[node], <span class="op">-</span><span class="dv">1</span>), update_parent, <span class="kw">lambda</span> x: x[<span class="dv">0</span>], (parent, node, j))</span>
-<span id="cb56-10"><a href="#cb56-10"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(j)</span>
-<span id="cb56-11"><a href="#cb56-11"></a>    col_count <span class="op">=</span> col_count.at[node].add(<span class="dv">1</span>)</span>
-<span id="cb56-12"><a href="#cb56-12"></a>    row_count <span class="op">=</span> row_count.at[j].add(<span class="dv">1</span>)</span>
-<span id="cb56-13"><a href="#cb56-13"></a>    <span class="cf">return</span> (j, parent[node], parent, col_count, row_count, mark)</span>
-<span id="cb56-14"><a href="#cb56-14"></a></span>
-<span id="cb56-15"><a href="#cb56-15"></a>  <span class="kw">def</span> cond_while(val):</span>
-<span id="cb56-16"><a href="#cb56-16"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> val</span>
-<span id="cb56-17"><a href="#cb56-17"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, j), lax.ne(mark[node], j))</span>
-<span id="cb56-18"><a href="#cb56-18"></a></span>
-<span id="cb56-19"><a href="#cb56-19"></a>  <span class="co">## Inner for loop</span></span>
-<span id="cb56-20"><a href="#cb56-20"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
-<span id="cb56-21"><a href="#cb56-21"></a>    j, A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> val</span>
-<span id="cb56-22"><a href="#cb56-22"></a>    node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb56-23"><a href="#cb56-23"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (j, node, parent, col_count, row_count, mark))</span>
-<span id="cb56-24"><a href="#cb56-24"></a>    <span class="cf">return</span> (j, A_indices, A_indptr, parent, col_count, row_count, mark)</span>
-<span id="cb56-25"><a href="#cb56-25"></a>  </span>
-<span id="cb56-26"><a href="#cb56-26"></a>  <span class="co">## Outer for loop</span></span>
-<span id="cb56-27"><a href="#cb56-27"></a>  <span class="kw">def</span> body_out_for(j, val):</span>
-<span id="cb56-28"><a href="#cb56-28"></a>     A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> val</span>
-<span id="cb56-29"><a href="#cb56-29"></a>     mark <span class="op">=</span> mark.at[j].<span class="bu">set</span>(j)</span>
-<span id="cb56-30"><a href="#cb56-30"></a>     j, A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> lax.fori_loop(A_indptr[j], A_indptr[j<span class="op">+</span><span class="dv">1</span>], body_inner_for, (j, A_indices, A_indptr, parent, col_count, row_count, mark))</span>
-<span id="cb56-31"><a href="#cb56-31"></a>     <span class="cf">return</span> (A_indices, A_indptr, parent, col_count, row_count, mark)</span>
-<span id="cb56-32"><a href="#cb56-32"></a></span>
-<span id="cb56-33"><a href="#cb56-33"></a>  <span class="co">## Body of code</span></span>
-<span id="cb56-34"><a href="#cb56-34"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb56-35"><a href="#cb56-35"></a>  parent <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
-<span id="cb56-36"><a href="#cb56-36"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
-<span id="cb56-37"><a href="#cb56-37"></a>  col_count <span class="op">=</span> jnp.repeat(<span class="dv">1</span>,  n)</span>
-<span id="cb56-38"><a href="#cb56-38"></a>  row_count <span class="op">=</span> jnp.repeat(<span class="dv">1</span>, n)</span>
-<span id="cb56-39"><a href="#cb56-39"></a>  init <span class="op">=</span> (A_indices, A_indptr, parent, col_count, row_count, mark)</span>
-<span id="cb56-40"><a href="#cb56-40"></a>  A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
-<span id="cb56-41"><a href="#cb56-41"></a>  <span class="cf">return</span> (parent, col_count, row_count)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1"></a><span class="at">@jit</span></span>
+<span id="cb58-2"><a href="#cb58-2"></a><span class="kw">def</span> etree(A_indices, A_indptr):</span>
+<span id="cb58-3"><a href="#cb58-3"></a> <span class="co"># print("(Re-)compiling etree(A_indices, A_indptr)")</span></span>
+<span id="cb58-4"><a href="#cb58-4"></a>  <span class="co">## innermost while loop</span></span>
+<span id="cb58-5"><a href="#cb58-5"></a>  <span class="kw">def</span> body_while(val):</span>
+<span id="cb58-6"><a href="#cb58-6"></a>  <span class="co">#  print(val)</span></span>
+<span id="cb58-7"><a href="#cb58-7"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> val</span>
+<span id="cb58-8"><a href="#cb58-8"></a>    update_parent <span class="op">=</span> <span class="kw">lambda</span> x: x[<span class="dv">0</span>].at[x[<span class="dv">1</span>]].<span class="bu">set</span>(x[<span class="dv">2</span>])</span>
+<span id="cb58-9"><a href="#cb58-9"></a>    parent <span class="op">=</span> lax.cond(lax.eq(parent[node], <span class="op">-</span><span class="dv">1</span>), update_parent, <span class="kw">lambda</span> x: x[<span class="dv">0</span>], (parent, node, j))</span>
+<span id="cb58-10"><a href="#cb58-10"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(j)</span>
+<span id="cb58-11"><a href="#cb58-11"></a>    col_count <span class="op">=</span> col_count.at[node].add(<span class="dv">1</span>)</span>
+<span id="cb58-12"><a href="#cb58-12"></a>    row_count <span class="op">=</span> row_count.at[j].add(<span class="dv">1</span>)</span>
+<span id="cb58-13"><a href="#cb58-13"></a>    <span class="cf">return</span> (j, parent[node], parent, col_count, row_count, mark)</span>
+<span id="cb58-14"><a href="#cb58-14"></a></span>
+<span id="cb58-15"><a href="#cb58-15"></a>  <span class="kw">def</span> cond_while(val):</span>
+<span id="cb58-16"><a href="#cb58-16"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> val</span>
+<span id="cb58-17"><a href="#cb58-17"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, j), lax.ne(mark[node], j))</span>
+<span id="cb58-18"><a href="#cb58-18"></a></span>
+<span id="cb58-19"><a href="#cb58-19"></a>  <span class="co">## Inner for loop</span></span>
+<span id="cb58-20"><a href="#cb58-20"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
+<span id="cb58-21"><a href="#cb58-21"></a>    j, A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> val</span>
+<span id="cb58-22"><a href="#cb58-22"></a>    node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb58-23"><a href="#cb58-23"></a>    j, node, parent, col_count, row_count, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (j, node, parent, col_count, row_count, mark))</span>
+<span id="cb58-24"><a href="#cb58-24"></a>    <span class="cf">return</span> (j, A_indices, A_indptr, parent, col_count, row_count, mark)</span>
+<span id="cb58-25"><a href="#cb58-25"></a>  </span>
+<span id="cb58-26"><a href="#cb58-26"></a>  <span class="co">## Outer for loop</span></span>
+<span id="cb58-27"><a href="#cb58-27"></a>  <span class="kw">def</span> body_out_for(j, val):</span>
+<span id="cb58-28"><a href="#cb58-28"></a>     A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> val</span>
+<span id="cb58-29"><a href="#cb58-29"></a>     mark <span class="op">=</span> mark.at[j].<span class="bu">set</span>(j)</span>
+<span id="cb58-30"><a href="#cb58-30"></a>     j, A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> lax.fori_loop(A_indptr[j], A_indptr[j<span class="op">+</span><span class="dv">1</span>], body_inner_for, (j, A_indices, A_indptr, parent, col_count, row_count, mark))</span>
+<span id="cb58-31"><a href="#cb58-31"></a>     <span class="cf">return</span> (A_indices, A_indptr, parent, col_count, row_count, mark)</span>
+<span id="cb58-32"><a href="#cb58-32"></a></span>
+<span id="cb58-33"><a href="#cb58-33"></a>  <span class="co">## Body of code</span></span>
+<span id="cb58-34"><a href="#cb58-34"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb58-35"><a href="#cb58-35"></a>  parent <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb58-36"><a href="#cb58-36"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb58-37"><a href="#cb58-37"></a>  col_count <span class="op">=</span> jnp.repeat(<span class="dv">1</span>,  n)</span>
+<span id="cb58-38"><a href="#cb58-38"></a>  row_count <span class="op">=</span> jnp.repeat(<span class="dv">1</span>, n)</span>
+<span id="cb58-39"><a href="#cb58-39"></a>  init <span class="op">=</span> (A_indices, A_indptr, parent, col_count, row_count, mark)</span>
+<span id="cb58-40"><a href="#cb58-40"></a>  A_indices, A_indptr, parent, col_count, row_count, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
+<span id="cb58-41"><a href="#cb58-41"></a>  <span class="cf">return</span> (parent, col_count, row_count)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Let’s check that the code is actually doing what I want.</p>
 <div class="cell" data-execution_count="33">
-<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">57</span>)</span>
-<span id="cb57-2"><a href="#cb57-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb57-3"><a href="#cb57-3"></a>L_indices, L_indptr <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb57-4"><a href="#cb57-4"></a></span>
-<span id="cb57-5"><a href="#cb57-5"></a>true_parent <span class="op">=</span> L_indices[L_indptr[:<span class="op">-</span><span class="dv">2</span>] <span class="op">+</span> <span class="dv">1</span>]</span>
-<span id="cb57-6"><a href="#cb57-6"></a>true_parent[np.where(np.diff(L_indptr[:<span class="op">-</span><span class="dv">1</span>]) <span class="op">==</span> <span class="dv">1</span>)] <span class="op">=</span> <span class="op">-</span><span class="dv">1</span></span>
-<span id="cb57-7"><a href="#cb57-7"></a><span class="bu">print</span>(<span class="bu">all</span>(x <span class="op">==</span> y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(parent[:<span class="op">-</span><span class="dv">1</span>], true_parent)))</span>
-<span id="cb57-8"><a href="#cb57-8"></a></span>
-<span id="cb57-9"><a href="#cb57-9"></a>true_col_count  <span class="op">=</span> np.diff(L_indptr)</span>
-<span id="cb57-10"><a href="#cb57-10"></a><span class="bu">print</span>(<span class="bu">all</span>(true_col_count <span class="op">==</span> col_count))</span>
-<span id="cb57-11"><a href="#cb57-11"></a></span>
-<span id="cb57-12"><a href="#cb57-12"></a>true_row_count <span class="op">=</span> np.array([<span class="bu">len</span>(np.where(L_indices <span class="op">==</span> i)[<span class="dv">0</span>]) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">57</span><span class="op">**</span><span class="dv">2</span>)])</span>
-<span id="cb57-13"><a href="#cb57-13"></a><span class="bu">print</span>(<span class="bu">all</span>(true_row_count <span class="op">==</span> row_count))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">57</span>)</span>
+<span id="cb59-2"><a href="#cb59-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb59-3"><a href="#cb59-3"></a>L_indices, L_indptr <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb59-4"><a href="#cb59-4"></a></span>
+<span id="cb59-5"><a href="#cb59-5"></a>true_parent <span class="op">=</span> L_indices[L_indptr[:<span class="op">-</span><span class="dv">2</span>] <span class="op">+</span> <span class="dv">1</span>]</span>
+<span id="cb59-6"><a href="#cb59-6"></a>true_parent[np.where(np.diff(L_indptr[:<span class="op">-</span><span class="dv">1</span>]) <span class="op">==</span> <span class="dv">1</span>)] <span class="op">=</span> <span class="op">-</span><span class="dv">1</span></span>
+<span id="cb59-7"><a href="#cb59-7"></a><span class="bu">print</span>(<span class="bu">all</span>(x <span class="op">==</span> y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(parent[:<span class="op">-</span><span class="dv">1</span>], true_parent)))</span>
+<span id="cb59-8"><a href="#cb59-8"></a></span>
+<span id="cb59-9"><a href="#cb59-9"></a>true_col_count  <span class="op">=</span> np.diff(L_indptr)</span>
+<span id="cb59-10"><a href="#cb59-10"></a><span class="bu">print</span>(<span class="bu">all</span>(true_col_count <span class="op">==</span> col_count))</span>
+<span id="cb59-11"><a href="#cb59-11"></a></span>
+<span id="cb59-12"><a href="#cb59-12"></a>true_row_count <span class="op">=</span> np.array([<span class="bu">len</span>(np.where(L_indices <span class="op">==</span> i)[<span class="dv">0</span>]) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">57</span><span class="op">**</span><span class="dv">2</span>)])</span>
+<span id="cb59-13"><a href="#cb59-13"></a><span class="bu">print</span>(<span class="bu">all</span>(true_row_count <span class="op">==</span> row_count))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>True
 True</code></pre>
@@ -1002,42 +1020,42 @@ True</code></pre>
 <p>Excellent! With this we can modify our previous function to give us the row-indices of the non-zero pattern instead. Just for further chaos, please note that we are using a CSC representation of <span class="math inline">\(A\)</span> to get a CSR representation of <span class="math inline">\(L\)</span>.</p>
 <p>Once again, we will prototype in pure python and then translate to JAX. The thing to look out for this time is that we <em>know</em> how many non-zeros there are in a row and we know where we need to put them. This suggests that we can compute these things in <code>body_inner_for</code> and then do a vectorised version of our indirect indexing. This should compile down to a single <a href="https://www.tensorflow.org/xla/operation_semantics#scatter">XLA <code>scatter</code> call</a>. This will reduce the number of overall <code>scatter</code> calls from <span class="math inline">\(\operatorname(nnz)(L)\)</span> to <span class="math inline">\(n\)</span>. And hopefully this will fix things.</p>
 <div class="cell" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1"></a><span class="kw">def</span> symbolic_cholesky2_base(A_indices, A_indptr, L_indptr, row_count, parent, nnz):</span>
-<span id="cb60-2"><a href="#cb60-2"></a></span>
-<span id="cb60-3"><a href="#cb60-3"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb60-4"><a href="#cb60-4"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
-<span id="cb60-5"><a href="#cb60-5"></a>  L_indices <span class="op">=</span> np.zeros(L_indptr[<span class="op">-</span><span class="dv">1</span>], dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb60-6"><a href="#cb60-6"></a>  mark <span class="op">=</span> [<span class="op">-</span><span class="dv">1</span>] <span class="op">*</span> n</span>
-<span id="cb60-7"><a href="#cb60-7"></a></span>
-<span id="cb60-8"><a href="#cb60-8"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n):</span>
-<span id="cb60-9"><a href="#cb60-9"></a>    mark[i] <span class="op">=</span> i</span>
-<span id="cb60-10"><a href="#cb60-10"></a>    row_ind <span class="op">=</span> np.repeat(nnz<span class="op">+</span><span class="dv">1</span>, row_count[i])</span>
-<span id="cb60-11"><a href="#cb60-11"></a>    row_ind[<span class="op">-</span><span class="dv">1</span>] <span class="op">=</span> L_indptr[i]</span>
-<span id="cb60-12"><a href="#cb60-12"></a>    counter <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb60-13"><a href="#cb60-13"></a>    <span class="cf">for</span> indptr <span class="kw">in</span> <span class="bu">range</span>(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>]):</span>
-<span id="cb60-14"><a href="#cb60-14"></a>      node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb60-15"><a href="#cb60-15"></a>      <span class="cf">while</span> node <span class="op">&lt;</span> i <span class="kw">and</span> mark[node] <span class="op">!=</span> i:</span>
-<span id="cb60-16"><a href="#cb60-16"></a>        mark[node] <span class="op">=</span> i</span>
-<span id="cb60-17"><a href="#cb60-17"></a>        row_ind[counter] <span class="op">=</span> col_ptr[node]</span>
-<span id="cb60-18"><a href="#cb60-18"></a>        col_ptr[node] <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb60-19"><a href="#cb60-19"></a>        node <span class="op">=</span> parent[node]</span>
-<span id="cb60-20"><a href="#cb60-20"></a>        counter <span class="op">+=</span><span class="dv">1</span></span>
-<span id="cb60-21"><a href="#cb60-21"></a>    L_indices[row_ind] <span class="op">=</span> i</span>
-<span id="cb60-22"><a href="#cb60-22"></a>  </span>
-<span id="cb60-23"><a href="#cb60-23"></a>  <span class="cf">return</span> L_indices</span>
-<span id="cb60-24"><a href="#cb60-24"></a></span>
-<span id="cb60-25"><a href="#cb60-25"></a></span>
-<span id="cb60-26"><a href="#cb60-26"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">13</span>)</span>
-<span id="cb60-27"><a href="#cb60-27"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb60-28"><a href="#cb60-28"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb60-29"><a href="#cb60-29"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb60-30"><a href="#cb60-30"></a></span>
-<span id="cb60-31"><a href="#cb60-31"></a></span>
-<span id="cb60-32"><a href="#cb60-32"></a>L_indices <span class="op">=</span> symbolic_cholesky2_base(A.indices, A.indptr, L_indptr, row_count, parent, L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
-<span id="cb60-33"><a href="#cb60-33"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb60-34"><a href="#cb60-34"></a></span>
-<span id="cb60-35"><a href="#cb60-35"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indices, L_indices_true)))</span>
-<span id="cb60-36"><a href="#cb60-36"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indptr, L_indptr_true)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1"></a><span class="kw">def</span> symbolic_cholesky2_base(A_indices, A_indptr, L_indptr, row_count, parent, nnz):</span>
+<span id="cb62-2"><a href="#cb62-2"></a></span>
+<span id="cb62-3"><a href="#cb62-3"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb62-4"><a href="#cb62-4"></a>  col_ptr <span class="op">=</span> L_indptr <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb62-5"><a href="#cb62-5"></a>  L_indices <span class="op">=</span> np.zeros(L_indptr[<span class="op">-</span><span class="dv">1</span>], dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb62-6"><a href="#cb62-6"></a>  mark <span class="op">=</span> [<span class="op">-</span><span class="dv">1</span>] <span class="op">*</span> n</span>
+<span id="cb62-7"><a href="#cb62-7"></a></span>
+<span id="cb62-8"><a href="#cb62-8"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n):</span>
+<span id="cb62-9"><a href="#cb62-9"></a>    mark[i] <span class="op">=</span> i</span>
+<span id="cb62-10"><a href="#cb62-10"></a>    row_ind <span class="op">=</span> np.repeat(nnz<span class="op">+</span><span class="dv">1</span>, row_count[i])</span>
+<span id="cb62-11"><a href="#cb62-11"></a>    row_ind[<span class="op">-</span><span class="dv">1</span>] <span class="op">=</span> L_indptr[i]</span>
+<span id="cb62-12"><a href="#cb62-12"></a>    counter <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb62-13"><a href="#cb62-13"></a>    <span class="cf">for</span> indptr <span class="kw">in</span> <span class="bu">range</span>(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>]):</span>
+<span id="cb62-14"><a href="#cb62-14"></a>      node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb62-15"><a href="#cb62-15"></a>      <span class="cf">while</span> node <span class="op">&lt;</span> i <span class="kw">and</span> mark[node] <span class="op">!=</span> i:</span>
+<span id="cb62-16"><a href="#cb62-16"></a>        mark[node] <span class="op">=</span> i</span>
+<span id="cb62-17"><a href="#cb62-17"></a>        row_ind[counter] <span class="op">=</span> col_ptr[node]</span>
+<span id="cb62-18"><a href="#cb62-18"></a>        col_ptr[node] <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb62-19"><a href="#cb62-19"></a>        node <span class="op">=</span> parent[node]</span>
+<span id="cb62-20"><a href="#cb62-20"></a>        counter <span class="op">+=</span><span class="dv">1</span></span>
+<span id="cb62-21"><a href="#cb62-21"></a>    L_indices[row_ind] <span class="op">=</span> i</span>
+<span id="cb62-22"><a href="#cb62-22"></a>  </span>
+<span id="cb62-23"><a href="#cb62-23"></a>  <span class="cf">return</span> L_indices</span>
+<span id="cb62-24"><a href="#cb62-24"></a></span>
+<span id="cb62-25"><a href="#cb62-25"></a></span>
+<span id="cb62-26"><a href="#cb62-26"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">13</span>)</span>
+<span id="cb62-27"><a href="#cb62-27"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb62-28"><a href="#cb62-28"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb62-29"><a href="#cb62-29"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb62-30"><a href="#cb62-30"></a></span>
+<span id="cb62-31"><a href="#cb62-31"></a></span>
+<span id="cb62-32"><a href="#cb62-32"></a>L_indices <span class="op">=</span> symbolic_cholesky2_base(A.indices, A.indptr, L_indptr, row_count, parent, L_indptr[<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb62-33"><a href="#cb62-33"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb62-34"><a href="#cb62-34"></a></span>
+<span id="cb62-35"><a href="#cb62-35"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indices, L_indices_true)))</span>
+<span id="cb62-36"><a href="#cb62-36"></a><span class="bu">print</span>(<span class="bu">all</span>(x<span class="op">==</span>y <span class="cf">for</span> (x,y) <span class="kw">in</span> <span class="bu">zip</span>(L_indptr, L_indptr_true)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>True
 True</code></pre>
@@ -1053,81 +1071,81 @@ True</code></pre>
 </ol>
 <p>I’m going to try the first of these options.</p>
 <div class="cell" data-execution_count="35">
-<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">5</span>, <span class="dv">6</span>))</span>
-<span id="cb62-2"><a href="#cb62-2"></a><span class="kw">def</span> symbolic_cholesky2(A_indices, A_indptr, L_indptr, row_count, parent, nnz, max_row):</span>
-<span id="cb62-3"><a href="#cb62-3"></a>  <span class="co">## innermost while loop</span></span>
-<span id="cb62-4"><a href="#cb62-4"></a>  <span class="kw">def</span> body_while(val):</span>
-<span id="cb62-5"><a href="#cb62-5"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb62-6"><a href="#cb62-6"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
-<span id="cb62-7"><a href="#cb62-7"></a>    row_ind <span class="op">=</span> row_ind.at[counter].<span class="bu">set</span>(col_ptr[node])</span>
-<span id="cb62-8"><a href="#cb62-8"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
-<span id="cb62-9"><a href="#cb62-9"></a>    <span class="cf">return</span> (i, counter <span class="op">+</span> <span class="dv">1</span>, row_ind, parent[node], col_ptr, mark)</span>
-<span id="cb62-10"><a href="#cb62-10"></a></span>
-<span id="cb62-11"><a href="#cb62-11"></a>  <span class="kw">def</span> cond_while(val):</span>
-<span id="cb62-12"><a href="#cb62-12"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb62-13"><a href="#cb62-13"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
-<span id="cb62-14"><a href="#cb62-14"></a></span>
-<span id="cb62-15"><a href="#cb62-15"></a>  <span class="co">## Inner for loop</span></span>
-<span id="cb62-16"><a href="#cb62-16"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
-<span id="cb62-17"><a href="#cb62-17"></a>    i, counter, row_ind, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb62-18"><a href="#cb62-18"></a>    node <span class="op">=</span> A_indices[indptr]</span>
-<span id="cb62-19"><a href="#cb62-19"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, counter, row_ind, node, col_ptr, mark))</span>
-<span id="cb62-20"><a href="#cb62-20"></a>    <span class="cf">return</span> (i, counter, row_ind, parent, col_ptr, mark)</span>
-<span id="cb62-21"><a href="#cb62-21"></a>  </span>
-<span id="cb62-22"><a href="#cb62-22"></a>  <span class="co">## Outer for loop</span></span>
-<span id="cb62-23"><a href="#cb62-23"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
-<span id="cb62-24"><a href="#cb62-24"></a>     L_indices, parent, col_ptr, mark <span class="op">=</span> val</span>
-<span id="cb62-25"><a href="#cb62-25"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
-<span id="cb62-26"><a href="#cb62-26"></a>     row_ind <span class="op">=</span> jnp.repeat(nnz<span class="op">+</span><span class="dv">1</span>, max_row)</span>
-<span id="cb62-27"><a href="#cb62-27"></a>     row_ind <span class="op">=</span> row_ind.at[row_count[i]<span class="op">-</span><span class="dv">1</span>].<span class="bu">set</span>(L_indptr[i])</span>
-<span id="cb62-28"><a href="#cb62-28"></a>     counter <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb62-29"><a href="#cb62-29"></a></span>
-<span id="cb62-30"><a href="#cb62-30"></a>     i, counter, row_ind, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, counter, row_ind, parent, col_ptr, mark))</span>
-<span id="cb62-31"><a href="#cb62-31"></a></span>
-<span id="cb62-32"><a href="#cb62-32"></a>     L_indices <span class="op">=</span> L_indices.at[row_ind].<span class="bu">set</span>(i, mode <span class="op">=</span> <span class="st">"drop"</span>)</span>
-<span id="cb62-33"><a href="#cb62-33"></a>     <span class="cf">return</span> (L_indices, parent, col_ptr, mark)</span>
-<span id="cb62-34"><a href="#cb62-34"></a></span>
-<span id="cb62-35"><a href="#cb62-35"></a>  <span class="co">## Body of code</span></span>
-<span id="cb62-36"><a href="#cb62-36"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb62-37"><a href="#cb62-37"></a></span>
-<span id="cb62-38"><a href="#cb62-38"></a>  col_ptr <span class="op">=</span> jnp.array(L_indptr <span class="op">+</span> <span class="dv">1</span>)</span>
-<span id="cb62-39"><a href="#cb62-39"></a>  L_indices <span class="op">=</span> jnp.ones(nnz, dtype<span class="op">=</span><span class="bu">int</span>) <span class="op">*</span> (<span class="op">-</span><span class="dv">1</span>)</span>
-<span id="cb62-40"><a href="#cb62-40"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
-<span id="cb62-41"><a href="#cb62-41"></a></span>
-<span id="cb62-42"><a href="#cb62-42"></a>  <span class="co">## Make everything a jnp array. Really should use jaxtyping</span></span>
-<span id="cb62-43"><a href="#cb62-43"></a>  A_indices <span class="op">=</span> jnp.array(A_indices)</span>
-<span id="cb62-44"><a href="#cb62-44"></a>  A_indptr <span class="op">=</span> jnp.array(A_indptr)</span>
-<span id="cb62-45"><a href="#cb62-45"></a>  L_indptr <span class="op">=</span> jnp.array(L_indptr)</span>
-<span id="cb62-46"><a href="#cb62-46"></a>  row_count <span class="op">=</span> jnp.array(row_count)</span>
-<span id="cb62-47"><a href="#cb62-47"></a>  parent <span class="op">=</span> jnp.array(parent)</span>
-<span id="cb62-48"><a href="#cb62-48"></a></span>
-<span id="cb62-49"><a href="#cb62-49"></a>  init <span class="op">=</span> (L_indices, parent, col_ptr, mark)</span>
-<span id="cb62-50"><a href="#cb62-50"></a>  L_indices, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
-<span id="cb62-51"><a href="#cb62-51"></a>  <span class="cf">return</span> L_indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1"></a><span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">5</span>, <span class="dv">6</span>))</span>
+<span id="cb64-2"><a href="#cb64-2"></a><span class="kw">def</span> symbolic_cholesky2(A_indices, A_indptr, L_indptr, row_count, parent, nnz, max_row):</span>
+<span id="cb64-3"><a href="#cb64-3"></a>  <span class="co">## innermost while loop</span></span>
+<span id="cb64-4"><a href="#cb64-4"></a>  <span class="kw">def</span> body_while(val):</span>
+<span id="cb64-5"><a href="#cb64-5"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb64-6"><a href="#cb64-6"></a>    mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
+<span id="cb64-7"><a href="#cb64-7"></a>    row_ind <span class="op">=</span> row_ind.at[counter].<span class="bu">set</span>(col_ptr[node])</span>
+<span id="cb64-8"><a href="#cb64-8"></a>    col_ptr <span class="op">=</span> col_ptr.at[node].add(<span class="dv">1</span>)</span>
+<span id="cb64-9"><a href="#cb64-9"></a>    <span class="cf">return</span> (i, counter <span class="op">+</span> <span class="dv">1</span>, row_ind, parent[node], col_ptr, mark)</span>
+<span id="cb64-10"><a href="#cb64-10"></a></span>
+<span id="cb64-11"><a href="#cb64-11"></a>  <span class="kw">def</span> cond_while(val):</span>
+<span id="cb64-12"><a href="#cb64-12"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb64-13"><a href="#cb64-13"></a>    <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
+<span id="cb64-14"><a href="#cb64-14"></a></span>
+<span id="cb64-15"><a href="#cb64-15"></a>  <span class="co">## Inner for loop</span></span>
+<span id="cb64-16"><a href="#cb64-16"></a>  <span class="kw">def</span> body_inner_for(indptr, val):</span>
+<span id="cb64-17"><a href="#cb64-17"></a>    i, counter, row_ind, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb64-18"><a href="#cb64-18"></a>    node <span class="op">=</span> A_indices[indptr]</span>
+<span id="cb64-19"><a href="#cb64-19"></a>    i, counter, row_ind, node, col_ptr, mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (i, counter, row_ind, node, col_ptr, mark))</span>
+<span id="cb64-20"><a href="#cb64-20"></a>    <span class="cf">return</span> (i, counter, row_ind, parent, col_ptr, mark)</span>
+<span id="cb64-21"><a href="#cb64-21"></a>  </span>
+<span id="cb64-22"><a href="#cb64-22"></a>  <span class="co">## Outer for loop</span></span>
+<span id="cb64-23"><a href="#cb64-23"></a>  <span class="kw">def</span> body_out_for(i, val):</span>
+<span id="cb64-24"><a href="#cb64-24"></a>     L_indices, parent, col_ptr, mark <span class="op">=</span> val</span>
+<span id="cb64-25"><a href="#cb64-25"></a>     mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
+<span id="cb64-26"><a href="#cb64-26"></a>     row_ind <span class="op">=</span> jnp.repeat(nnz<span class="op">+</span><span class="dv">1</span>, max_row)</span>
+<span id="cb64-27"><a href="#cb64-27"></a>     row_ind <span class="op">=</span> row_ind.at[row_count[i]<span class="op">-</span><span class="dv">1</span>].<span class="bu">set</span>(L_indptr[i])</span>
+<span id="cb64-28"><a href="#cb64-28"></a>     counter <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb64-29"><a href="#cb64-29"></a></span>
+<span id="cb64-30"><a href="#cb64-30"></a>     i, counter, row_ind, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(A_indptr[i], A_indptr[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (i, counter, row_ind, parent, col_ptr, mark))</span>
+<span id="cb64-31"><a href="#cb64-31"></a></span>
+<span id="cb64-32"><a href="#cb64-32"></a>     L_indices <span class="op">=</span> L_indices.at[row_ind].<span class="bu">set</span>(i, mode <span class="op">=</span> <span class="st">"drop"</span>)</span>
+<span id="cb64-33"><a href="#cb64-33"></a>     <span class="cf">return</span> (L_indices, parent, col_ptr, mark)</span>
+<span id="cb64-34"><a href="#cb64-34"></a></span>
+<span id="cb64-35"><a href="#cb64-35"></a>  <span class="co">## Body of code</span></span>
+<span id="cb64-36"><a href="#cb64-36"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb64-37"><a href="#cb64-37"></a></span>
+<span id="cb64-38"><a href="#cb64-38"></a>  col_ptr <span class="op">=</span> jnp.array(L_indptr <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb64-39"><a href="#cb64-39"></a>  L_indices <span class="op">=</span> jnp.ones(nnz, dtype<span class="op">=</span><span class="bu">int</span>) <span class="op">*</span> (<span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb64-40"><a href="#cb64-40"></a>  mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb64-41"><a href="#cb64-41"></a></span>
+<span id="cb64-42"><a href="#cb64-42"></a>  <span class="co">## Make everything a jnp array. Really should use jaxtyping</span></span>
+<span id="cb64-43"><a href="#cb64-43"></a>  A_indices <span class="op">=</span> jnp.array(A_indices)</span>
+<span id="cb64-44"><a href="#cb64-44"></a>  A_indptr <span class="op">=</span> jnp.array(A_indptr)</span>
+<span id="cb64-45"><a href="#cb64-45"></a>  L_indptr <span class="op">=</span> jnp.array(L_indptr)</span>
+<span id="cb64-46"><a href="#cb64-46"></a>  row_count <span class="op">=</span> jnp.array(row_count)</span>
+<span id="cb64-47"><a href="#cb64-47"></a>  parent <span class="op">=</span> jnp.array(parent)</span>
+<span id="cb64-48"><a href="#cb64-48"></a></span>
+<span id="cb64-49"><a href="#cb64-49"></a>  init <span class="op">=</span> (L_indices, parent, col_ptr, mark)</span>
+<span id="cb64-50"><a href="#cb64-50"></a>  L_indices, parent, col_ptr, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
+<span id="cb64-51"><a href="#cb64-51"></a>  <span class="cf">return</span> L_indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Ok. Let’s see if that helped.</p>
+<p>Ok. Let’s see if that worked.</p>
 <div class="cell" data-execution_count="36">
-<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
-<span id="cb63-2"><a href="#cb63-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb63-3"><a href="#cb63-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb63-4"><a href="#cb63-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb63-5"><a href="#cb63-5"></a></span>
-<span id="cb63-6"><a href="#cb63-6"></a></span>
-<span id="cb63-7"><a href="#cb63-7"></a>L_indices <span class="op">=</span> symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count)))</span>
-<span id="cb63-8"><a href="#cb63-8"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb63-9"><a href="#cb63-9"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
-<span id="cb63-10"><a href="#cb63-10"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
-<span id="cb63-11"><a href="#cb63-11"></a></span>
-<span id="cb63-12"><a href="#cb63-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">31</span>)</span>
-<span id="cb63-13"><a href="#cb63-13"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb63-14"><a href="#cb63-14"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb63-15"><a href="#cb63-15"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb63-16"><a href="#cb63-16"></a></span>
-<span id="cb63-17"><a href="#cb63-17"></a></span>
-<span id="cb63-18"><a href="#cb63-18"></a>L_indices <span class="op">=</span> symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count)))</span>
-<span id="cb63-19"><a href="#cb63-19"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
-<span id="cb63-20"><a href="#cb63-20"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
-<span id="cb63-21"><a href="#cb63-21"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">20</span>)</span>
+<span id="cb65-2"><a href="#cb65-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb65-3"><a href="#cb65-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb65-4"><a href="#cb65-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb65-5"><a href="#cb65-5"></a></span>
+<span id="cb65-6"><a href="#cb65-6"></a></span>
+<span id="cb65-7"><a href="#cb65-7"></a>L_indices <span class="op">=</span> symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count)))</span>
+<span id="cb65-8"><a href="#cb65-8"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb65-9"><a href="#cb65-9"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb65-10"><a href="#cb65-10"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
+<span id="cb65-11"><a href="#cb65-11"></a></span>
+<span id="cb65-12"><a href="#cb65-12"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">31</span>)</span>
+<span id="cb65-13"><a href="#cb65-13"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb65-14"><a href="#cb65-14"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb65-15"><a href="#cb65-15"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb65-16"><a href="#cb65-16"></a></span>
+<span id="cb65-17"><a href="#cb65-17"></a></span>
+<span id="cb65-18"><a href="#cb65-18"></a>L_indices <span class="op">=</span> symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count)))</span>
+<span id="cb65-19"><a href="#cb65-19"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb65-20"><a href="#cb65-20"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb65-21"><a href="#cb65-21"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>True
 True</code></pre>
@@ -1139,34 +1157,199 @@ True</code></pre>
 </div>
 <p>Ok. Once more into the breach. Is this any better?</p>
 <div class="cell" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
-<span id="cb66-2"><a href="#cb66-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb66-3"><a href="#cb66-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb66-4"><a href="#cb66-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb66-5"><a href="#cb66-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count))),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb66-6"><a href="#cb66-6"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb66-7"><a href="#cb66-7"></a></span>
-<span id="cb66-8"><a href="#cb66-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
-<span id="cb66-9"><a href="#cb66-9"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
-<span id="cb66-10"><a href="#cb66-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
-<span id="cb66-11"><a href="#cb66-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
-<span id="cb66-12"><a href="#cb66-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count))),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
-<span id="cb66-13"><a href="#cb66-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb66-14"><a href="#cb66-14"></a></span>
-<span id="cb66-15"><a href="#cb66-15"></a><span class="co"># A_indices, A_indptr, A_x, A = make_matrix(300)</span></span>
-<span id="cb66-16"><a href="#cb66-16"></a><span class="co"># parent, col_count, row_count = etree(A.indices, A.indptr)</span></span>
-<span id="cb66-17"><a href="#cb66-17"></a><span class="co"># L_indptr = np.zeros(A.shape[0]+1, dtype=int)</span></span>
-<span id="cb66-18"><a href="#cb66-18"></a><span class="co"># L_indptr[1:] = np.cumsum(col_count)</span></span>
-<span id="cb66-19"><a href="#cb66-19"></a><span class="co"># times = timeit.repeat(lambda:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 1)</span></span>
-<span id="cb66-20"><a href="#cb66-20"></a><span class="co"># print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb68-2"><a href="#cb68-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb68-3"><a href="#cb68-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb68-4"><a href="#cb68-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb68-5"><a href="#cb68-5"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count))),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb68-6"><a href="#cb68-6"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb68-7"><a href="#cb68-7"></a></span>
+<span id="cb68-8"><a href="#cb68-8"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb68-9"><a href="#cb68-9"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb68-10"><a href="#cb68-10"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb68-11"><a href="#cb68-11"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb68-12"><a href="#cb68-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]), max_row <span class="op">=</span> <span class="bu">int</span>(<span class="bu">max</span>(row_count))),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb68-13"><a href="#cb68-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb68-14"><a href="#cb68-14"></a></span>
+<span id="cb68-15"><a href="#cb68-15"></a><span class="co"># A_indices, A_indptr, A_x, A = make_matrix(300)</span></span>
+<span id="cb68-16"><a href="#cb68-16"></a><span class="co"># parent, col_count, row_count = etree(A.indices, A.indptr)</span></span>
+<span id="cb68-17"><a href="#cb68-17"></a><span class="co"># L_indptr = np.zeros(A.shape[0]+1, dtype=int)</span></span>
+<span id="cb68-18"><a href="#cb68-18"></a><span class="co"># L_indptr[1:] = np.cumsum(col_count)</span></span>
+<span id="cb68-19"><a href="#cb68-19"></a><span class="co"># times = timeit.repeat(lambda:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 1)</span></span>
+<span id="cb68-20"><a href="#cb68-20"></a><span class="co"># print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.24]</code></pre>
+<pre><code>n = 2500: [0.23]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [28.45]</code></pre>
+<pre><code>n = 40000: [27.49]</code></pre>
 </div>
 </div>
 <p>Fuck.</p>
+</section>
+<section id="attempt-3-a-desperate-attempt-to-make-this" class="level3">
+<h3 class="anchored" data-anchor-id="attempt-3-a-desperate-attempt-to-make-this">Attempt 3: A desperate attempt to make this</h3>
+<p>Right. Let’s try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> format. The <code>jax.experimental.sparse</code> module has support for (blocked) COO objects but doesn’t implement this transformation. <code>scipy.sparse</code> has a fast conversion routine so I’m going to use it. In the interest of being 100% JAX, I tried a version with <code>jnp.lexsort</code><a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a>, which basically does the same thing but it’s a lot slower.</p>
+<div class="cell" data-execution_count="38">
+<div class="sourceCode cell-code" id="cb71"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1"></a><span class="kw">def</span> symbolic_cholesky3(A_indices, A_indptr, L_indptr, parent, nnz):</span>
+<span id="cb71-2"><a href="#cb71-2"></a>  <span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
+<span id="cb71-3"><a href="#cb71-3"></a>  <span class="kw">def</span> _inner(A_indices_, A_indptr_, L_indptr, parent, nnz):</span>
+<span id="cb71-4"><a href="#cb71-4"></a>    <span class="co">## Make everything a jnp array. Really should use jaxtyping</span></span>
+<span id="cb71-5"><a href="#cb71-5"></a>    A_indices_ <span class="op">=</span> jnp.array(A_indices_)</span>
+<span id="cb71-6"><a href="#cb71-6"></a>    A_indptr_ <span class="op">=</span> jnp.array(A_indptr_)</span>
+<span id="cb71-7"><a href="#cb71-7"></a>    L_indptr <span class="op">=</span> jnp.array(L_indptr)</span>
+<span id="cb71-8"><a href="#cb71-8"></a>    parent <span class="op">=</span> jnp.array(parent)</span>
+<span id="cb71-9"><a href="#cb71-9"></a></span>
+<span id="cb71-10"><a href="#cb71-10"></a>    <span class="co">## innermost while loop</span></span>
+<span id="cb71-11"><a href="#cb71-11"></a>    <span class="kw">def</span> body_while(val):</span>
+<span id="cb71-12"><a href="#cb71-12"></a>      index, i, counter,  node,  mark <span class="op">=</span> val</span>
+<span id="cb71-13"><a href="#cb71-13"></a>      mark <span class="op">=</span> mark.at[node].<span class="bu">set</span>(i)</span>
+<span id="cb71-14"><a href="#cb71-14"></a>      index[<span class="dv">0</span>] <span class="op">=</span> index[<span class="dv">0</span>].at[counter].<span class="bu">set</span>(node) <span class="co">#column</span></span>
+<span id="cb71-15"><a href="#cb71-15"></a>      index[<span class="dv">1</span>] <span class="op">=</span> index[<span class="dv">1</span>].at[counter].<span class="bu">set</span>(i) <span class="co"># row</span></span>
+<span id="cb71-16"><a href="#cb71-16"></a>      <span class="cf">return</span> (index, i, counter <span class="op">+</span> <span class="dv">1</span>, parent[node], mark)</span>
+<span id="cb71-17"><a href="#cb71-17"></a></span>
+<span id="cb71-18"><a href="#cb71-18"></a>    <span class="kw">def</span> cond_while(val):</span>
+<span id="cb71-19"><a href="#cb71-19"></a>      index, i, counter,  node,  mark <span class="op">=</span> val</span>
+<span id="cb71-20"><a href="#cb71-20"></a>      <span class="cf">return</span> lax.bitwise_and(lax.lt(node, i), lax.ne(mark[node], i))</span>
+<span id="cb71-21"><a href="#cb71-21"></a></span>
+<span id="cb71-22"><a href="#cb71-22"></a>    <span class="co">## Inner for loop</span></span>
+<span id="cb71-23"><a href="#cb71-23"></a>    <span class="kw">def</span> body_inner_for(indptr, val):</span>
+<span id="cb71-24"><a href="#cb71-24"></a>      index, i, counter, mark <span class="op">=</span> val</span>
+<span id="cb71-25"><a href="#cb71-25"></a>      node <span class="op">=</span> A_indices_[indptr]</span>
+<span id="cb71-26"><a href="#cb71-26"></a>      </span>
+<span id="cb71-27"><a href="#cb71-27"></a>      index, i, counter,  node,  mark <span class="op">=</span> lax.while_loop(cond_while, body_while, (index, i, counter,  node,  mark))</span>
+<span id="cb71-28"><a href="#cb71-28"></a>      <span class="cf">return</span> (index, i, counter,  mark)</span>
+<span id="cb71-29"><a href="#cb71-29"></a>    </span>
+<span id="cb71-30"><a href="#cb71-30"></a>    <span class="co">## Outer for loop</span></span>
+<span id="cb71-31"><a href="#cb71-31"></a>    <span class="kw">def</span> body_out_for(i, val):</span>
+<span id="cb71-32"><a href="#cb71-32"></a>      index, counter,  mark <span class="op">=</span> val</span>
+<span id="cb71-33"><a href="#cb71-33"></a>      mark <span class="op">=</span> mark.at[i].<span class="bu">set</span>(i)</span>
+<span id="cb71-34"><a href="#cb71-34"></a>      index[<span class="dv">0</span>] <span class="op">=</span> index[<span class="dv">0</span>].at[counter].<span class="bu">set</span>(i)</span>
+<span id="cb71-35"><a href="#cb71-35"></a>      index[<span class="dv">1</span>] <span class="op">=</span> index[<span class="dv">1</span>].at[counter].<span class="bu">set</span>(i)</span>
+<span id="cb71-36"><a href="#cb71-36"></a>      counter <span class="op">=</span> counter <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb71-37"><a href="#cb71-37"></a>      index, i, counter, mark <span class="op">=</span> lax.fori_loop(A_indptr_[i], A_indptr_[i<span class="op">+</span><span class="dv">1</span>], body_inner_for, (index, i, counter,  mark))</span>
+<span id="cb71-38"><a href="#cb71-38"></a></span>
+<span id="cb71-39"><a href="#cb71-39"></a>      <span class="cf">return</span> (index, counter,  mark)</span>
+<span id="cb71-40"><a href="#cb71-40"></a></span>
+<span id="cb71-41"><a href="#cb71-41"></a>    <span class="co">## Body of code</span></span>
+<span id="cb71-42"><a href="#cb71-42"></a>    n <span class="op">=</span> <span class="bu">len</span>(A_indptr_) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb71-43"><a href="#cb71-43"></a>    mark <span class="op">=</span> jnp.repeat(<span class="op">-</span><span class="dv">1</span>, n)</span>
+<span id="cb71-44"><a href="#cb71-44"></a></span>
+<span id="cb71-45"><a href="#cb71-45"></a>    index <span class="op">=</span> [jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>), jnp.zeros(nnz, dtype<span class="op">=</span><span class="bu">int</span>)]</span>
+<span id="cb71-46"><a href="#cb71-46"></a>    counter <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb71-47"><a href="#cb71-47"></a></span>
+<span id="cb71-48"><a href="#cb71-48"></a>    init <span class="op">=</span> (index, counter, mark)</span>
+<span id="cb71-49"><a href="#cb71-49"></a>    index, counter, mark <span class="op">=</span> lax.fori_loop(<span class="dv">0</span>, n, body_out_for, init)</span>
+<span id="cb71-50"><a href="#cb71-50"></a>    </span>
+<span id="cb71-51"><a href="#cb71-51"></a>    <span class="cf">return</span> index</span>
+<span id="cb71-52"><a href="#cb71-52"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb71-53"><a href="#cb71-53"></a>  index <span class="op">=</span> _inner(A_indices, A_indptr, L_indptr, parent, nnz)</span>
+<span id="cb71-54"><a href="#cb71-54"></a>  <span class="cf">return</span> sparse.coo_array((np.ones(nnz), (index[<span class="dv">1</span>], index[<span class="dv">0</span>])), shape <span class="op">=</span> (n,n)).tocsc().indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>First things first, let’s check how fast this is.</p>
+<div class="cell" data-execution_count="39">
+<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">15</span>)</span>
+<span id="cb72-2"><a href="#cb72-2"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-3"><a href="#cb72-3"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-4"><a href="#cb72-4"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-5"><a href="#cb72-5"></a>L_indices <span class="op">=</span> symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))</span>
+<span id="cb72-6"><a href="#cb72-6"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb72-7"><a href="#cb72-7"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb72-8"><a href="#cb72-8"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
+<span id="cb72-9"><a href="#cb72-9"></a></span>
+<span id="cb72-10"><a href="#cb72-10"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">31</span>)</span>
+<span id="cb72-11"><a href="#cb72-11"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-12"><a href="#cb72-12"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-13"><a href="#cb72-13"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-14"><a href="#cb72-14"></a>L_indices <span class="op">=</span> symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))</span>
+<span id="cb72-15"><a href="#cb72-15"></a>L_indices_true, L_indptr_true <span class="op">=</span> _symbolic_factor(A_indices, A_indptr)</span>
+<span id="cb72-16"><a href="#cb72-16"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indices <span class="op">==</span> L_indices_true))</span>
+<span id="cb72-17"><a href="#cb72-17"></a><span class="bu">print</span>(<span class="bu">all</span>(L_indptr <span class="op">==</span> L_indptr_true))</span>
+<span id="cb72-18"><a href="#cb72-18"></a></span>
+<span id="cb72-19"><a href="#cb72-19"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
+<span id="cb72-20"><a href="#cb72-20"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-21"><a href="#cb72-21"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-22"><a href="#cb72-22"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-23"><a href="#cb72-23"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>])),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb72-24"><a href="#cb72-24"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb72-25"><a href="#cb72-25"></a></span>
+<span id="cb72-26"><a href="#cb72-26"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">200</span>)</span>
+<span id="cb72-27"><a href="#cb72-27"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-28"><a href="#cb72-28"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-29"><a href="#cb72-29"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-30"><a href="#cb72-30"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>])),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb72-31"><a href="#cb72-31"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb72-32"><a href="#cb72-32"></a></span>
+<span id="cb72-33"><a href="#cb72-33"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">300</span>)</span>
+<span id="cb72-34"><a href="#cb72-34"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-35"><a href="#cb72-35"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-36"><a href="#cb72-36"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-37"><a href="#cb72-37"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>])),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb72-38"><a href="#cb72-38"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb72-39"><a href="#cb72-39"></a></span>
+<span id="cb72-40"><a href="#cb72-40"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">1000</span>)</span>
+<span id="cb72-41"><a href="#cb72-41"></a>parent, col_count, row_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
+<span id="cb72-42"><a href="#cb72-42"></a>L_indptr <span class="op">=</span> np.zeros(A.shape[<span class="dv">0</span>]<span class="op">+</span><span class="dv">1</span>, dtype<span class="op">=</span><span class="bu">int</span>)</span>
+<span id="cb72-43"><a href="#cb72-43"></a>L_indptr[<span class="dv">1</span>:] <span class="op">=</span> np.cumsum(col_count)</span>
+<span id="cb72-44"><a href="#cb72-44"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky3(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> <span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>])),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb72-45"><a href="#cb72-45"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>True
+True
+True
+True</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 2500: [0.13, 0.13, 0.13, 0.13, 0.13]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 40000: [0.19, 0.19, 0.19, 0.19, 0.19]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 90000: [0.43, 0.32, 0.32, 0.32, 0.31]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>n = 1000000: [11.45]</code></pre>
+</div>
+</div>
+<p>You know what? I’ll take it.</p>
+</section>
+</section>
+<section id="the-numerical-factorisation" class="level2">
+<h2 class="anchored" data-anchor-id="the-numerical-factorisation">The numerical factorisation</h2>
+<p>Finally we have made it here!</p>
+<!-- Let's discover how fast `jnp.lexsort` is!
+
+
+
+
+
+
+
+Well thank Christ for that. I mean, it's not perfect but I've definitely seen worse! A quick compare with the pure python implementation suggests that we are doing ok.
+
+::: {.cell execution_count=43}
+
+::: {.cell-output .cell-output-stdout}
+```
+True
+True
+```
+:::
+
+::: {.cell-output .cell-output-stdout}
+```
+n = 2500: [34.17]
+```
+:::
+:::
+
+
+Ok. So that works well enough. I'm not thrilled^[It's still much slower than pure python.] with it, but it at least solves the problem and does not have catastrophic scaling. 
+
+That said, I was talking to Junpeng and he suggested I try an `jnp.where` rather than all of those damn `.at`s. So let's see how that compares. Writing this blog, as I do, sequentially, I have suspicions^[Junpeng is a professional JAX-er. I'm unemployed. We are not the same.]. I've might have wasted^[I'm on a flight from Melbourne to New York right now so I promise you there is nothing better that I could be doing. I'm also drinking.] my time.
+
+
+**do this later** -->
 
 
 </section>
@@ -1200,6 +1383,8 @@ True</code></pre>
 <li id="fn23"><p>Replace “subtle” with “fairly obvious once I realised how it’s converted to a <code>lax.scan</code>, but not at all obvious to me originally”.<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn24"><p>This also happens with the profile likelihood in non-Baeysian methods.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn25"><p>the <span class="math inline">\(\beta\)</span>s<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn26"><p>COO stands for <em>coordinate list</em> and it’s the least space-efficient of our options. It directly stores 3 length <code>n</code> vectors <code>(row, col, value)</code>. It’s great for specifying matrices and it’s pretty easy to convert from this format to any of the others.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p><code>index[1][jnp.lexsort((index[1], index[0]))]</code><a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
 </section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
   author = {Dan Simpson},
