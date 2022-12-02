@@ -874,7 +874,7 @@ Excellent. Now let's JAX this. The JAX-heads among you will notice that we have 
 
 Shit.
 
-It is hard to think of a good option here. A few months back Junpeng Lao sent me a script with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.
+It is hard to think of a good option here. A few months back Junpeng Lao^[Who demanded a footnote.] [sent me a script](https://gist.github.com/junpenglao/f5b48c34dd8ea5029202fb607806ea0f#file-sparse-cholesky-in-jax-ipynb) with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.
 
 He came up with two methods.
 

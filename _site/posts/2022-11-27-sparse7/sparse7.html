@@ -364,7 +364,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <div class="cell-output cell-output-error">
 <pre><code>ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: Traced&lt;ShapedArray(int32[], weak_type=True)&gt;with&lt;DynamicJaxprTrace(level=0/1)&gt;
 When jit-compiling jnp.repeat, the total number of repeats must be static. To fix this, either specify a static value for `repeats`, or pass a static value to `total_repeat_length`.
-The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_22750/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
+The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_24749/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
 
 See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError</code></pre>
 </div>
@@ -600,7 +600,7 @@ True</code></pre>
 n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.85, 0.95, 0.91, 0.91, 0.85]</code></pre>
+<pre><code>n = 40000: [0.83, 0.82, 0.82, 0.82, 0.82]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
@@ -625,16 +625,16 @@ n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
 <span id="cb29-18"><a href="#cb29-18"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb29-19"><a href="#cb29-19"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 400: [0.11, 0.0, 0.0, 0.0, 0.0]</code></pre>
+<pre><code>n = 400: [0.13, 0.0, 0.0, 0.0, 0.0]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.11, 0.0, 0.0, 0.0, 0.0]</code></pre>
+<pre><code>n = 2500: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.15, 0.02, 0.02, 0.02, 0.02]</code></pre>
+<pre><code>n = 40000: [0.14, 0.02, 0.02, 0.02, 0.02]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 1000000: [2.33, 2.21, 2.15, 2.05, 1.99]</code></pre>
+<pre><code>n = 1000000: [2.24, 2.11, 2.12, 2.12, 2.12]</code></pre>
 </div>
 </div>
 <p>You can see that there is some decent speedup. For the first three examples, the computation time is dominated by the compilation time, but we see when the matrix has a million unknowns the compilation time is negligible. At this scale it would probably be worth using the fancy algorithm. That said, it is probably not worth sweating a three second that is only done once when your problem is that big!</p>
@@ -824,10 +824,10 @@ True</code></pre>
 <span id="cb45-8"><a href="#cb45-8"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb45-9"><a href="#cb45-9"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.04, 0.04, 0.04, 0.04, 0.04]</code></pre>
+<pre><code>n = 2500: [0.05, 0.04, 0.04, 0.04, 0.04]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [1.84, 1.83, 1.84, 1.82, 1.83]</code></pre>
+<pre><code>n = 40000: [1.97, 2.09, 2.04, 2.03, 1.92]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
@@ -846,10 +846,10 @@ True</code></pre>
 <span id="cb48-12"><a href="#cb48-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb48-13"><a href="#cb48-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.12]</code></pre>
+<pre><code>n = 2500: [0.15]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [25.96]</code></pre>
+<pre><code>n = 40000: [29.19]</code></pre>
 </div>
 </div>
 <p>Oooof. Something is going horribly wrong.</p>
@@ -872,10 +872,10 @@ True</code></pre>
 <span id="cb51-12"><a href="#cb51-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
 <span id="cb51-13"><a href="#cb51-13"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 2500: [0.16, 0.15, 0.15, 0.13, 0.14]</code></pre>
+<pre><code>Compilation time: n = 2500: [0.15, 0.15, 0.15, 0.16, 0.15]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 40000: [0.14, 0.16, 0.17, 0.16, 0.13]</code></pre>
+<pre><code>Compilation time: n = 40000: [0.16, 0.15, 0.14, 0.16, 0.15]</code></pre>
 </div>
 </div>
 <p>It is not the compile time.</p>
@@ -942,10 +942,10 @@ True</code></pre>
 <span id="cb55-53"><a href="#cb55-53"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb55-54"><a href="#cb55-54"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.12]</code></pre>
+<pre><code>n = 2500: [0.14]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.14]</code></pre>
+<pre><code>n = 40000: [0.17]</code></pre>
 </div>
 </div>
 <p>That isn’t conclusive, but it does indicate that this might<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a> be the problem.</p>
@@ -1068,10 +1068,10 @@ True</code></pre>
 </div>
 <p>Excellent. Now let’s JAX this. The JAX-heads among you will notice that we have a subtle<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> problem: in a <code>fori_loop</code>, JAX does not treat <code>i</code> as static, which means that the length of the repeat (<code>row_count[i]</code>) can never be static and it therefore can’t be traced.</p>
 <p>Shit.</p>
-<p>It is hard to think of a good option here. A few months back Junpeng Lao sent me a script with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.</p>
+<p>It is hard to think of a good option here. A few months back Junpeng Lao<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> <a href="https://gist.github.com/junpenglao/f5b48c34dd8ea5029202fb607806ea0f#file-sparse-cholesky-in-jax-ipynb">sent me a script</a> with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.</p>
 <p>He came up with two methods.</p>
 <ol type="1">
-<li><p>Pad out <code>row_ind</code> so it’s always long enough. This only costs memory. The maximum size of <code>row_ind</code> is <code>n</code>. Unfortunately, this happens whenever <span class="math inline">\(A\)</span> has a dense row. Sadly, for Bayesian<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> linear mixed models this will happen if we put Gaussian priors on the covariate coefficients<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> and we try to marginalise them out with the other multivariate Gaussian parts. It is possible to write the routines that deal with dense rows and columns explicitly, but it’s a pain in the arse.</p></li>
+<li><p>Pad out <code>row_ind</code> so it’s always long enough. This only costs memory. The maximum size of <code>row_ind</code> is <code>n</code>. Unfortunately, this happens whenever <span class="math inline">\(A\)</span> has a dense row. Sadly, for Bayesian<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> linear mixed models this will happen if we put Gaussian priors on the covariate coefficients<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> and we try to marginalise them out with the other multivariate Gaussian parts. It is possible to write the routines that deal with dense rows and columns explicitly, but it’s a pain in the arse.</p></li>
 <li><p>Do some terrifying work with <code>lax.scan</code> and dynamic slicing.</p></li>
 </ol>
 <p>I’m going to try the first of these options.</p>
@@ -1183,17 +1183,17 @@ True</code></pre>
 <span id="cb68-19"><a href="#cb68-19"></a><span class="co"># times = timeit.repeat(lambda:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 1)</span></span>
 <span id="cb68-20"><a href="#cb68-20"></a><span class="co"># print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.18]</code></pre>
+<pre><code>n = 2500: [0.28]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [29.35]</code></pre>
+<pre><code>n = 40000: [28.31]</code></pre>
 </div>
 </div>
 <p>Fuck.</p>
 </section>
 <section id="attempt-3-a-desperate-attempt-to-make-this-bloody-work" class="level3">
 <h3 class="anchored" data-anchor-id="attempt-3-a-desperate-attempt-to-make-this-bloody-work">Attempt 3: A desperate attempt to make this bloody work</h3>
-<p>Right. Let’s try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> format. The <code>jax.experimental.sparse</code> module has support for (blocked) COO objects but doesn’t implement this transformation. <code>scipy.sparse</code> has a fast conversion routine so I’m going to use it. In the interest of being 100% JAX, I tried a version with <code>jnp.lexsort[index[1][jnp.lexsort((index[1], index[0]))]</code>], which basically does the same thing but it’s a lot slower.</p>
+<p>Right. Let’s try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO<a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> format. The <code>jax.experimental.sparse</code> module has support for (blocked) COO objects but doesn’t implement this transformation. <code>scipy.sparse</code> has a fast conversion routine so I’m going to use it. In the interest of being 100% JAX, I tried a version with <code>jnp.lexsort[index[1][jnp.lexsort((index[1], index[0]))]</code>], which basically does the same thing but it’s a lot slower.</p>
 <div class="cell" data-execution_count="38">
 <div class="sourceCode cell-code" id="cb71"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1"></a><span class="kw">def</span> symbolic_cholesky3(A_indices, A_indptr, L_indptr, parent, nnz):</span>
 <span id="cb71-2"><a href="#cb71-2"></a>  <span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
@@ -1305,16 +1305,16 @@ True
 True</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.14, 0.13, 0.13, 0.14, 0.15]</code></pre>
+<pre><code>n = 2500: [0.13, 0.13, 0.13, 0.14, 0.14]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.22, 0.23, 0.25, 0.25, 0.25]</code></pre>
+<pre><code>n = 40000: [0.19, 0.19, 0.19, 0.19, 0.19]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 90000: [0.56, 0.36, 0.35, 0.35, 0.34]</code></pre>
+<pre><code>n = 90000: [0.43, 0.32, 0.32, 0.33, 0.33]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 1000000: [11.65]</code></pre>
+<pre><code>n = 1000000: [11.91]</code></pre>
 </div>
 </div>
 <p>You know what? I’ll take it. It’s not perfect, in particular I would prefer a pure JAX solution. But everything I tried hit hard against the indirect memory access issue. The best I found was using <code>jnp.lexsort</code> but even it had noticeable performance degradation as <code>nnz</code> increased relative to the scipy solution.</p>
@@ -1323,12 +1323,12 @@ True</code></pre>
 <section id="next-time-on-sparse-matrices-with-dan" class="level1">
 <h1>Next time on Sparse Matrices with Dan</h1>
 <p>So that’s where I’m going to leave it. I am off my flight and I’ve slept very well and now I’m going to be on holidays for a little while.</p>
-<p>The next big thing to do is look at the numerical factorisation. We are going to run headlong into all of the problems we’ve hit today, so that should be fun. The reason why I’m separating it into a separate post<a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> is that I want to actually test all of those things out properly.</p>
+<p>The next big thing to do is look at the numerical factorisation. We are going to run headlong into all of the problems we’ve hit today, so that should be fun. The reason why I’m separating it into a separate post<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> is that I want to actually test all of those things out properly.</p>
 <p>So next time you can expect</p>
 <ol type="1">
-<li><p>Classes! Because frankly this code is getting far too messy, especially now that certain things need to be passed as static arguments. The only reason I’ve avoided it up to now is that I think it hides too much of the algorithm in boilerplate. But now the boilerplate is ruining my life and causing far too many dumb typos<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a>.</p></li>
+<li><p>Classes! Because frankly this code is getting far too messy, especially now that certain things need to be passed as static arguments. The only reason I’ve avoided it up to now is that I think it hides too much of the algorithm in boilerplate. But now the boilerplate is ruining my life and causing far too many dumb typos<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a>.</p></li>
 <li><p>Type hints! Because for a language where types aren’t explicit, they sure are important. Also because I’m going to class it up I might as well do it properly.</p></li>
-<li><p>Some helper routines! I’m going to need a sparse-matrix scatter operation (aka the structured copy of <span class="math inline">\(A\)</span> to have the sparsity pattern of <span class="math inline">\(L\)</span>)! And I’m certainly going to need some reorderings<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a></p></li>
+<li><p>Some helper routines! I’m going to need a sparse-matrix scatter operation (aka the structured copy of <span class="math inline">\(A\)</span> to have the sparsity pattern of <span class="math inline">\(L\)</span>)! And I’m certainly going to need some reorderings<a href="#fn30" class="footnote-ref" id="fnref30" role="doc-noteref"><sup>30</sup></a></p></li>
 <li><p>A battle royale between padded and non-padded methods!</p></li>
 </ol>
 <p>It should be a fun time!</p>
@@ -1363,12 +1363,13 @@ True</code></pre>
 <li id="fn21"><p>I mean, I’m pretty sure it is. I’m writing this post in order, so I don’t know yet. But surely the compiler can’t reason about the possible values of <code>node</code>, which would be the only thing that would speed this up.<a href="#fnref21" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn22"><p>Convert from CSR to <code>(i, j, val)</code> (called COO, which has a convenient implementation in <code>jax.experimental.sparse</code>) to CSC. This involves a linear pass, a sort, and another linear pass. So it’s $n n`ish. Hire me fancy tech companies. I can count. Just don’t ask me to program quicksort.<a href="#fnref22" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn23"><p>Replace “subtle” with “fairly obvious once I realised how it’s converted to a <code>lax.scan</code>, but not at all obvious to me originally”.<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn24"><p>This also happens with the profile likelihood in non-Bayesian methods.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn25"><p>the <span class="math inline">\(\beta\)</span>s<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn26"><p>COO stands for <em>coordinate list</em> and it’s the least space-efficient of our options. It directly stores 3 length <code>n</code> vectors <code>(row, col, value)</code>. It’s great for specifying matrices and it’s pretty easy to convert from this format to any of the others.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn27"><p>other than holiday<a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn28"><p><code>A_index</code> and <code>A.index</code> are different<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn29"><p>I’m probably going to bind Eigen’s AMD decomposition. I’m certainly not writing it myself.<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn24"><p>Who demanded a footnote.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn25"><p>This also happens with the profile likelihood in non-Bayesian methods.<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn26"><p>the <span class="math inline">\(\beta\)</span>s<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p>COO stands for <em>coordinate list</em> and it’s the least space-efficient of our options. It directly stores 3 length <code>n</code> vectors <code>(row, col, value)</code>. It’s great for specifying matrices and it’s pretty easy to convert from this format to any of the others.<a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn28"><p>other than holiday<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn29"><p><code>A_index</code> and <code>A.index</code> are different<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn30"><p>I’m probably going to bind Eigen’s AMD decomposition. I’m certainly not writing it myself.<a href="#fnref30" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
 </section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
   author = {Dan Simpson},
