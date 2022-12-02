@@ -7,10 +7,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Dan Simpson">
-<meta name="dcterms.date" content="2022-11-23">
-<meta name="description" content="I work in R a lot so I should be used to weird syntax.">
+<meta name="dcterms.date" content="2022-12-02">
+<meta name="description" content="I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern.">
 
-<title>Un garçon pas comme les autres (Bayes) - (draft) Sparse matrices part 7: Another shot at a sparse Cholesky decomposition</title>
+<title>Un garçon pas comme les autres (Bayes) - Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -128,15 +128,19 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 <link rel="stylesheet" href="../../styles.css">
-<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - (draft) Sparse matrices part 7: Another shot at a sparse Cholesky decomposition">
-<meta property="og:description" content="I work in R a lot so I should be used to weird syntax.">
-<meta property="og:image" content="https://dansblog.netlify.app/posts/2022-11-27-sparse7/elvira.jpg">
+<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition">
+<meta property="og:description" content="I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern.">
+<meta property="og:image" content="https://dansblog.netlify.app/posts/2022-11-27-sparse7/south_pac.png">
 <meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
-<meta name="twitter:title" content="Sparse matrices part 7: Another shot at a sparse Cholesky decomposition">
-<meta name="twitter:description" content="I work in R a lot so I should be used to weird syntax.">
-<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2022-11-27-sparse7/elvira.jpg">
+<meta property="og:image:height" content="750">
+<meta property="og:image:width" content="1334">
+<meta name="twitter:title" content="Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition">
+<meta name="twitter:description" content="I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern.">
+<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2022-11-27-sparse7/south_pac.png">
 <meta name="twitter:creator" content="@dan_p_simpson">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image-height" content="750">
+<meta name="twitter:image-width" content="1334">
 </head>
 
 <body class="floating nav-fixed">
@@ -188,16 +192,16 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <header id="title-block-header" class="quarto-title-block default toc-left page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
-      <h1 class="title">(draft) Sparse matrices part 7: Another shot at a sparse Cholesky decomposition</h1>
+      <h1 class="title">Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition</h1>
                   <div>
         <div class="description">
-          <p>I work in R a lot so I should be used to weird syntax.</p>
+          <p>I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern.</p>
         </div>
       </div>
                           <div class="quarto-categories">
-                <div class="quarto-category">Fundamentals</div>
-                <div class="quarto-category">MCMC</div>
-                <div class="quarto-category">Bayes</div>
+                <div class="quarto-category">JAX</div>
+                <div class="quarto-category">Sparse matrices</div>
+                <div class="quarto-category">Autodiff</div>
               </div>
                   </div>
   </div>
@@ -215,7 +219,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
       <div>
       <div class="quarto-title-meta-heading">Published</div>
       <div class="quarto-title-meta-contents">
-        <p class="date">November 23, 2022</p>
+        <p class="date">December 2, 2022</p>
       </div>
     </div>
       
@@ -230,16 +234,16 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
    
   <ul>
   <li><a href="#control-flow-of-the-damned" id="toc-control-flow-of-the-damned" class="nav-link active" data-scroll-target="#control-flow-of-the-damned">Control flow of the damned</a></li>
-  <li><a href="#building-a-jax-traceable-sparse-choleksy-factorisation" id="toc-building-a-jax-traceable-sparse-choleksy-factorisation" class="nav-link" data-scroll-target="#building-a-jax-traceable-sparse-choleksy-factorisation">Building a JAX-traceable sparse Choleksy factorisation</a>
+  <li><a href="#building-a-jax-traceable-symbolic-sparse-choleksy-factorisation" id="toc-building-a-jax-traceable-symbolic-sparse-choleksy-factorisation" class="nav-link" data-scroll-target="#building-a-jax-traceable-symbolic-sparse-choleksy-factorisation">Building a JAX-traceable symbolic sparse Choleksy factorisation</a>
   <ul class="collapse">
   <li><a href="#building-the-expression-graph" id="toc-building-the-expression-graph" class="nav-link" data-scroll-target="#building-the-expression-graph">Building the expression graph</a></li>
   <li><a href="#the-non-zero-pattern-of-l" id="toc-the-non-zero-pattern-of-l" class="nav-link" data-scroll-target="#the-non-zero-pattern-of-l">The non-zero pattern of <span class="math inline">\(L\)</span></a></li>
   <li><a href="#attempt-1-lord-thats-slow" id="toc-attempt-1-lord-thats-slow" class="nav-link" data-scroll-target="#attempt-1-lord-thats-slow">Attempt 1: Lord that’s slow</a></li>
   <li><a href="#why-is-it-so-slow" id="toc-why-is-it-so-slow" class="nav-link" data-scroll-target="#why-is-it-so-slow">Why is it so slow?</a></li>
   <li><a href="#attempt-2-after-some-careful-thought-things-stayed-the-same" id="toc-attempt-2-after-some-careful-thought-things-stayed-the-same" class="nav-link" data-scroll-target="#attempt-2-after-some-careful-thought-things-stayed-the-same">Attempt 2: After some careful thought, things stayed the same</a></li>
-  <li><a href="#attempt-3-a-desperate-attempt-to-make-this" id="toc-attempt-3-a-desperate-attempt-to-make-this" class="nav-link" data-scroll-target="#attempt-3-a-desperate-attempt-to-make-this">Attempt 3: A desperate attempt to make this</a></li>
+  <li><a href="#attempt-3-a-desperate-attempt-to-make-this-bloody-work" id="toc-attempt-3-a-desperate-attempt-to-make-this-bloody-work" class="nav-link" data-scroll-target="#attempt-3-a-desperate-attempt-to-make-this-bloody-work">Attempt 3: A desperate attempt to make this bloody work</a></li>
   </ul></li>
-  <li><a href="#the-numerical-factorisation" id="toc-the-numerical-factorisation" class="nav-link" data-scroll-target="#the-numerical-factorisation">The numerical factorisation</a></li>
+  <li><a href="#next-time-on-sparse-matrices-with-dan" id="toc-next-time-on-sparse-matrices-with-dan" class="nav-link" data-scroll-target="#next-time-on-sparse-matrices-with-dan">Next time on Sparse Matrices with Dan</a></li>
   </ul>
 </nav>
 </nav>
@@ -252,9 +256,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 
 
-<p><em>Please don’t share</em></p>
-<p>The time has come once more to resume my journey into sparse matrices. There’s been a bit of a pause, mostly because I realised that I didn’t know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But now the time has come. It is time for me to get on top of JAX’s weird fucking loops.</p>
+<p>The time has come once more to resume my journey into sparse matrices. There’s been a bit of a pause, mostly because I realised that I didn’t know how to implement the sparse Cholesky factorisation in a JAX-traceable way. But now the time has come. It is time for me to get on top of JAX’s weird control-flow constructs.</p>
 <p>And, along the way, I’m going to re-do the sparse Cholesky factorisation to make it, well, better.</p>
+<p>In order to temper expectations, I will tell you that this post does not do the numerical factorisation, only the symbolic one. Why? Well I wrote most of it on a long-haul flight and I didn’t get to the numerical part. And this was long enough. So hold your breaths for Part 7b, which will come as soon as I write it.</p>
+<p>You can consider this a <em>much</em> better re-do of <a href="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">Part 2</a>. This is no longer my first python coding exercise in a decade, so hopefully the code is better. And I’m definitely trying a lot harder to think about the limitations of JAX.</p>
 <p>Before I start, I should probably say why I’m doing this. JAX is a truly magical thing that will compute gradients and every thing else just by clever processing of the Jacobian-vector product code. Unfortunately, this is only possible if the Jacobian-vector product code is JAX traceable and this code is structurally extremely similar<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> to the code for the sparse Cholesky factorisation.</p>
 <p>I am doing this in the hope of (eventually getting to) autodiff. But that won’t be this blog post. This blog post is complicated enough.</p>
 <section id="control-flow-of-the-damned" class="level2">
@@ -352,14 +357,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 <p>The <code>argnums</code> option tells JAX that we are only differentiating wrt the first argument.</p>
-<p>JIT compilation is a timy bit more delicate. If we try the natural thing, we are going to get an error.</p>
+<p>JIT compilation is a tiny bit more delicate. If we try the natural thing, we are going to get an error.</p>
 <div class="cell" data-execution_count="8">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1"></a>f_jit_bad <span class="op">=</span> jit(f)</span>
 <span id="cb10-2"><a href="#cb10-2"></a>bad <span class="op">=</span> f_jit_bad(<span class="fl">1.2</span>, <span class="dv">7</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-error">
 <pre><code>ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: Traced&lt;ShapedArray(int32[], weak_type=True)&gt;with&lt;DynamicJaxprTrace(level=0/1)&gt;
 When jit-compiling jnp.repeat, the total number of repeats must be static. To fix this, either specify a static value for `repeats`, or pass a static value to `total_repeat_length`.
-The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_14196/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
+The error occurred while tracing the function f at /var/folders/08/4p5p665j4d966tr7nvr0v24c0000gn/T/ipykernel_22750/3851190413.py:4 for jit. This concrete value was not available in Python because it depends on the value of the argument 'n'.
 
 See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError</code></pre>
 </div>
@@ -403,7 +408,7 @@ compiling: n = 9
 <span id="cb16-4"><a href="#cb16-4"></a>    out <span class="op">=</span> body_func(i, out)</span>
 <span id="cb16-5"><a href="#cb16-5"></a>  <span class="cf">return</span> out</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>To close out this bit where I repeat hte docs, there is also a traceable if/esle: <code>jax.lax.cond</code> which has the pseudocode</p>
+<p>To close out this bit where I repeat the docs, there is also a traceable if/else: <code>jax.lax.cond</code> which has the pseudocode</p>
 <div class="cell" data-execution_count="12">
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1"></a><span class="kw">def</span> jax_lax_cond(pred, true_fun, false_fun, val):</span>
 <span id="cb17-2"><a href="#cb17-2"></a>  <span class="cf">if</span> pred:</span>
@@ -412,20 +417,20 @@ compiling: n = 9
 <span id="cb17-5"><a href="#cb17-5"></a>    <span class="cf">return</span> false_fun(val)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
-<section id="building-a-jax-traceable-sparse-choleksy-factorisation" class="level2">
-<h2 class="anchored" data-anchor-id="building-a-jax-traceable-sparse-choleksy-factorisation">Building a JAX-traceable sparse Choleksy factorisation</h2>
+<section id="building-a-jax-traceable-symbolic-sparse-choleksy-factorisation" class="level2">
+<h2 class="anchored" data-anchor-id="building-a-jax-traceable-symbolic-sparse-choleksy-factorisation">Building a JAX-traceable symbolic sparse Choleksy factorisation</h2>
 <p>In order to build a JAX-traceable sparse Cholesky factorisation <span class="math inline">\(A = LL^T\)</span>, we are going to need to build up a few moving parts.</p>
 <ol type="1">
 <li><p>Build the elimination tree of <span class="math inline">\(A\)</span> and find the number of non-zeros in each column of <span class="math inline">\(L\)</span></p></li>
 <li><p>Build the <em>symbolic factorisation</em><a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> of <span class="math inline">\(L\)</span> (aka the location of the non-zeros of <span class="math inline">\(L\)</span>)</p></li>
 <li><p>Do the actual numerical decomposition.</p></li>
 </ol>
-<p>In the <a href="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">previous post</a> we did not explictly form the elimination tree. Instead, I used dynamic memory allocation. This time I’m being more mature.</p>
+<p>In the <a href="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">previous post</a> we did not explicitly form the elimination tree. Instead, I used dynamic memory allocation. This time I’m being more mature.</p>
 <section id="building-the-expression-graph" class="level3">
 <h3 class="anchored" data-anchor-id="building-the-expression-graph">Building the expression graph</h3>
-<p>The elimination tree<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> <span class="math inline">\(\mathcal{T}_A\)</span> is a (forest of) rooted tree(s) that compactly represent the non-zero pattern of the Cholesky factor <span class="math inline">\(L\)</span>. In particular, the elmination tree has the property that, for any <span class="math inline">\(k &gt; j\)</span> , <span class="math inline">\(L_{kj} \neq 0\)</span> if and only if there is a path from <span class="math inline">\(j\)</span> to <span class="math inline">\(k\)</span> in the tree. Or, in the language of trees, <span class="math inline">\(L_{kj} \neq 0\)</span> if and only if <span class="math inline">\(j\)</span> is a descendant of <span class="math inline">\(k\)</span> in the tree <span class="math inline">\(\mathcal{T}_A\)</span>.</p>
+<p>The elimination tree<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> <span class="math inline">\(\mathcal{T}_A\)</span> is a (forest of) rooted tree(s) that compactly represent the non-zero pattern of the Cholesky factor <span class="math inline">\(L\)</span>. In particular, the elimination tree has the property that, for any <span class="math inline">\(k &gt; j\)</span> , <span class="math inline">\(L_{kj} \neq 0\)</span> if and only if there is a path from <span class="math inline">\(j\)</span> to <span class="math inline">\(k\)</span> in the tree. Or, in the language of trees, <span class="math inline">\(L_{kj} \neq 0\)</span> if and only if <span class="math inline">\(j\)</span> is a descendant of <span class="math inline">\(k\)</span> in the tree <span class="math inline">\(\mathcal{T}_A\)</span>.</p>
 <p>We can describe<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> <span class="math inline">\(\mathcal{T}_A\)</span> by listing the parent of each node. The parent node of <span class="math inline">\(j\)</span> in the tree is the smallest <span class="math inline">\(i &gt; j\)</span> with <span class="math inline">\(L_{ij} \neq 0\)</span>.</p>
-<p>We can turn this into an algorithm. An efficent version, which is described in Tim Davies book takes about <span class="math inline">\(\mathcal{O(\text{nnz}(A))}\)</span> operations. But I’m going to program up a slower one that takes <span class="math inline">\(\mathcal{O(\text{nnz}(L))}\)</span> operations, but has the added benifit<a href="#fn11" class="footnote-ref" id="fnref11" role="doc-noteref"><sup>11</sup></a> of giving me the column counts for free.</p>
+<p>We can turn this into an algorithm. An efficient version, which is described in Tim Davies book takes about <span class="math inline">\(\mathcal{O(\text{nnz}(A))}\)</span> operations. But I’m going to program up a slower one that takes <span class="math inline">\(\mathcal{O(\text{nnz}(L))}\)</span> operations, but has the added benefit<a href="#fn11" class="footnote-ref" id="fnref11" role="doc-noteref"><sup>11</sup></a> of giving me the column counts for free.</p>
 <p>To do this, we are going to walk the tree and dynamically add up the column counts as we go.</p>
 <p>To start off, let’s do this in standard python so that we can see what the algorithm look like. The key concept is that if we write <span class="math inline">\(\mathcal{T}_{j-1}\)</span> as the elimination tree encoding the structure of<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> <code>L[:j, :j]</code>, then we can ask about how this tree connects with node <code>j</code>.</p>
 <p>A theorem gives a very simple answer to this.</p>
@@ -433,7 +438,7 @@ compiling: n = 9
 <p><span class="theorem-title"><strong>Theorem 1 </strong></span>If <span class="math inline">\(j &gt; i\)</span>, then <span class="math inline">\(A_{j,i} \neq 0\)</span> implies that <span class="math inline">\(i\)</span> is a descendant of <span class="math inline">\(j\)</span> in <span class="math inline">\(\mathcal{T}_A\)</span>. In particular, that means that there is a directed path in <span class="math inline">\(\mathcal{T}_A\)</span> from <span class="math inline">\(i\)</span> to <span class="math inline">\(j\)</span>.</p>
 </div>
 <p>This tells us that the connection between <span class="math inline">\(\mathcal{T}_{j-1}\)</span> and node <span class="math inline">\(j\)</span> is that for each non-zero elements <span class="math inline">\(i\)</span> of the <span class="math inline">\(j\)</span>th row of <span class="math inline">\(A\)</span>, we can walk $ must have a path in <span class="math inline">\(\mathcal{T}_{j-1}\)</span> from <span class="math inline">\(i\)</span> and we will eventually get to a node that has no parent in <span class="math inline">\(\{0,\ldots, j-1\}\)</span>. Because there <em>must</em> be a path from <span class="math inline">\(i\)</span> to <span class="math inline">\(j\)</span> in <span class="math inline">\(T_j\)</span>, it means that the parent of this terminal node must be <span class="math inline">\(j\)</span>.</p>
-<p>As with everything Cholesky related, this works because the algorithm procedes from left to right, which in this case means that the node label assocated with <em>any</em> descendent of <span class="math inline">\(j\)</span> is always less than <span class="math inline">\(j\)</span>.</p>
+<p>As with everything Cholesky related, this works because the algorithm proceeds from left to right, which in this case means that the node label associated with <em>any</em> descendant of <span class="math inline">\(j\)</span> is always less than <span class="math inline">\(j\)</span>.</p>
 <p>The algorithm is then a fairly run-of-the-mill<a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> tree traversal, where we keep track of where we have been so we don’t double count our columns.</p>
 <p>Probably the most important thing here is that I am using the <em>full</em> sparse matrix rather than just its lower triangle. This is, basically, convenience. I need access to the left half of the <span class="math inline">\(j\)</span>th row of <span class="math inline">\(A\)</span>, which is conveniently the same as the top half of the <span class="math inline">\(j\)</span>th column. And sometimes you just don’t want to be dicking around with swapping between row- and column-based representations.</p>
 <div class="cell" data-execution_count="13">
@@ -595,7 +600,7 @@ True</code></pre>
 n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.86, 0.86, 0.84, 0.84, 0.83]</code></pre>
+<pre><code>n = 40000: [0.85, 0.95, 0.91, 0.91, 0.85]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
@@ -620,23 +625,23 @@ n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
 <span id="cb29-18"><a href="#cb29-18"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: etree(A.indices, A.indptr),number <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb29-19"><a href="#cb29-19"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 400: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
+<pre><code>n = 400: [0.11, 0.0, 0.0, 0.0, 0.0]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.12, 0.0, 0.0, 0.0, 0.0]</code></pre>
+<pre><code>n = 2500: [0.11, 0.0, 0.0, 0.0, 0.0]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.14, 0.02, 0.02, 0.02, 0.02]</code></pre>
+<pre><code>n = 40000: [0.15, 0.02, 0.02, 0.02, 0.02]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 1000000: [2.31, 2.11, 2.11, 2.11, 2.11]</code></pre>
+<pre><code>n = 1000000: [2.33, 2.21, 2.15, 2.05, 1.99]</code></pre>
 </div>
 </div>
 <p>You can see that there is some decent speedup. For the first three examples, the computation time is dominated by the compilation time, but we see when the matrix has a million unknowns the compilation time is negligible. At this scale it would probably be worth using the fancy algorithm. That said, it is probably not worth sweating a three second that is only done once when your problem is that big!</p>
 </section>
 <section id="the-non-zero-pattern-of-l" class="level3">
 <h3 class="anchored" data-anchor-id="the-non-zero-pattern-of-l">The non-zero pattern of <span class="math inline">\(L\)</span></h3>
-<p>Now that we know how many non-zeros there are, it’s time to populate them. Last time, I used some dynammic memory allocation to make this work, but JAX is certainly not going to allow me to do that. So instead I’m going to have to do the worst thing possible: think.</p>
+<p>Now that we know how many non-zeros there are, it’s time to populate them. Last time, I used some dynamic memory allocation to make this work, but JAX is certainly not going to allow me to do that. So instead I’m going to have to do the worst thing possible: think.</p>
 <p>The way that we went about it last time was, to be honest, a bit arse-backwards. The main reason for this is that I did not have access to the elimination tree. But now we do, we can actually use it.</p>
 <p>The trick is to slightly rearrange<a href="#fn16" class="footnote-ref" id="fnref16" role="doc-noteref"><sup>16</sup></a> the order of operations to get something that is more convenient for working out the structure.</p>
 <p>Recall from last time that we used the <em>left-looking</em> Cholesky factorisation, which can be written in the dense case as</p>
@@ -679,8 +684,8 @@ n = 2500: [0.03, 0.03, 0.03, 0.03, 0.03]</code></pre>
 <p>The reason for considering the up-looking algorithm is that it gives a slightly nicer description of the non-zeros of row <code>i</code>, which will let us find the location of the non-zeros in the whole matrix. In particular, the non-zeros to the left of the diagonal on row <code>i</code> correspond to the non-zero indices of the solution to the lower triangular linear system<a href="#fn17" class="footnote-ref" id="fnref17" role="doc-noteref"><sup>17</sup></a> <span class="math display">\[
 L_{1:(i-1),1:(i-1)} x^{(i)} = A_{1:i-1, i}.
 \]</span> Because <span class="math inline">\(A\)</span> is sparse, this is a system of <span class="math inline">\(\operatorname{nnz}(A_{1:i-1,i})\)</span> linear equations, rather than <span class="math inline">\((i-1)\)</span> equations that we would have in the dense case. That means that the sparsity pattern of <span class="math inline">\(x^{(i)}\)</span> will be the union of the sparsity patterns of the columns of <span class="math inline">\(L_{1:(i-1),1:(i-1)}\)</span> that correspond to the non-zero entries of <span class="math inline">\(A_{1:i-1, i}\)</span>.</p>
-<p>This means two things. Firstly, if <span class="math inline">\(A_{ji}\neq 0\)</span>, then <span class="math inline">\(x^{(i)}_j \neq 0\)</span>. Secondly, if $x^{(i)}_j $ <em>and</em> <span class="math inline">\(L_{kj}\neq 0\)</span>, then <span class="math inline">\(x_k \neq 0\)</span>. These two facts give us a way of finding the non-zero set of <span class="math inline">\(x^{(i)}\)</span> if we remember just one more fact: a definition of the elimination tree is that <span class="math inline">\(L_{kj} \neq 0\)</span> if <span class="math inline">\(j\)</span> is a descendent of <span class="math inline">\(k\)</span> in the elimination tree.</p>
-<p>This reduces the problem of finding the non-zero elements of <span class="math inline">\(x^{(i)}\)</span> to the problem of finding all of the descendents of <span class="math inline">\(\{j: A_{ji} \neq 0\}\)</span> in the subtree <span class="math inline">\(\mathcal{T}_{i-1}\)</span>. And if there is one thing that people who are ok at programming are <em>excellent</em> at it is walking down a damn tree.</p>
+<p>This means two things. Firstly, if <span class="math inline">\(A_{ji}\neq 0\)</span>, then <span class="math inline">\(x^{(i)}_j \neq 0\)</span>. Secondly, if $x^{(i)}_j $ <em>and</em> <span class="math inline">\(L_{kj}\neq 0\)</span>, then <span class="math inline">\(x_k \neq 0\)</span>. These two facts give us a way of finding the non-zero set of <span class="math inline">\(x^{(i)}\)</span> if we remember just one more fact: a definition of the elimination tree is that <span class="math inline">\(L_{kj} \neq 0\)</span> if <span class="math inline">\(j\)</span> is a descendant of <span class="math inline">\(k\)</span> in the elimination tree.</p>
+<p>This reduces the problem of finding the non-zero elements of <span class="math inline">\(x^{(i)}\)</span> to the problem of finding all of the descendants of <span class="math inline">\(\{j: A_{ji} \neq 0\}\)</span> in the subtree <span class="math inline">\(\mathcal{T}_{i-1}\)</span>. And if there is one thing that people who are ok at programming are <em>excellent</em> at it is walking down a damn tree.</p>
 <p>So let’s do that. Well, I’ve already done it. In fact, that was how I found the column counts in the first place! With this interpretation, the outer loop is taking us across the rows. And once I am in row <code>j</code><a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a>, I then find a starting node <code>node</code> (which is a non-zero in <span class="math inline">\(A_{1:(i-1),i}\)</span>) and I walk along that node checking each time if I’ve actually seen that node<a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a> before. If I haven’t seen it before, I added one to the column count of column <code>node</code><a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a>.</p>
 <p>To allocate the non-zero structure, I just need to replace that counter increment with an assignment.</p>
 </section>
@@ -819,10 +824,10 @@ True</code></pre>
 <span id="cb45-8"><a href="#cb45-8"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: symbolic_cholesky_base(A.indices, A.indptr, parent, col_count),number <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb45-9"><a href="#cb45-9"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.05, 0.04, 0.05, 0.04, 0.04]</code></pre>
+<pre><code>n = 2500: [0.04, 0.04, 0.04, 0.04, 0.04]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [1.91, 1.91, 1.91, 1.91, 1.91]</code></pre>
+<pre><code>n = 40000: [1.84, 1.83, 1.84, 1.82, 1.83]</code></pre>
 </div>
 </div>
 <p>And here is our JAX’d and JIT’d code.</p>
@@ -841,17 +846,17 @@ True</code></pre>
 <span id="cb48-12"><a href="#cb48-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:symbolic_cholesky(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb48-13"><a href="#cb48-13"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.14]</code></pre>
+<pre><code>n = 2500: [0.12]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [27.64]</code></pre>
+<pre><code>n = 40000: [25.96]</code></pre>
 </div>
 </div>
 <p>Oooof. Something is going horribly wrong.</p>
 </section>
 <section id="why-is-it-so-slow" class="level3">
 <h3 class="anchored" data-anchor-id="why-is-it-so-slow">Why is it so slow?</h3>
-<p>The first thing to check is if it’s the compile time. We can do this by explictly <em>lowering</em> the the JIT’d function to its XLA representation and then compiling it.</p>
+<p>The first thing to check is if it’s the compile time. We can do this by explicitly <em>lowering</em> the the JIT’d function to its XLA representation and then compiling it.</p>
 <div class="cell" data-execution_count="29">
 <div class="sourceCode cell-code" id="cb51"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1"></a>A_indices, A_indptr, A_x, A <span class="op">=</span> make_matrix(<span class="dv">50</span>)</span>
 <span id="cb51-2"><a href="#cb51-2"></a>parent, col_count <span class="op">=</span> etree(A.indices, A.indptr)</span>
@@ -867,10 +872,10 @@ True</code></pre>
 <span id="cb51-12"><a href="#cb51-12"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jit(partial(symbolic_cholesky, nnz<span class="op">=</span><span class="bu">int</span>(L_indptr[<span class="op">-</span><span class="dv">1</span>]))).lower(A.indices, A.indptr, L_indptr, parent).<span class="bu">compile</span>(),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
 <span id="cb51-13"><a href="#cb51-13"></a><span class="bu">print</span>(<span class="ss">f"Compilation time: n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 2500: [0.14, 0.13, 0.14, 0.14, 0.13]</code></pre>
+<pre><code>Compilation time: n = 2500: [0.16, 0.15, 0.15, 0.13, 0.14]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compilation time: n = 40000: [0.14, 0.14, 0.14, 0.14, 0.14]</code></pre>
+<pre><code>Compilation time: n = 40000: [0.14, 0.16, 0.17, 0.16, 0.13]</code></pre>
 </div>
 </div>
 <p>It is not the compile time.</p>
@@ -937,10 +942,10 @@ True</code></pre>
 <span id="cb55-53"><a href="#cb55-53"></a>times <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>:test_fun(A.indices, A.indptr, L_indptr, parent, nnz <span class="op">=</span> L_indptr[<span class="op">-</span><span class="dv">1</span>]),number <span class="op">=</span> <span class="dv">1</span>, repeat <span class="op">=</span> <span class="dv">1</span>)</span>
 <span id="cb55-54"><a href="#cb55-54"></a><span class="bu">print</span>(<span class="ss">f"n = </span><span class="sc">{</span>A<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>[<span class="bu">round</span>(t,<span class="dv">2</span>) <span class="cf">for</span> t <span class="kw">in</span> times]<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.13]</code></pre>
+<pre><code>n = 2500: [0.12]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.15]</code></pre>
+<pre><code>n = 40000: [0.14]</code></pre>
 </div>
 </div>
 <p>That isn’t conclusive, but it does indicate that this might<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a> be the problem.</p>
@@ -1063,10 +1068,10 @@ True</code></pre>
 </div>
 <p>Excellent. Now let’s JAX this. The JAX-heads among you will notice that we have a subtle<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> problem: in a <code>fori_loop</code>, JAX does not treat <code>i</code> as static, which means that the length of the repeat (<code>row_count[i]</code>) can never be static and it therefore can’t be traced.</p>
 <p>Shit.</p>
-<p>It is hard to think of a good option here. A few months back <a href="https://gist.github.com/junpenglao/f5b48c34dd8ea5029202fb607806ea0f#file-sparse-cholesky-in-jax-ipynb">Junpeng Lao sent me a script</a> with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.</p>
+<p>It is hard to think of a good option here. A few months back Junpeng Lao sent me a script with his attempts at making the Cholesky stuff JAX transformable. And he hit the same problem. I was, in an act of hubris, trying very hard to not end up here. But that was tragically slow. So here we are.</p>
 <p>He came up with two methods.</p>
 <ol type="1">
-<li><p>Pad out <code>row_ind</code> so it’s always long enough. This only costs memory. The maximum size of <code>row_ind</code> is <code>n</code>. Unfortuantely, this happens whenever <span class="math inline">\(A\)</span> has a dense row. Sadly, for Bayesian<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> linear mixedm models this will happen if we put Gaussina priors on the covariate coefficients<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> and we try to marginalise them out with the other multivariate Gaussian parts. It is possible to write the routines that deal with dense rows and columns explicitly, but it’s a pain in the arse.</p></li>
+<li><p>Pad out <code>row_ind</code> so it’s always long enough. This only costs memory. The maximum size of <code>row_ind</code> is <code>n</code>. Unfortunately, this happens whenever <span class="math inline">\(A\)</span> has a dense row. Sadly, for Bayesian<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> linear mixed models this will happen if we put Gaussian priors on the covariate coefficients<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> and we try to marginalise them out with the other multivariate Gaussian parts. It is possible to write the routines that deal with dense rows and columns explicitly, but it’s a pain in the arse.</p></li>
 <li><p>Do some terrifying work with <code>lax.scan</code> and dynamic slicing.</p></li>
 </ol>
 <p>I’m going to try the first of these options.</p>
@@ -1178,17 +1183,17 @@ True</code></pre>
 <span id="cb68-19"><a href="#cb68-19"></a><span class="co"># times = timeit.repeat(lambda:symbolic_cholesky2(A.indices, A.indptr, L_indptr, row_count, parent, nnz = int(L_indptr[-1]), max_row = int(max(row_count))),number = 1, repeat = 1)</span></span>
 <span id="cb68-20"><a href="#cb68-20"></a><span class="co"># print(f"n = {A.shape[0]}: {[round(t,2) for t in times]}")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.23]</code></pre>
+<pre><code>n = 2500: [0.18]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [27.49]</code></pre>
+<pre><code>n = 40000: [29.35]</code></pre>
 </div>
 </div>
 <p>Fuck.</p>
 </section>
-<section id="attempt-3-a-desperate-attempt-to-make-this" class="level3">
-<h3 class="anchored" data-anchor-id="attempt-3-a-desperate-attempt-to-make-this">Attempt 3: A desperate attempt to make this</h3>
-<p>Right. Let’s try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> format. The <code>jax.experimental.sparse</code> module has support for (blocked) COO objects but doesn’t implement this transformation. <code>scipy.sparse</code> has a fast conversion routine so I’m going to use it. In the interest of being 100% JAX, I tried a version with <code>jnp.lexsort</code><a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a>, which basically does the same thing but it’s a lot slower.</p>
+<section id="attempt-3-a-desperate-attempt-to-make-this-bloody-work" class="level3">
+<h3 class="anchored" data-anchor-id="attempt-3-a-desperate-attempt-to-make-this-bloody-work">Attempt 3: A desperate attempt to make this bloody work</h3>
+<p>Right. Let’s try again. What if instead of doing all those scatters we instead, idk, just store two vectors and sort. Because at this point I will try fucking anything. What if we just list out the column index and row index as we find them (aka build the sparse matrix in COO<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> format. The <code>jax.experimental.sparse</code> module has support for (blocked) COO objects but doesn’t implement this transformation. <code>scipy.sparse</code> has a fast conversion routine so I’m going to use it. In the interest of being 100% JAX, I tried a version with <code>jnp.lexsort[index[1][jnp.lexsort((index[1], index[0]))]</code>], which basically does the same thing but it’s a lot slower.</p>
 <div class="cell" data-execution_count="38">
 <div class="sourceCode cell-code" id="cb71"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1"></a><span class="kw">def</span> symbolic_cholesky3(A_indices, A_indptr, L_indptr, parent, nnz):</span>
 <span id="cb71-2"><a href="#cb71-2"></a>  <span class="at">@partial</span>(jit, static_argnums <span class="op">=</span> (<span class="dv">4</span>,))</span>
@@ -1243,7 +1248,8 @@ True</code></pre>
 <span id="cb71-51"><a href="#cb71-51"></a>    <span class="cf">return</span> index</span>
 <span id="cb71-52"><a href="#cb71-52"></a>  n <span class="op">=</span> <span class="bu">len</span>(A_indptr) <span class="op">-</span> <span class="dv">1</span></span>
 <span id="cb71-53"><a href="#cb71-53"></a>  index <span class="op">=</span> _inner(A_indices, A_indptr, L_indptr, parent, nnz)</span>
-<span id="cb71-54"><a href="#cb71-54"></a>  <span class="cf">return</span> sparse.coo_array((np.ones(nnz), (index[<span class="dv">1</span>], index[<span class="dv">0</span>])), shape <span class="op">=</span> (n,n)).tocsc().indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb71-54"><a href="#cb71-54"></a>  <span class="co">## return jnp.lexsort[index[1][jnp.lexsort((index[1], index[0]))</span></span>
+<span id="cb71-55"><a href="#cb71-55"></a>  <span class="cf">return</span> sparse.coo_array((np.ones(nnz), (index[<span class="dv">1</span>], index[<span class="dv">0</span>])), shape <span class="op">=</span> (n,n)).tocsc().indices</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>First things first, let’s check how fast this is.</p>
 <div class="cell" data-execution_count="39">
@@ -1299,57 +1305,33 @@ True
 True</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 2500: [0.13, 0.13, 0.13, 0.13, 0.13]</code></pre>
+<pre><code>n = 2500: [0.14, 0.13, 0.13, 0.14, 0.15]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 40000: [0.19, 0.19, 0.19, 0.19, 0.19]</code></pre>
+<pre><code>n = 40000: [0.22, 0.23, 0.25, 0.25, 0.25]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 90000: [0.43, 0.32, 0.32, 0.32, 0.31]</code></pre>
+<pre><code>n = 90000: [0.56, 0.36, 0.35, 0.35, 0.34]</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
-<pre><code>n = 1000000: [11.45]</code></pre>
+<pre><code>n = 1000000: [11.65]</code></pre>
 </div>
 </div>
-<p>You know what? I’ll take it.</p>
+<p>You know what? I’ll take it. It’s not perfect, in particular I would prefer a pure JAX solution. But everything I tried hit hard against the indirect memory access issue. The best I found was using <code>jnp.lexsort</code> but even it had noticeable performance degradation as <code>nnz</code> increased relative to the scipy solution.</p>
 </section>
 </section>
-<section id="the-numerical-factorisation" class="level2">
-<h2 class="anchored" data-anchor-id="the-numerical-factorisation">The numerical factorisation</h2>
-<p>Finally we have made it here!</p>
-<!-- Let's discover how fast `jnp.lexsort` is!
-
-
-
-
-
-
-
-Well thank Christ for that. I mean, it's not perfect but I've definitely seen worse! A quick compare with the pure python implementation suggests that we are doing ok.
-
-::: {.cell execution_count=43}
-
-::: {.cell-output .cell-output-stdout}
-```
-True
-True
-```
-:::
-
-::: {.cell-output .cell-output-stdout}
-```
-n = 2500: [34.17]
-```
-:::
-:::
-
-
-Ok. So that works well enough. I'm not thrilled^[It's still much slower than pure python.] with it, but it at least solves the problem and does not have catastrophic scaling. 
-
-That said, I was talking to Junpeng and he suggested I try an `jnp.where` rather than all of those damn `.at`s. So let's see how that compares. Writing this blog, as I do, sequentially, I have suspicions^[Junpeng is a professional JAX-er. I'm unemployed. We are not the same.]. I've might have wasted^[I'm on a flight from Melbourne to New York right now so I promise you there is nothing better that I could be doing. I'm also drinking.] my time.
-
-
-**do this later** -->
+<section id="next-time-on-sparse-matrices-with-dan" class="level1">
+<h1>Next time on Sparse Matrices with Dan</h1>
+<p>So that’s where I’m going to leave it. I am off my flight and I’ve slept very well and now I’m going to be on holidays for a little while.</p>
+<p>The next big thing to do is look at the numerical factorisation. We are going to run headlong into all of the problems we’ve hit today, so that should be fun. The reason why I’m separating it into a separate post<a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> is that I want to actually test all of those things out properly.</p>
+<p>So next time you can expect</p>
+<ol type="1">
+<li><p>Classes! Because frankly this code is getting far too messy, especially now that certain things need to be passed as static arguments. The only reason I’ve avoided it up to now is that I think it hides too much of the algorithm in boilerplate. But now the boilerplate is ruining my life and causing far too many dumb typos<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a>.</p></li>
+<li><p>Type hints! Because for a language where types aren’t explicit, they sure are important. Also because I’m going to class it up I might as well do it properly.</p></li>
+<li><p>Some helper routines! I’m going to need a sparse-matrix scatter operation (aka the structured copy of <span class="math inline">\(A\)</span> to have the sparsity pattern of <span class="math inline">\(L\)</span>)! And I’m certainly going to need some reorderings<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a></p></li>
+<li><p>A battle royale between padded and non-padded methods!</p></li>
+</ol>
+<p>It should be a fun time!</p>
 
 
 </section>
@@ -1365,39 +1347,41 @@ That said, I was talking to Junpeng and he suggested I try an `jnp.where` rather
 <li id="fn5"><p>Instead of doing one pass of reverse-mode, you would need to do <span class="math inline">\(d\)</span> passes of forwards mode to get the gradient with respect to a d-dimensional parameter.<a href="#fnref5" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn6"><p>Unlike <code>jax.lax.while</code>, which is only forwards differentiable, <code>jax.lax.scan</code> is fully differentiable.<a href="#fnref6" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn7"><p>In general, if the function has state.<a href="#fnref7" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn8"><p>This is the version of the symbolic factorisation that is most appropriate for us, as we will be doing a lot of Cholesky factorisations with the same sparstiy structure. If we rearrange the algorithm to the up-looking Cholesky decomposition, we only need the column counts and this is also called the symbolic factorisation. This is, incidentally, how Eigen’s sparse Cholesky works.<a href="#fnref8" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn8"><p>This is the version of the symbolic factorisation that is most appropriate for us, as we will be doing a lot of Cholesky factorisations with the same sparsity structure. If we rearrange the algorithm to the up-looking Cholesky decomposition, we only need the column counts and this is also called the symbolic factorisation. This is, incidentally, how Eigen’s sparse Cholesky works.<a href="#fnref8" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn9"><p>Actually it’s a forest<a href="#fnref9" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn10"><p>Because we are talking about a tree, each child node has at most one parent. If it doesn’t have a parent it’s the root of the tree. I remember a lecturer saying that it should be called “father and son” or “mother and daughter” because every child has 2 parents but only one mother or one father. The 2000s were a wild time.<a href="#fnref10" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn11"><p>These can also be computed in approxximately <span class="math inline">\(\mathcal{O(\text{nnz}(A))}\)</span> time, which is much faster. But the algorithm is, frankly, pretty tricky and I’m not in the mood to program it up. This difference would be quite important if I wasn’t storing the full symbolic factorisation and was instead computing it every time, but in my context it is less clear that this is worth the effort.<a href="#fnref11" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn11"><p>These can also be computed in approximately <span class="math inline">\(\mathcal{O(\text{nnz}(A))}\)</span> time, which is much faster. But the algorithm is, frankly, pretty tricky and I’m not in the mood to program it up. This difference would be quite important if I wasn’t storing the full symbolic factorisation and was instead computing it every time, but in my context it is less clear that this is worth the effort.<a href="#fnref11" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn12"><p>Python notation! This is rows/cols 0 to <code>j-1</code><a href="#fnref12" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn13"><p>Python, it turns out, does not have a <code>do while</code> construct because, apparently, everything is empty and life is meaningless.<a href="#fnref13" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn14"><p>The argument for JIT works by amortizing the compile time over several function evaluations. If I wanted to speed this algortihm up, I’d implement the more complex <span class="math inline">\(\mathcal{O}(\operatorname{nnz}(A))\)</span> version.<a href="#fnref14" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn15"><p>Obviously it did not work the first time. A good way to debug JIT’d code is to use the python translations of the control flow literals. Why? Well for one thing there is an annoying tendency for JAX to fail silently when their is an out-of-bounds indexing error. Which happens, just for example, if you reolace <code>node = A_indices[indptr]</code> with <code>node = A_indices[A_indptr[indptr]]</code> because you got a text message half way through the line.<a href="#fnref15" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn14"><p>The argument for JIT works by amortizing the compile time over several function evaluations. If I wanted to speed this algorithm up, I’d implement the more complex <span class="math inline">\(\mathcal{O}(\operatorname{nnz}(A))\)</span> version.<a href="#fnref14" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn15"><p>Obviously it did not work the first time. A good way to debug JIT’d code is to use the python translations of the control flow literals. Why? Well for one thing there is an annoying tendency for JAX to fail silently when their is an out-of-bounds indexing error. Which happens, just for example, if you replace <code>node = A_indices[indptr]</code> with <code>node = A_indices[A_indptr[indptr]]</code> because you got a text message half way through the line.<a href="#fnref15" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn16"><p>We will still use the left-looking algorithm for the numerical computation. The two algorithms are equivalent in exact arithmetic and, in particular, have identical sparsity structures.<a href="#fnref16" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn17"><p>I’m mixing 1-based indexing in the maths with 0-based in the code because I think we need more chaos in our lives.<a href="#fnref17" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn18"><p>Yes. I know. I’m swapping the meaning of <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span> but you know that’s because in a symmetric matrix rows and columns are a bit similar. The upper half of column $$ is the left half of row <span class="math inline">\(j\)</span> after all.<a href="#fnref18" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn19"><p>If <code>mark[node]==j</code> then I have already found <code>node</code> and all of its anscestors in my sweep of row <code>j</code><a href="#fnref19" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn19"><p>If <code>mark[node]==j</code> then I have already found <code>node</code> and all of its ancestors in my sweep of row <code>j</code><a href="#fnref19" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn20"><p>This is because <code>L[j,node] != 0</code> by our logic.<a href="#fnref20" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn21"><p>I mean, I’m pretty sure it is. I’m writing this post in order, so I don’t know yet. But surely the compiler can’t reason about the possible values of <code>node</code>, which would be the only thing that would speed this up.<a href="#fnref21" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn22"><p>Convert from CSR to <code>(i, j, val)</code> (called COO, which has a convenient implementation in <code>jax.experimental.sparse</code>) to CSC. This involves a linear pass, a sort, and another linear pass. So it’s $n n`ish. Hire me fancy tech companies. I can count. Just don’t ask me to program quicksort.<a href="#fnref22" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn23"><p>Replace “subtle” with “fairly obvious once I realised how it’s converted to a <code>lax.scan</code>, but not at all obvious to me originally”.<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn24"><p>This also happens with the profile likelihood in non-Baeysian methods.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn24"><p>This also happens with the profile likelihood in non-Bayesian methods.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn25"><p>the <span class="math inline">\(\beta\)</span>s<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn26"><p>COO stands for <em>coordinate list</em> and it’s the least space-efficient of our options. It directly stores 3 length <code>n</code> vectors <code>(row, col, value)</code>. It’s great for specifying matrices and it’s pretty easy to convert from this format to any of the others.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn27"><p><code>index[1][jnp.lexsort((index[1], index[0]))]</code><a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p>other than holiday<a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn28"><p><code>A_index</code> and <code>A.index</code> are different<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn29"><p>I’m probably going to bind Eigen’s AMD decomposition. I’m certainly not writing it myself.<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
 </section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
   author = {Dan Simpson},
   editor = {},
-  title = {(Draft) {Sparse} Matrices Part 7: {Another} Shot at a Sparse
+  title = {Sparse Matrices Part 7a: {Another} Shot at {JAX-ing} the
     {Cholesky} Decomposition},
-  date = {2022-11-23},
-  url = {https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html},
+  date = {2022-12-02},
+  url = {https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html},
   langid = {en}
 }
 </code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
-Dan Simpson. 2022. <span>“(Draft) Sparse Matrices Part 7: Another Shot
-at a Sparse Cholesky Decomposition.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</a>.
+Dan Simpson. 2022. <span>“Sparse Matrices Part 7a: Another Shot at
+JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html">https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html</a>.
 </div></div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
