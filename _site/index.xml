@@ -15,7 +15,7 @@
 <link>https://dansblog.netlify.app/index.html</link>
 </image>
 <generator>quarto-1.2.15</generator>
-<lastBuildDate>Fri, 02 Dec 2022 05:00:00 GMT</lastBuildDate>
+<lastBuildDate>Thu, 01 Dec 2022 13:00:00 GMT</lastBuildDate>
 <item>
   <title>Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition</title>
   <dc:creator>Dan Simpson</dc:creator>
@@ -1155,7 +1155,7 @@ JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https:/
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html</guid>
-  <pubDate>Fri, 02 Dec 2022 05:00:00 GMT</pubDate>
+  <pubDate>Thu, 01 Dec 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-27-sparse7/south_pac.png" medium="image" type="image/png" height="81" width="144"/>
 </item>
 <item>
@@ -1193,7 +1193,7 @@ JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https:/
 <ul>
 <li><p>This exact question was asked by Gareth Roberts and Jeff Rosenthal first<sup>12</sup> <a href="http://probability.ca/jeff/ftpdir/sens.pdf">with Peter Schwartz</a> and a second, more<sup>13</sup> <sup>14</sup> realistic, time <a href="http://probability.ca/jeff/ftpdir/gjl.pdf">with Laird Breyer</a>. They found that as long as the chain’s convergence is sufficiently nice<sup>15</sup> then the perturbed chain will converge nicely and have<sup>16</sup> a central limit theorem.</p></li>
 <li><p>About 10 years ago, an absolute orgy<sup>17</sup> <sup>18</sup> of research happened around the question <em>What happens if the acceptance probability is random but unbiased?</em>. These <em>exact approximate</em><sup>19</sup> or <em>pseudo-marginal</em> methods. These have some success in situations<sup>20</sup> where the likelihood has a <em>parameter dependent</em> normalising constant that can’t be computed exactly, but can be estimated unbiasedly. The problem with this class of methods is that the extra noise tends to make the Markov chain perform pretty badly<sup>21</sup>. This limits its practical use to models where we really can’t do anything else<sup>22</sup>. That said, there is some interesting literature on random sub-sampling of data where it <a href="https://www.jmlr.org/papers/volume18/15-205/15-205.pdf">doesn’t really work</a> and where <a href="https://ses.library.usyd.edu.au/bitstream/handle/2123/16205/BAWP-2017-01.pdf">it does work</a>.</p></li>
-<li><p>A third branch of literature is on truly approximate algorithms. These try to understand what happens if you’re just wrong with <img src="https://latex.codecogs.com/png.latex?%5Calpha_%7Bk+1%7D"> and you don’t do anything to correct it. There are a lot of papers on this, and I’m not going to do anything approaching a thorough review. I have work<sup>23</sup> <sup>24</sup> to do. So I will just list two older papers that were influential for me. The first was by <a href="https://arxiv.org/abs/1205.6857">Geoff Nichols, Colin Fox, and Alexis Muir Watt</a>, which looks at what happens when you don’t correct your pseudo-marginal method correctly. It’s a really neat theory paper that is a great presentation<sup>25</sup> of the concepts. The second paper is by <a href="https://arxiv.org/abs/1205.6857">Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland</a>, which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings.</p></li>
+<li><p>A third branch of literature is on truly approximate algorithms. These try to understand what happens if you’re just wrong with <img src="https://latex.codecogs.com/png.latex?%5Calpha_%7Bk+1%7D"> and you don’t do anything to correct it. There are a lot of papers on this, and I’m not going to do anything approaching a thorough review. I have work<sup>23</sup> <sup>24</sup> to do. So I will just list two older papers that were influential for me. The first was by <a href="https://arxiv.org/abs/1205.6857">Geoff Nichols, Colin Fox, and Alexis Muir Watt</a>, which looks at what happens when you don’t correct your pseudo-marginal method correctly. It’s a really neat theory paper that is a great presentation<sup>25</sup> of the concepts. The second paper is by <a href="https://arxiv.org/abs/1205.6857">Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland</a>, which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings. There are also some nice results on perturbations of Markov chains in general, for instance <a href="https://arxiv.org/pdf/1503.04123.pdf">this paper</a> by Daniel Rudolf and Nikolaus Schweizer.</p></li>
 </ul>
 <section id="trying-to-understand-noisy-markov-chains" class="level3">
 <h3 class="anchored" data-anchor-id="trying-to-understand-noisy-markov-chains">Trying to understand noisy Markov chains</h3>
@@ -1221,7 +1221,7 @@ JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https:/
 <p>So the take away from the last section was that if the random variables <img src="https://latex.codecogs.com/png.latex?N_j"> are usually pretty big, then everything will work ok. Intuitively this makes sense. If the <img src="https://latex.codecogs.com/png.latex?N_j">s were always small, it would be very difficult to ever get close to any sort of stationary distribution.</p>
 <p>The paper by <a href="https://arxiv.org/abs/1205.6857">Nicholls, Fox, and Muir Watt paper</a> talks about potential sizes for <img src="https://latex.codecogs.com/png.latex?N_j">. The general construction that they use is a <em>coupling</em>, which is a bivariate Markov chain <img src="https://latex.codecogs.com/png.latex?(%5Ctheta_k,%20%5Ctilde%20%5Ctheta_k)"> that start from the same position and are updated as follows:</p>
 <ol type="1">
-<li>Propose $’ q(’ _{k})</li>
+<li>Propose <img src="https://latex.codecogs.com/png.latex?%5Ctheta'%20%5Csim%20q(%5Ctheta'%20%5Cmid%20%5Ctilde%20%5Ctheta_%7Bk%7D)"></li>
 <li>Generate a uniform random number <img src="https://latex.codecogs.com/png.latex?u_%7Bk+1%7D"></li>
 <li>Update <img src="https://latex.codecogs.com/png.latex?%5Ctheta"> as <img src="https://latex.codecogs.com/png.latex?%0A%5Ctheta_%7Bk+1%7D%20=%20%5Cbegin%7Bcases%7D%20%5Ctheta',%20%5Cqquad%20&amp;%20u_%7Bk+1%7D%20%5Cleq%20%5Calpha_%7Bk+1%7D%20%5C%5C%0A%5Ctheta_%7Bk%7D,%20&amp;%20u_%7Bk+1%7D%20%3E%20%5Calpha_%7Bk+1%7D.%5Cend%7Bcases%7D%0A"></li>
 <li>Update <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta"> as <img src="https://latex.codecogs.com/png.latex?%0A%5Ctilde%20%5Ctheta_%7Bk+1%7D%20=%20%5Cbegin%7Bcases%7D%20%5Ctheta',%20%5Cqquad%20&amp;%20u_%7Bk+1%7D%20%5Cleq%20%5Ctilde%20%5Calpha_%7Bk+1%7D%20%5C%5C%0A%5Ctilde%20%5Ctheta_%7Bk%7D,%20&amp;%20u_%7Bk+1%7D%20%3E%20%5Ctilde%20%5Calpha_%7Bk+1%7D.%5Cend%7Bcases%7D%0A"></li>
@@ -1277,7 +1277,7 @@ JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https:/
 <li id="fn25"><p>Does it talk about involutions for not fucking reason? Of course it does. Read past that.↩︎</p></li>
 <li id="fn26"><p>Yeah, like I have also read my blog. Think of it as being like social media. It is not a representation of me a whole person. It’s actually biased towards stuff that I have either found or find difficult.↩︎</p></li>
 <li id="fn27"><p>A friend of mine has a “No one knows I’m a transexual” t-shirt that she likes to wear to supermarkets.↩︎</p></li>
-<li id="fn28"><p>Note that both <img src="https://latex.codecogs.com/png.latex?r_k"> and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Cr_k"> are computed using the <em>same</em> value <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_%7Bk-1%7D">.↩︎</p></li>
+<li id="fn28"><p>Note that both <img src="https://latex.codecogs.com/png.latex?r_k"> and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20r_k"> are computed using the <em>same</em> value <img src="https://latex.codecogs.com/png.latex?%5Ctilde%20%5Ctheta_%7Bk-1%7D">.↩︎</p></li>
 <li id="fn29"><p>The norm here is usually either the total variation norm of the <img src="https://latex.codecogs.com/png.latex?V">-norm. But truly it’s not important for the hand waving.↩︎</p></li>
 <li id="fn30"><p>In most cases <img src="https://latex.codecogs.com/png.latex?M(%5Ctheta)%20%5Crightarrow%20%5Cinfty"> as <img src="https://latex.codecogs.com/png.latex?%5C%7C%5Ctheta%5C%7C%20%5Crightarrow%20%5Cinfty">.↩︎</p></li>
 <li id="fn31"><p>Bounded and continuous always works. But everything is probably ok for unbounded functions as long as <img src="https://latex.codecogs.com/png.latex?h(%5Ctheta)"> has a pile of finite moments.↩︎</p></li>
@@ -1308,7 +1308,7 @@ Probability.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/
   <category>MCMC</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</guid>
-  <pubDate>Wed, 23 Nov 2022 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 22 Nov 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -1507,7 +1507,7 @@ For.”</span> November 15, 2022. <a href="https://dansblog.netlify.app/posts/20
   <category>MRP</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/robins-ritov.html</guid>
-  <pubDate>Tue, 15 Nov 2022 05:00:00 GMT</pubDate>
+  <pubDate>Mon, 14 Nov 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/misandrists.JPG" medium="image"/>
 </item>
 <item>
@@ -2406,7 +2406,7 @@ Process.”</span> September 27, 2022. <a href="https://dansblog.netlify.app/pos
   <category>Gaussian Processes</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html</guid>
-  <pubDate>Tue, 27 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 26 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-07-priors5/chair.JPG" medium="image"/>
 </item>
 <item>
@@ -3236,7 +3236,7 @@ September 6, 2022. <a href="https://dansblog.netlify.app/2022-09-04-everybodys-g
   <category>Prior distributions</category>
   <category>fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html</guid>
-  <pubDate>Tue, 06 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 05 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png" medium="image" type="image/png" height="81" width="144"/>
 </item>
 <item>
@@ -3556,7 +3556,7 @@ Appropriately Penalise Complexity.”</span> September 3, 2022. <a href="https:/
   <category>fundamentals</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-08-29-priors4/priors4.html</guid>
-  <pubDate>Sat, 03 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 02 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-08-29-priors4/tina.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -3884,7 +3884,7 @@ Etimators: A Bit of Theory.”</span> June 15, 2022. <a href="https://dansblog.n
   <category>Pareto smoothed importance sampling</category>
   <category>PSIS</category>
   <guid>https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/that-psis-proof.html</guid>
-  <pubDate>Wed, 15 Jun 2022 04:00:00 GMT</pubDate>
+  <pubDate>Tue, 14 Jun 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/judy.JPG" medium="image"/>
 </item>
 <item>
@@ -4912,7 +4912,7 @@ First You’ve Got to Think Like a Derivative.”</span> May 30, 2022. <a href="
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html</guid>
-  <pubDate>Mon, 30 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Sun, 29 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/sob.JPG" medium="image"/>
 </item>
 <item>
@@ -5241,7 +5241,7 @@ May 20, 2022. <a href="https://dansblog.netlify.app/2022-05-18-sparse4-some-prim
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html</guid>
-  <pubDate>Fri, 20 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Thu, 19 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/nancy.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -5379,7 +5379,7 @@ Passion.”</span> May 16, 2022. <a href="https://dansblog.netlify.app/2022-05-1
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html</guid>
-  <pubDate>Mon, 16 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Sun, 15 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/scrod.JPG" medium="image"/>
 </item>
 <item>
@@ -5684,7 +5684,7 @@ Dan Simpson. 2022. <span>“Sparse Matrices 3: Failing at JAX.”</span> May
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html</guid>
-  <pubDate>Sat, 14 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 13 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/alien.JPG" medium="image"/>
 </item>
 <item>
@@ -6128,7 +6128,7 @@ Cholesky Factorisation.”</span> March 31, 2022. <a href="https://dansblog.netl
   <category>Sparse Cholesky factorisation</category>
   <category>Python</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html</guid>
-  <pubDate>Thu, 31 Mar 2022 04:00:00 GMT</pubDate>
+  <pubDate>Wed, 30 Mar 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/tori.JPG" medium="image"/>
 </item>
 <item>
@@ -6368,7 +6368,7 @@ Linear Mixed Effects Models and Their Generalisations.”</span> March 22,
   <category>Sparse matrices</category>
   <category>Linear mixed models</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html</guid>
-  <pubDate>Tue, 22 Mar 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 21 Mar 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/patti.JPG" medium="image"/>
 </item>
 <item>
@@ -6553,7 +6553,7 @@ Alike Contest (Repost).”</span> January 26, 2022. <a href="https://dansblog.ne
   <category>Computation</category>
   <category>Assessing algorithms</category>
   <guid>https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html</guid>
-  <pubDate>Wed, 26 Jan 2022 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 25 Jan 2022 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/yetta.JPG" medium="image"/>
 </item>
 <item>
@@ -6734,7 +6734,7 @@ Dan Simpson, and Dan Simpson. 2021. <span>“Why Won’t You Cheat with Me?
   <category>Fundamentals</category>
   <category>Design dependence</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html</guid>
-  <pubDate>Thu, 09 Dec 2021 05:00:00 GMT</pubDate>
+  <pubDate>Wed, 08 Dec 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" medium="image"/>
 </item>
 <item>
@@ -6870,7 +6870,7 @@ Dan Simpson, and Dan Simpson. 2021. <span>“The King Must Die
   <category>Theory</category>
   <category>Things that don't work</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html</guid>
-  <pubDate>Wed, 08 Dec 2021 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 07 Dec 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -7198,7 +7198,7 @@ When You Approximate a Gaussian Process.”</span> November 24, 2021. <a href="h
   <category>Fundamentals</category>
   <category>Theory</category>
   <guid>https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html</guid>
-  <pubDate>Wed, 24 Nov 2021 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 23 Nov 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/pika.JPG" medium="image"/>
 </item>
 <item>
@@ -7534,7 +7534,7 @@ November 3, 2021. <a href="https://dansblog.netlify.app/yes-but-what-is-a-gaussi
   <category>Theory</category>
   <category>Deep dive</category>
   <guid>https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html</guid>
-  <pubDate>Wed, 03 Nov 2021 04:00:00 GMT</pubDate>
+  <pubDate>Tue, 02 Nov 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/beaches.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -7633,7 +7633,7 @@ October 17, 2021. <a href="https://dansblog.netlify.app/priors3">https://dansblo
   <category>Prior distributions</category>
   <category>Fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2021-10-15-priors3/priors3.html</guid>
-  <pubDate>Sun, 17 Oct 2021 04:00:00 GMT</pubDate>
+  <pubDate>Sat, 16 Oct 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-15-priors3/strictly.JPG" medium="image"/>
 </item>
 <item>
@@ -7744,7 +7744,7 @@ October 16, 2021. <a href="https://dansblog.netlify.app/priors2">https://dansblo
   <category>Prior distributions</category>
   <category>Fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2021-10-14-priors2/priors2.html</guid>
-  <pubDate>Sat, 16 Oct 2021 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 15 Oct 2021 13:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-10-14-priors2/nun.JPG" medium="image"/>
 </item>
 </channel>

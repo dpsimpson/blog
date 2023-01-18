@@ -73,7 +73,9 @@ $$ where $N=23$ in single precision and $N=32$ in double precision. Of course, t
 
 - About 10 years ago, an absolute orgy^[Like all good orgies, this one was mostly populated by men] ^[Yes, I know. My (limited) contribution this literature was some small contributions to a paper [lead by Anne-Marie Lyne](https://www.jstor.org/stable/24780815). But if years of compulsory catholicism taught me anything (other than "If you're drinking with a nun or an aging homosexual, don't try to keep up") it's that something does not have to be literally true to be morally true.] of research happened around the question _What happens if the acceptance probability is random but unbiased?_. These _exact approximate_^[We have to slightly redefine the word "exact" to mean "targets the correct stationary distribution" for this name to make sense] or _pseudo-marginal_ methods. These have some success in situations^[Random graph models and point processes are two great examples] where the likelihood has a _parameter dependent_ normalising constant that can't be computed exactly, but can be estimated unbiasedly. The problem with this class of methods is that the extra noise tends to make the Markov chain perform pretty badly^[for instance, it gets stuck for long times at single values]. This limits its practical use to models where we really can't do anything else^[the aforementioned point process and graph models]. That said, there is some interesting literature on random sub-sampling of data where it [doesn't really work](https://www.jmlr.org/papers/volume18/15-205/15-205.pdf) and where [it does work](https://ses.library.usyd.edu.au/bitstream/handle/2123/16205/BAWP-2017-01.pdf).
 
-- A third branch of literature is on truly approximate algorithms. These try to understand what happens if you're just wrong with $\alpha_{k+1}$ and you don't do anything to correct it. There are a lot of papers on this, and I'm not going to do anything approaching a thorough review. I have work^[Playing God of War: Ragnarok] ^[The first run of God of War Games were not my cup of tea, but the 2008 game, which is essentially a detailed simulation of what happens when a muscle bear is entrusted with walking an 11 year old up a hill, was really enjoyable. So far this is too.] to do. So I will just list two older papers that were influential for me. The first was by [Geoff Nichols, Colin Fox, and Alexis Muir Watt](https://arxiv.org/abs/1205.6857), which looks at what happens when you don't correct your pseudo-marginal method correctly. It's a really neat theory paper that is a great presentation^[Does it talk about involutions for not fucking reason? Of course it does. Read past that.] of the concepts. The second paper is by [Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland](https://arxiv.org/abs/1205.6857), which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings.
+- A third branch of literature is on truly approximate algorithms. These try to understand what happens if you're just wrong with $\alpha_{k+1}$ and you don't do anything to correct it. There are a lot of papers on this, and I'm not going to do anything approaching a thorough review. I have work^[Playing God of War: Ragnarok] ^[The first run of God of War Games were not my cup of tea, but the 2008 game, which is essentially a detailed simulation of what happens when a muscle bear is entrusted with walking an 11 year old up a hill, was really enjoyable. So far this is too.] to do. So I will just list two older papers that were influential for me. The first was by [Geoff Nichols, Colin Fox, and Alexis Muir Watt](https://arxiv.org/abs/1205.6857), which looks at what happens when you don't correct your pseudo-marginal method correctly. It's a really neat theory paper that is a great presentation^[Does it talk about involutions for not fucking reason? Of course it does. Read past that.] of the concepts. The second paper is by [Pierre Alquier, Nial Friel, Richard Everitt, and Aidan Boland](https://arxiv.org/abs/1205.6857), which looks at general approximate Markov chains. They show empirically that these methods work extremely well relative to pseudo-marginal methods for practical settings. There are also some nice results on perturbations of Markov chains in general, for instance [this paper](https://arxiv.org/pdf/1503.04123.pdf) by Daniel Rudolf and Nikolaus Schweizer.
+
+
 
 ### Trying to understand noisy Markov chains
 
@@ -87,7 +89,7 @@ This means that one way to understand inexact MCMC is to think of the Markov cha
 $$
 (\tilde{\theta}_k, s_k), \qquad k=0, 1, \ldots, \infty,
 $$
-where^[Note that both $r_k$ and $\tilde \r_k$ are computed using the _same_ value $\tilde \theta_{k-1}$.] 
+where^[Note that both $r_k$ and $\tilde r_k$ are computed using the _same_ value $\tilde \theta_{k-1}$.] 
 $$
 s_k = \begin{cases} 0, \quad & r_{k} = \tilde r_k \\
 1, &r_k \neq \tilde r_k\end{cases}
@@ -144,7 +146,7 @@ So the take away from the last section was that if the random variables $N_j$ ar
 
 The paper by [Nicholls, Fox, and Muir Watt paper](https://arxiv.org/abs/1205.6857) talks about potential sizes for $N_j$.  The general construction that they use is a _coupling_, which is a bivariate Markov chain $(\theta_k, \tilde \theta_k)$ that start from the same position and are updated as follows:
 
-1. Propose $\theta' \sim q(\theta' \mid \tilde \theta_{k})
+1. Propose $\theta' \sim q(\theta' \mid \tilde \theta_{k})$
 1. Generate a uniform random number $u_{k+1}$
 1. Update $\theta$  as 
 $$
