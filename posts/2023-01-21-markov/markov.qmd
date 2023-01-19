@@ -1,0 +1,329 @@
+---
+title: "Markovian Gaussian processes: A lot of theory and some practical stuff"
+description: |
+  Well this is gonna be technical.
+date: 2023-01-10
+image: gays.png
+categories: [Gaussian processes]
+twitter-card:
+  title: "Markovian Gaussian processes: A lot of theory and some practical stuff"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/
+format: 
+  html:
+    df-print: paged
+draft: true
+execute:
+  eval: true
+
+---
+
+Gaussian processes are lovely things. I'm a big fan. They are, however, thirsty.
+They will take your memory, your time, and anything else they can. Basically, the
+art of fitting Gaussian process models is the fine art of reducing the GP model until it's
+simple enough to fit while still being flexible enough to be useful. 
+
+There's a long literature on effective approximation to Gaussian Processes that don't turn
+out to be computational nightmares. I'm definitely not going to summarise them here,
+but I'll point to an [earlier (quite technical) post](https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html) 
+that mentioned some of them. The particular computational approximation that I am 
+most fond of makes use of the Markov property and efficient sparse matrix computations 
+to reduce memory use and make the linear algebra operations significantly faster.
+
+One of the odder challenges with Markov models is that information about how Markov 
+structures work in more than one dimension can be quite difficult to find. So in this post I 
+am going to lay out some of the theory.
+
+A much more practical (and readable) introduction to this topic can be found in this [lovely paper by Finn, David, and Håvard](https://arxiv.org/abs/2111.01084). So don't feel the burning urge to read this post if you don't want to. I'm approaching the material from a different viewpoint and, to be very frank with you, I was writing something else and this section just became extremely long so I decided to pull it out into a blog post.
+
+So please enjoy today's entry in _Dan writes about the weird corners of Gaussian processes_. I promise that even though this post doesn't make it seem like this stuff is useful, it really is.
+
+## The most relevant definition of a Gaussian process
+
+Before we talk about how to fix boundary issues for general Markovian GPs, we 
+probably should explain what a Markovian GP is. In order to do this, we need to
+use one of the less common definitions of a Gaussian process. [Thankfully, I wrote a whole damn blog post about this type of stuff](https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html). Do you need to read that post to understand this one? Not really. But if you happen to have read it, we are going to be using the third definition of a Gaussian process, the weirdest one.
+
+While Gaussian processes^[Here there and everywhere my GPs always have zero means. Why? Is it because once someone said to me that statisticians are bad in bed because they are "mean lovers"? Well it's not not because of that. I worry that I'm not a good statistician because I am merely an indifferent lover.] are usually characterised by their covariance function, that is not the only option. A particularly powerful object that is associated with a Gaussian process is the Reproducing Kernel Hilbert Space (RKHS) (also known as the Cameron-Martin space) associated with the covariance function $c(\cdot, \cdot)$. This is a space $H(c)$ of functions equipped with the unique inner product with the property that for any continuous function $f$,
+$$
+\langle f(\cdot), c(s, \cdot) \rangle_{H(c)} = f(s).
+$$
+A function $f \in H(c)$ if and only if $\langle f, f \rangle_{H(c)} < \infty$.
+
+While every covariance function has an associated RKHS (and vice versa), it is usually
+pretty difficult to derive one from the other. So what we typically do is either choose
+to work with the covariance function and use that as the basis of our computations or
+we choose to work with the RKHS and use that as the basis of our computations.
+
+It turns out that just as the covariance function specifies the covariance structure
+of a GP, the RKHS controls the _conditional independence_ structure of the Gaussian process.
+This makes it the natural object to consider when talking about Markovian processes.
+
+But first, a brief word about computation.
+
+## Gaussian processes via the covariance operator
+
+The problem with basing our computations off a RKHS is that it is not immediately 
+obvious how we will do that. This is in contrast to a covariance function approach,
+where it is quite easy^[Step 1: Open Rasmussen and Williams.] to work out how to 
+convert the model specification to something you can attack with a computer.
+
+The extra complexity of the RKHS pays off in modelling flexibility, both in terms
+of the types of model that can be build and the spaces^[For example, the process I'm about to describe is not meaningfully different for a process on a sphere. Whereas if you want to use a covariance function on a sphere you are stuck trying to find a whole new class of positive definite functions. It's frankly very annoying. Although if you want to build a career out of characterising positive definite functions on increasingly exotic spaces, you probably don't find it annoying.] you can build them on. 
+I am telling you this now because things are about to get a little mathematical. 
+
+
+To motivate the technique, let's consider the covariance operator
+$$
+[\mathcal{C}f](s) = \int_T c(s, s') f(s') \, ds',
+$$
+where $T$ is the domain over which the GP is defined (usually $\mathbb{R}^d$ but maybe you're feeling frisky). One of the defining properties of the RKHS inner product is that 
+$$
+\langle \mathcal{C}^{1/2} f, \mathcal{C}^{1/2} g \rangle_{H(c)} = \int_T f(s') g(s')\,ds',
+$$
+where $C^{1/2}$ is the square root^[Because $\mathcal{C}$ is a compact operator (and some other maths-y stuff), it has a discrete spectrum that accumulates at zero. That means, basically, that we can just pretend it's a big fucking symmetric postitive semi-definite matrix and so its square root is well definied (just take the square root of the eigenvalues).] of the covariance operator, which can be (mostly) defined as the symmetric operator that satisfies 
+$$
+\langle \mathcal{C}^{1/2} f, \mathcal{C}^{1/2} g \rangle_{L^2(T)} = \langle f, \mathcal{C} g \rangle_{L^2(T)}  .
+$$
+
+To see how this could be useful, we are going to need to think a little bit about how we can simulate a multivariate Gaussian random variable $N(0, \Sigma)$. To do this, we first compute the square root^[Or the Cholesky factor if you add a bunch of transposes in the right places, but let's not kid ourselves this is not a practical discussion of how to do it] $L = \Sigma^{1/2}$ and sample a vector of iid standard normal variables $z \sim N(0,I)$. Then $u = Lz \sim N(0, \Sigma)$. You can check it by checking the covariance. (it's ok. I'll wait.) 
+
+While the square root of the covariance operator is a fairly straightforward mathematical object^{Albeit a bit advanced. It's straightforward in the sense that for an infinite-dimensional operaotr it happens to work a whole like a symmetric positive semi-definite matrix. It is not straightforward in the sense that your three year old could do it. Your three year old can't do it. But it will keep them quiet in the back seat of the car while you pop into the store for some fags. It's ok. The window's down.}, the analogue of the iid vector of standard normal random variables is a bit more complex.
+
+## White noise and its associated things
+
+Thankfully I've covered this [in a previous blog](file:///Users/danielsimpson/Documents/blog/_site/posts/2022-09-07-priors5/priors5.html#spectral-representations-and-the-simplest-of-the-many-many-versions-of-a-stochastic-integral). The engineering definition of white noise as a GP $w(\cdot)$ such that for every $s$, $w(s)$ is an iid $N(0,1)$ random variable is not good enough for our purposes. Such a process is hauntingly irregular^[For any subset $B$, $\sup_{s\in B} w(s) = \infty$ _and_ $\inf_{s \in B} w(s) = -\infty$] and it's fairly difficult to actually do anything wiht it. Instead, we consider white noise as a random function defined on the subsets of our domain. This feels like it's just needless technicality, but it turns out to actually be very very useful.
+
+
+::: {#def-white-noise}
+
+## White noise
+
+A (complex) Gaussian white noise is a random measure^[Countably additive set-valued function taking any value in $\mathbb{C}$] $W(\cdot)$ such that, for every^[measurable] disjoint^[$A \cap B = \emptyset$] pair of sets $A, B$ satisfies the following properties
+
+1. $W(A) \sim N(0, |A|)$
+1. If $A$ and $B$ are disjoint then $W(A\cup B) = W(A) + W(B)$
+1. If $A$ and $B$ are disjoint then $W(A)$ and $W(B)$ are uncorrelated^[If $W(A)$ is also Gaussian then this is the same as them being independent], ie $\mathbb{E}(W(A) \overline{W(B)}) = 0$.
+:::
+
+This doesn't feel like we are helping very much because how on _earth_ am I going to define the product $\mathcal{C}^{1/2} W$? Well the answer, you may be shocked to discover, requires a little bit more maths. We need to define an integral, which turns out to not be _shockingly_ difficult to do. The trick is to realise that if I have an indicator function 
+$$
+1_A(s) = \begin{cases} 1, \qquad &s \in A \\ 0, & s \not \in A \end{cases}
+$$
+then^[Recall that $T$ is our whole space. Usually $\mathbb{R}^d$, but it doesn't matter here.] 
+$$
+\int_T 1_A(s)\, dW(s) = \int_A dW(s) = W(A) \sim N(0, |A|).
+$$
+In that calculation, I just treated $W(s)$ like I would any other measure. (If you're more of a probability type of girl, it's the same thing as noticing $\mathbb{E}(1_A(X) = \Pr(X \in A)$.) 
+
+We can extend the above by taking the sum of two indicator function 
+$$
+f(s) = f_11_{A_1}(s) + f_2 1_{A_2}(s),
+$$
+where $A_1$ and $A_2$ are disjoint and $f_1$ and $f_2$ are any real numbers. By the same reasoning above, and using the linearity of the integral, we get that 
+\begin{align*}
+\int_T f(s) \, dW(s) &= f_1 \int_{A_1} \,d W(s) + f_2 \int_{A_2} \,d W(s) \\
+&= N(0, f_1^2 |A_1| + f_2^2 |A_2|) \\
+&= N\left(0, \int_T f(s)^2 \,ds\right),
+\end{align*}
+where the last line follows by doing the ordinary^[A bit of a let down really.] integral of $f(s)$.
+
+It turns out that every interesting function can be written as the limit of piecewise constant functions^[like $f(s)$ but with more subsets] and we can therefore _define_ for any function^[$L^2(T)$ is the space of functions with the property that $\int_T f(s)^2\,ds < \infty$.] $f\in L^2(T)$
+$$
+\int f(s) \, dW(s) \sim N\left(0, \int_T f(s)^2 \,ds\right).
+$$
+
+With this notion in hand, we can finally define the action of an operator on white noise.
+
+::: {#def-operator-on-noise}
+## The action of an operator on white noise
+Let $\mathcal{A}$ be an operator on some Hilbert space of functions $H$ with adjoint $\mathcal{A}^*$,
+then we define $\mathcal{A}W$ to be the random measure that satisfies, for every $f \in \operatorname{Dom}(\mathcal{A^*})$, 
+$$
+\int_T f(s) \, d (\mathcal{A}W)(s) = \int_T \mathcal{A}^*f(s) \, dW(s).
+$$
+:::
+
+## The generalised Gaussian process $\eta = \mathcal{C}^{1/2}W$
+
+One of those inconvenient things that you may have noticed from above is that $\mathcal{C}^{1/2}W$ is _not_ going to be a function. It is going to be a measure or, as it is more commonly known, a _generalised Gaussian process_. This is the GP analogue of a generalised function and, as such, only gives an actual value when you integrate it against some sufficiently smooth function.
+
+::: {#def-generalised-gp}
+## Generalised Gauusian Process
+A generalised Gaussian process $\xi$ is a random signed measure (or a random generalised function)
+that, for any $f \in C^\infty_0(T)$, $\int_T f(s)\,d\xi(s)$ is Gaussian. We will often write 
+$$
+\xi(f) = \int_T f(s)\,d\xi(s),
+$$
+which helps us understand that a generalised GP is indexed by functions.
+
+:::
+
+In order to separate this out from the ordinary GP $u(s)$, we will write it as 
+$$
+\eta = \mathcal{C}^{1/2}W.
+$$ 
+These two ideas coincide in the special case where 
+$$
+\eta = u(s)\,ds,
+$$
+which will occur when $\mathcal{C}^{1/2}$ smooths the white noise sufficiently.
+In all of the cases we really care about today, this happens. But there are plenty 
+of Gaussian processes that can only be considered as generalised GPs^[eg the Gaussian free field in physics, or the de Wijs process.]
+
+With this in hand, we are ready to understand the Markov property.
+
+## The Markov property for on abstract spaces
+
+Part of the reason why I introduced the notion of a generalised Gaussian process
+is that it is useful in the definition of the Markov process. Intuitively, we know 
+what this definition is going to be: if I split my space into three disjoint sets $A$, $\Gamma$ and $B$ in such a way that you can't get from $A$ to $B$ without passing through $\Gamma$, then the Markov property should say, roughly, that every random variable $\{x(s): s\in A\}$ is 
+conditionally independent of every random variable $\{x(s): s \in B\}$ _given_ (or conditional on)
+knowing the values of the entire set $\{x(s): s \in \Gamma\}.
+
+
+![A graphical illustration of the three sets used above Markov property.](markov.png)
+
+That definition is all well and good for a hand-wavey approach, but unfortunately it doesn't quite hold up to mathematics. In particular, if we try to make $\Gamma$ a line^[($d-1$)-dimensional submanifold], we will hit a few problems. So instead let's do this properly.
+
+All of the material here is covered in Rozanov's excellent but unimaginatively named book _Markov Random Fields_.
+
+To set us up. we should consider the types of sets we have. There are three main sets that we are going to be using: the open^[This set does not include its boundary] set $S_1 \subset T$, its boundary^[This is defined as the set $\partial S_1 = \bar{S_1} \backslash S_1$, where $\bar{S_1}$ is the closure of $S_1$. But let's face it. It's the fucking boundary. It means what you think it means.] $\Gamma \supseteq \partial S$. For example, if $T  = \mathbb{R}^2$ and $S$ is the interior of the unit circle, and its open complement $S_2 = S_1^C \backslash \partial S_1$. For a 2D example, if $S_1$ is the _interior_ of the unit circle, then $\Gamma$ could be the unit circle, and $S_2$ would be the _exterior of the unit circle.
+
+One problem with these sets, is that while $S_1$ will be a 2D set, $\Gamma$ is only one dimensional (it's a circle, so it's a line!). This causes some troubles mathematically, which we need to get around by using the $\epsilon$ fattening of $\Gamma$, which is the set 
+$$
+\Gamma^\epsilon = \{s \in T : d(s, \Gamma) < \epsilon\},
+$$
+where $d(s, \Gamma)$ is the distance from $s$ to the nearest point in $\Gamma$. 
+
+With all of this in hand we can now give a general definition of the Markov property.
+
+::: {#def-markov}
+## The Markov property for a generalised Gaussian process
+
+Consider a zero mean generalised GP $\xi$. For any^[measurable] subset $A \subset T$, we define the collection of random variables^[Here $\operatorname{supp}(f)$ is the support of $f$, that is the values of $s$ such that $f(s) \neq 0$.]
+$$
+H(A) = \operatorname{span}\{\xi(f): \operatorname{supp}(f) \subseteq A\}.
+$$
+We will call $\{H(A); A \subseteq T\}$ the _random field_^[This is the terminology of Rozanov. Random Field is also another term for stochastic process. Why only let words mean one thing?] associated with $\xi$.
+
+Let $\mathcal{G}$ be a system of domains^[non-empty connected open sets] in $T$. We say that 
+$\xi$ has the Markov^[Strictly, this is the _weak_ or _second-order_ Markov property] property (with respect to $\mathcal{G}$) if, 
+for all $S_1 \in \mathcal{G}$ and for any sufficiently small $\epsilon > 0$,
+$$
+\mathbb{E}(xy \mid H(\Gamma^\epsilon)) = 0, \qquad x \in H(S_1), y \in H(S_2),
+$$
+where $\Gamma = \partial S_1$ and $S_2 = S_1^C \backslash \Gamma$.
+:::
+
+### Rewriting the Markov property I: Splitting spaces
+
+The Markov property defined above is great and everything, but in order to manipulate it,
+we need to think carefully about the how the domains $S_1$, $\Gamma^\epsilon$ and $S_2$ can be used to divide up the space $H(T)$. To do this, we need to basically locallise the Markov property to one set of $S_1$, $\Gamma$, $S_2$. This concept is called a _splitting_^[If you're curious, this is basically the same thing as a splitting $\sigma$-algebra. But, you know, sans the $\sigma$-algebra bullshit.] of $H(S_1)$ and $H(S_2)$ by $H(\Gamma^\epsilon)$
+
+::: {#def-splitting}
+For some domain $S_1$ and $\Gamma \supseteq \partial S_1$, set $S_2 = (S_1 \cup \Gamma)^c$. The space $H(\Gamma^\epsilon)$ splits $H(S_1)$ and $H(S_2)$ if
+$$
+H(T) = H(S_1 \ominus \Gamma^\epsilon) \oplus H(\Gamma^\epsilon) \oplus H(S_2 \ominus \Gamma^\epsilon),
+$$
+where $\oplus$ is the sum of orthogonal components^[That is, any $x \in H(T)$ can be written as the sum $x = x_1 + x_2 + x_3$, where $x_1 \in  H(S_1 \ominus \Gamma^\epsilon) $, $x_2 \in H(\Gamma^\epsilon)$, and $x_3 \in H(S_2 \ominus \Gamma^\epsilon)$ are _mutually orthogonal_ (ie $\mathbb{E}(x_1x_2) = \mathbb{E}(x_1x_3) = \mathbb{E}(x_2x_3) =0$!).] and $x\in H(S \ominus \Gamma^\epsilon)$ if and only if there is some $y \in H(S)$ such that^[This is using the idea that the conditional expectation is a projection.]
+$$
+x = y - \mathbb{E}(y \mid H(\Gamma^\epsilon)).
+$$
+:::
+
+This emphasizes that we can split our space into three separate components: inside $S_1$, outside $S_1$ and on the boundary of $S_1$ and the ability to do that for any^[Typically any open set, or any open connected set, or any open, bounded set. A subtlety that I don't really want to dwell on is that it is possible to have a GP that is Markov with respect to one system of domains but not another.] domain is the key part of the Markov^[The Markov property can be restated in this language as for every system of complementary domains and boundary $S_1$, $\Gamma$, $S_2$, there exists a small enough $\epislon > 0$ such that $\Gamma^\epsilon$ splits $S_1$ and $S_2$] property.
+
+A slightly more convenient way to deal with spiting spaces is the case where the we have overlapping sets $A$, $B$ that cover the domain (ie $A \cup B = T$) and the splitting set is their intersection $S = A \cap B$. In this case, the splitting equation becomes 
+$$
+H(A)^\perp \perp H(B)^\perp.
+$$
+I shan't lie: that looks wild. But it makes sense when you take $A = S_1 \cup \Gamma^\epsilon$ and $B = S_2 \cup \Gamma^\epsilon$, in which case $H(A)^\perp = H(S_2)$ and $H(B)^\perp = H(S_1)$.
+
+Ths final thing to add before we can get to business is a way to get rid of all of the 
+annoying $\epsilon$s. The idea is to take the intersection of all of the $H(\Gamma^\epsilon)$ as the 
+splitting space. If we define 
+$$
+H_+(\Gamma) = \bigcap_{\epsilon>0} H(\Gamma^\epsilon)
+$$
+we can re-write^[Technically we are assuming that for small enough $\epsilon$ $H(\Gamma^\epsilon) = \operatorname{span}\left(H(\Gamma^\epsilon \cap S_1) \cup H_+(\Gamma) \cup H(\Gamma^\epsilon \cap S_2)\right)$. This is not a particularly onerous assumption.] the splitting equation as
+\begin{align*}
+&H_+(\Gamma) = H_+(S_1 \cup \Gamma) \cap H_+(S_1 \cup \Gamma) \\
+& H_+(S_1 \cup \Gamma)^\perp \perp H_+(S_2 \cup \Gamma)^\perp.
+\end{align*}
+
+This gives the following statement of the Markov property.
+
+::: {#def-markov2}
+Let $\mathcal{G}$ be a system of domains^[non-empty connected open sets] in $T$. We say that 
+$\xi$ has the Markov property (with respect to $\mathcal{G}$) if, 
+for all $S_1 \in \mathcal{G}$, $\Gamma\supseteq \partial S_1$ ,$S_2 = S_1^C \backslash \Gamma$,
+we have, for some $\epsilon > 0$
+$$
+H_+(\Gamma^\epsilon) = H_+(S_1 \cup \Gamma^\epsilon) \cap H_+(S_1 \cup \Gamma^\epsilon)
+$$ 
+and 
+$$ 
+H_+(S_1 \cup \Gamma)^\perp \perp H_+(S_2 \cup \Gamma)^\perp.
+$$
+:::
+
+### Rewriting the Markov property II: The dual random field $H^*(A)$
+
+We are going to fall further down the abstraction rabbit hole in the hope of 
+ending up somewhere useful. In this case, we are going to invent an object
+that has no reason to exist and we will show that it can be used to compactly
+restate the Markov property. It will turn out in the next section that it is 
+actually a useful characterization that will lead (finally) to an operational characterisation
+of a Markovian Gaussian process.
+
+::: {#def-dual-field}
+## Dual random field
+
+Let $\xi$ be a generalised Gaussian process with an associated random field $H(A)$, $A \subseteq T$ and let $\mathcal{G}$ be a complete system of open domains in $T$. The _dual_ to the random field $H(A)$, $A \subseteq T$ on the system $\mathcal{G}$ is the random field $H^*(A)$, $A \subseteq T$ that satisfies
+$$
+H^*(T) = H(T)
+$$
+and 
+$$
+H^*(A) = H_+(A^c)^\perp, \qquad A \in \mathcal{G}.
+$$
+
+:::
+
+This definition looks frankly a bit wild, but I promise you, we will use it. 
+
+The reason for its structure is that it directly relates to the Markov property. 
+In particular, the existance of a dual field implies that, if we have any $S_1 \in \mathcal{G}$, then 
+\begin{align*}
+H_+(S_1 \cup \bar{\Gamma^\epsilon}) \cap H_+(S_1 \cup \bar{\Gamma^\epsilon}) &= H^*((S_1 \cup \bar{\Gamma^\epsilon})^c)^\perp \cap H^*((S_2 \cup \bar{\Gamma^\epsilon})^c)^\perp \\
+H^*((S_1 \cup \bar{\Gamma^\epsilon})^c \cup (S_2 \cup \bar{\Gamma^\epsilon})^c) \\
+&= H_+((S_1 \cup \bar{\Gamma^\epsilon}) \cap (S_2 \cup \bar{\Gamma^\epsilon})) \\
+&= H_+(\Gamma^\epsilon).
+\end{align*}
+That's the first thing we need to show to demonstrate the Markov property.
+
+The second part is much easier. If we note that $(S_2 \cup \Gamma)^c = S_1 \backslash \Gamma$, it
+follows that 
+$$
+H_+(S_1 \cup \Gamma)^\perp = H^*(S_2 \backslash \Gamma).
+$$
+
+This gives us our third (and final) characterisation of the (second-order) Markov property.
+
+::: {#def-markov2}
+Let $\mathcal{G}$ be a system of domains^[non-empty connected open sets] in $T$.  Assume that the random field $H(\cdot)$ has an associated dual random field $H^*(\cdot)$.
+
+We say that 
+$H(A)$, $A \in \mathcal{G}$ has the Markov property (with respect to^[The result works with some subsystem $\mathcal{G_0}$. To prove it for $\mathcal{G}$ it's enough to prove it for some subset $\mathcal{G}_0$ that separates points of $T$. This is a wildly technical aside and if it makes no sense to you, that's very much ok. Frankly I'm impressed you've hung in this long.] $\mathcal{G}$) if for all $S_1 \in \mathcal{G}$, 
+$$
+H^*(S_1 \backslash \Gamma) \perp H^*(S_2 \backslash \Gamma).
+$$
+When this holds, we say that the dual field is _orthogonal_ with respect to $\mathcal{G}$.
+:::
+
+There is probably more to say about dual fields. For instance, the dual of the dual field is the original field. Neat, huh. But really, all we need to do is know that an orthogonal dual field implies a the Markov property. Because next we are going to construct a dual field, which will give us an actually useful characterisation of Markovian GPs.
+
+### Biorthogonal Gaussian processes
+
