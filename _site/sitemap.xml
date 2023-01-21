@@ -90,10 +90,14 @@
   </url>
   <url>
     <loc>https://dansblog.netlify.app/index.html</loc>
-    <lastmod>2023-01-19T12:13:16.192Z</lastmod>
+    <lastmod>2023-01-21T09:38:41.175Z</lastmod>
   </url>
   <url>
     <loc>https://dansblog.netlify.app/about.html</loc>
     <lastmod>2022-12-02T13:51:20.492Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dansblog.netlify.app/posts/2023-01-21-markov/markov.html</loc>
+    <lastmod>2023-01-21T09:38:40.200Z</lastmod>
   </url>
 </urlset>
