@@ -64,7 +64,7 @@ While the square root of the covariance operator $\mathcal{C}^{1/2}$ is a fairly
 
 ### White noise and its associated things
 
-Thankfully I've covered this [in a previous blog](file:///Users/danielsimpson/Documents/blog/_site/posts/2022-09-07-priors5/priors5.html#spectral-representations-and-the-simplest-of-the-many-many-versions-of-a-stochastic-integral). The engineering definition of white noise as a GP $w(\cdot)$ such that for every $s$, $w(s)$ is an iid $N(0,1)$ random variable is not good enough for our purposes. Such a process is hauntingly irregular^[For any subset $B$, $\sup_{s\in B} w(s) = \infty$ _and_ $\inf_{s \in B} w(s) = -\infty$] and it's fairly difficult to actually do anything with it. Instead, we consider white noise as a random function defined on the subsets of our domain. This feels like it's just needless technicality, but it turns out to actually be very very useful.
+Thankfully I've covered this [in a previous blog](https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html#part-2-an-invitation-to-the-theory-of-stationary-gaussian-processes). The engineering definition of white noise as a GP $w(\cdot)$ such that for every $s$, $w(s)$ is an iid $N(0,1)$ random variable is not good enough for our purposes. Such a process is hauntingly irregular^[For any subset $B$, $\sup_{s\in B} w(s) = \infty$ _and_ $\inf_{s \in B} w(s) = -\infty$] and it's fairly difficult to actually do anything with it. Instead, we consider white noise as a random function defined on the subsets of our domain. This feels like it's just needless technicality, but it turns out to actually be very very useful.
 
 
 ::: {#def-white-noise}
