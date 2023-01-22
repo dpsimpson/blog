@@ -42,10 +42,10 @@ So please enjoy today's entry in _Dan writes about the weird corners of Gaussian
 
 ## Gaussian processes via the covariance operator
 
-The problem with basing our computations off a RKHS is that it is not immediately 
-obvious how we will do that. This is in contrast to a covariance function approach,
+By the end of today's post we will have defined^[or redefined if you've read [my other post](https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html)] a Markovian process in terms of its reproducing Kernel Hilbert space (RKHS), that is the space of functions that contain the posterior mean^[For other observation models it contains the posterior mode] when there are Gaussian observations. This space always exists and its inner product is entirely determined by the covariance function of a GP. That said, for a given covariance function, the RKHS can. be difficult to find. Furthermore, the problem with basing our modelling off a RKHS is that it is not immediately 
+obvious how we will do the associated computations This is in contrast to a covariance function approach,
 where it is quite easy^[Step 1: Open Rasmussen and Williams.] to work out how to 
-convert the model specification to something you can attack with a computer.
+convert the model specification to something you can attack with a computer. By the end of this post we will have tacked that.
 
 The extra complexity of the RKHS pays off in modelling flexibility, both in terms
 of the types of model that can be build and the spaces^[For example, the process I'm about to describe is not meaningfully different for a process on a sphere. Whereas if you want to use a covariance function on a sphere you are stuck trying to find a whole new class of positive definite functions. It's frankly very annoying. Although if you want to build a career out of characterising positive definite functions on increasingly exotic spaces, you probably don't find it annoying.] you can build them on. 
