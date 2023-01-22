@@ -60,7 +60,7 @@ where $T$ is the domain over which the GP is defined (usually $\mathbb{R}^d$ but
 
 To see how this could be useful, we are going to need to think a little bit about how we can simulate a multivariate Gaussian random variable $N(0, \Sigma)$. To do this, we first compute the square root^[Or the Cholesky factor if you add a bunch of transposes in the right places, but let's not kid ourselves this is not a practical discussion of how to do it] $L = \Sigma^{1/2}$ and sample a vector of iid standard normal variables $z \sim N(0,I)$. Then $u = Lz \sim N(0, \Sigma)$. You can check it by checking the covariance. (it's ok. I'll wait.) 
 
-While the square root of the covariance operator $\mathcal{C}^{1/2}$ is a fairly straightforward mathematical object^{Albeit a bit advanced. It's straightforward in the sense that for an infinite-dimensional operaotr it happens to work a whole like a symmetric positive semi-definite matrix. It is not straightforward in the sense that your three year old could do it. Your three year old can't do it. But it will keep them quiet in the back seat of the car while you pop into the store for some fags. It's ok. The window's down.}, the analogue of the iid vector of standard normal random variables is a bit more complex.
+While the square root of the covariance operator $\mathcal{C}^{1/2}$ is a fairly straightforward mathematical object^[Albeit a bit advanced. It's straightforward in the sense that for an infinite-dimensional operator it happens to work a whole like a symmetric positive semi-definite matrix. It is not straightforward in the sense that your three year old could do it. Your three year old can't do it. But it will keep them quiet in the back seat of the car while you pop into the store for some fags. It's ok. The window's down.], the analogue of the iid vector of standard normal random variables is a bit more complex.
 
 ### White noise and its associated things
 
@@ -121,7 +121,7 @@ $$
 One of those inconvenient things that you may have noticed from above is that $\mathcal{C}^{1/2}W$ is _not_ going to be a function. It is going to be a measure or, as it is more commonly known, a _generalised Gaussian process_. This is the GP analogue of a generalised function and, as such, only gives an actual value when you integrate it against some sufficiently smooth function.
 
 ::: {#def-generalised-gp}
-## Generalised Gauusian Process
+## Generalised Gaussian Process
 A generalised Gaussian process $\xi$ is a random signed measure (or a random generalised function)
 that, for any $f \in C^\infty_0(T)$, $\int_T f(s)\,d\xi(s)$ is Gaussian. We will often write 
 $$
@@ -209,7 +209,7 @@ That definition is all well and good for a hand-wavey approach, but unfortunatel
 
 All of the material here is covered in Rozanov's excellent but unimaginatively named book _Markov Random Fields_.
 
-To set us up. we should consider the types of sets we have. There are three main sets that we are going to be using: the open^[This set does not include its boundary] set $S_1 \subset T$, its boundary^[This is defined as the set $\partial S_1 = \bar{S_1} \backslash S_1$, where $\bar{S_1}$ is the closure of $S_1$. But let's face it. It's the fucking boundary. It means what you think it means.] $\Gamma \supseteq \partial S$. For example, if $T  = \mathbb{R}^2$ and $S$ is the interior of the unit circle, and its open complement $S_2 = S_1^C \backslash \partial S_1$. For a 2D example, if $S_1$ is the _interior_ of the unit circle, then $\Gamma$ could be the unit circle, and $S_2$ would be the _exterior of the unit circle.
+To set us up, we should consider the types of sets we have. There are three main sets that we are going to be using: the open^[This set does not include its boundary] set $S_1 \subset T$, its boundary^[This is defined as the set $\partial S_1 = \bar{S_1} \backslash S_1$, where $\bar{S_1}$ is the closure of $S_1$. But let's face it. It's the fucking boundary. It means what you think it means.] $\Gamma \supseteq \partial S$. For example, if $T  = \mathbb{R}^2$ and $S$ is the interior of the unit circle, and its open complement $S_2 = S_1^C \backslash \partial S_1$. For a 2D example, if $S_1$ is the _interior_ of the unit circle, then $\Gamma$ could be the unit circle, and $S_2$ would be the _exterior_ of the unit circle.
 
 One problem with these sets, is that while $S_1$ will be a 2D set, $\Gamma$ is only one dimensional (it's a circle, so it's a line!). This causes some troubles mathematically, which we need to get around by using the $\epsilon$ fattening of $\Gamma$, which is the set 
 $$
@@ -240,7 +240,7 @@ where $\Gamma = \partial S_1$ and $S_2 = S_1^C \backslash \Gamma$.
 ### Rewriting the Markov property I: Splitting spaces
 
 The Markov property defined above is great and everything, but in order to manipulate it,
-we need to think carefully about the how the domains $S_1$, $\Gamma^\epsilon$ and $S_2$ can be used to divide up the space $H(T)$. To do this, we need to basically localise the Markov property to one set of $S_1$, $\Gamma$, $S_2$. This concept is called a _splitting_^[If you're curious, this is basically the same thing as a splitting $\sigma$-algebra. But, you know, sans the $\sigma$-algebra bullshit.] of $H(S_1)$ and $H(S_2)$ by $H(\Gamma^\epsilon)$
+we need to think carefully about the how the domains $S_1$, $\Gamma^\epsilon$ and $S_2$ can be used to divide up the space $H(T)$. To do this, we need to basically localise the Markov property to one set of $S_1$, $\Gamma$, $S_2$. This concept is called a _splitting_^[If you're curious, this is basically the same thing as a splitting $\sigma$-algebra. But, you know, sans the $\sigma$-algebra bullshit.] of $H(S_1)$ and $H(S_2)$ by $H(\Gamma^\epsilon)$.
 
 ::: {#def-splitting}
 For some domain $S_1$ and $\Gamma \supseteq \partial S_1$, set $S_2 = (S_1 \cup \Gamma)^c$. The space $H(\Gamma^\epsilon)$ splits $H(S_1)$ and $H(S_2)$ if
@@ -255,7 +255,7 @@ $$
 
 This emphasizes that we can split our space into three separate components: inside $S_1$, outside $S_1$ and on the boundary of $S_1$ and the ability to do that for any^[Typically any open set, or any open connected set, or any open, bounded set. A subtlety that I don't really want to dwell on is that it is possible to have a GP that is Markov with respect to one system of domains but not another.] domain is the key part of the Markov^[The Markov property can be restated in this language as for every system of complementary domains and boundary $S_1$, $\Gamma$, $S_2$, there exists a small enough $\epsilon > 0$ such that $\Gamma^\epsilon$ splits $S_1$ and $S_2$] property.
 
-A slightly more convenient way to deal with spiting spaces is the case where the we have overlapping sets $A$, $B$ that cover the domain (ie $A \cup B = T$) and the splitting set is their intersection $S = A \cap B$. In this case, the splitting equation becomes 
+A slightly more convenient way to deal with splitting spaces is the case where the we have overlapping sets $A$, $B$ that cover the domain (ie $A \cup B = T$) and the splitting set is their intersection $S = A \cap B$. In this case, the splitting equation becomes 
 $$
 H(A)^\perp \perp H(B)^\perp.
 $$
@@ -456,7 +456,7 @@ This is our first step towards making statements about the stochastic process $\
 into statements about the RKHS. We shall continue along this road.
 
 You might, at this point, be wondering if that condition ever actually holds. The 
-answer is yes. It does fairly often. For instance, if $\xi$ is a [stationary GP](https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html#part-2-an-invitation-to-the-theory-of-stationary-gaussian-processes) with spectral density $f(\omega)$, the biorothogonal function 
+answer is yes. It does fairly often. For instance, if $\xi$ is a [stationary GP](https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html#part-2-an-invitation-to-the-theory-of-stationary-gaussian-processes) with spectral density $f(\omega)$, the biorthogonal function 
 exists if and only if there is some $k>0$ such that 
 $$
 \int (1 + |\omega|^2)^{-k}f(\omega)^{-1}\,d\omega < \infty.
@@ -518,7 +518,7 @@ $$
 $$
 \|u(\cdot - s_0)\| \leq C \|u\|, \qquad u \in C_0^\infty(T)
 $$
-holds in both norms for all $s_0 \leq s_\max$, $\s_\max >0$ sufficiently small.
+holds in both norms for all $s_0 \leq s_\max$, $s_\max >0$ sufficiently small.
 
 Then $H^*(\cdot)$ is the dual of $H(\cdot)$ over the system of sets that are bounded or have bounded complements in $T$.
 
