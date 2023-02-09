@@ -310,7 +310,7 @@ the topic for another blogpost, but it's certainly an area where you need to be 
   of the limitations of different high-dimensional priors and how they perform in various
   contexts. For instance, if the function you are trying to reconstruct is likely to have
   a lot of sharp boundaries^[Examples abound, but they include image reconstruction, tomographic inversion, and really anything where you're estimating diffusivity] then you need to make 
-sure that your prior can support functions with sharp boundaries. My little soldier bois^[Gaussian processes] don't, so you need to get more^[But not necessarily too creative. Not every transformation of a penalyy makes a sensible prior. I'm looking at you [lasso on increments](http://www.siltanen-research.net/publ/LassasSiltanen2004.pdf).] creative.
+sure that your prior can support functions with sharp boundaries. My little soldier bois^[Gaussian processes] don't, so you need to get more^[But not necessarily too creative. Not every transformation of a penalty makes a sensible prior. I'm looking at you [lasso on increments](http://www.siltanen-research.net/publ/LassasSiltanen2004.pdf).] creative.
 
 
 ### The likelihood for a normalising flow
