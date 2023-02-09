@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/2023-01-30-diffusion/diffusion.html",
       "/posts/2023-01-21-markov/markov.html",
       "/posts/2022-11-27-sparse7/sparse7.html",
       "/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html",

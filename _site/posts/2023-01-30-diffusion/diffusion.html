@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.15">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Dan Simpson">
+<meta name="dcterms.date" content="2023-02-09">
+<meta name="description" content="If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.">
+
+<title>Un garçon pas comme les autres (Bayes) - Diffusion models; or Yet another way to sample from an aribrary distribution</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Diffusion models; or Yet another way to sample from an aribrary distribution">
+<meta property="og:description" content="If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.">
+<meta property="og:image" content="https://dansblog.netlify.app/posts/2023-01-30-diffusion/megan.jpeg">
+<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta name="twitter:title" content="Diffusion models; or Yet another way to sample from an aribrary distribution">
+<meta name="twitter:description" content="If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.">
+<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2023-01-30-diffusion/megan.jpeg">
+<meta name="twitter:creator" content="@dan_p_simpson">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+
+<body class="floating nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">About this blog</a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ </a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default toc-left page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">Diffusion models; or Yet another way to sample from an aribrary distribution</h1>
+                  <div>
+        <div class="description">
+          <p>If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.</p>
+        </div>
+      </div>
+                          <div class="quarto-categories">
+                <div class="quarto-category">Diffusion model</div>
+                <div class="quarto-category">Introductions</div>
+              </div>
+                  </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Dan Simpson </p>
+            </div>
+    </div>
+      
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">February 9, 2023</p>
+      </div>
+    </div>
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+    <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#a-prelude-measure-transport-for-sampling-from-arbitrary-distributions" id="toc-a-prelude-measure-transport-for-sampling-from-arbitrary-distributions" class="nav-link active" data-scroll-target="#a-prelude-measure-transport-for-sampling-from-arbitrary-distributions">A prelude: Measure transport for sampling from arbitrary distributions</a>
+  <ul class="collapse">
+  <li><a href="#continuous-distributions-in-1d" id="toc-continuous-distributions-in-1d" class="nav-link" data-scroll-target="#continuous-distributions-in-1d">Continuous distributions in 1D</a></li>
+  <li><a href="#transport-maps-a-less-terrible-method-that-works-on-general-densities" id="toc-transport-maps-a-less-terrible-method-that-works-on-general-densities" class="nav-link" data-scroll-target="#transport-maps-a-less-terrible-method-that-works-on-general-densities">Transport maps: A less terrible method that works on general densities</a></li>
+  <li><a href="#what-if-we-only-have-samples-from-the-target-density" id="toc-what-if-we-only-have-samples-from-the-target-density" class="nav-link" data-scroll-target="#what-if-we-only-have-samples-from-the-target-density">What if we only have samples from the target density</a></li>
+  <li><a href="#so-does-it-work" id="toc-so-does-it-work" class="nav-link" data-scroll-target="#so-does-it-work">So does it work?</a></li>
+  </ul></li>
+  <li><a href="#continuous-normalising-flows-making-the-problem-easier-by-making-it-harder" id="toc-continuous-normalising-flows-making-the-problem-easier-by-making-it-harder" class="nav-link" data-scroll-target="#continuous-normalising-flows-making-the-problem-easier-by-making-it-harder">Continuous normalising flows: Making the problem easier by making it harder</a>
+  <ul class="collapse">
+  <li><a href="#a-very-quick-introduction-to-inverse-problems" id="toc-a-very-quick-introduction-to-inverse-problems" class="nav-link" data-scroll-target="#a-very-quick-introduction-to-inverse-problems">A very quick introduction to inverse problems</a></li>
+  <li><a href="#the-likelihood-for-a-normalising-flow" id="toc-the-likelihood-for-a-normalising-flow" class="nav-link" data-scroll-target="#the-likelihood-for-a-normalising-flow">The likelihood for a normalising flow</a></li>
+  <li><a href="#but-oh-that-complexity" id="toc-but-oh-that-complexity" class="nav-link" data-scroll-target="#but-oh-that-complexity">But oh that complexity</a></li>
+  </ul></li>
+  <li><a href="#diffusion-models" id="toc-diffusion-models" class="nav-link" data-scroll-target="#diffusion-models">Diffusion models</a>
+  <ul class="collapse">
+  <li><a href="#diffusions-and-stochastic-differential-equations" id="toc-diffusions-and-stochastic-differential-equations" class="nav-link" data-scroll-target="#diffusions-and-stochastic-differential-equations">Diffusions and stochastic differential equations</a></li>
+  <li><a href="#reversing-the-diffusion" id="toc-reversing-the-diffusion" class="nav-link" data-scroll-target="#reversing-the-diffusion">Reversing the diffusion</a></li>
+  <li><a href="#estimating-the-score" id="toc-estimating-the-score" class="nav-link" data-scroll-target="#estimating-the-score">Estimating the score</a></li>
+  <li><a href="#generating-samples" id="toc-generating-samples" class="nav-link" data-scroll-target="#generating-samples">Generating samples</a></li>
+  </ul></li>
+  <li><a href="#some-closing-thoughts" id="toc-some-closing-thoughts" class="nav-link" data-scroll-target="#some-closing-thoughts">Some closing thoughts</a></li>
+  </ul>
+</nav>
+</nav>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+<p>The other day I went to the cinema and watched M3GAN, a true movie masterpiece<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> about the death and carnage that ensues when you simply train your extremely complex ML model and don’t do proper ethics work. And that, of course, made me want to write a little bit about something relatively hip, hop, and happening<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a> in the ML/AI space. But, like, I’m not gonna be <em>that</em> on trend<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a> because fuck that noise, so I’m gonna talk about diffusion models.</p>
+<p>It’s worth noting that I know bugger all about diffusion models. But when they first came out, I had a quick look at how they worked and then promptly forgot about them because, let’s face it, I work on different things. But hey. If that’s not enough<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a> knowledge to write a blog post, I don’t know what is.</p>
+<p>And here’s the thing. Most of the time when I blog about something I know a lot about it. Sometimes too much. But this is not one of those times. There are <em>plenty</em> of resources on the internet if you want to learn about diffusions models from an expert. Oodles. But where else but here can you read the barely proof-read writing of a man who read a couple of papers yesterday?</p>
+<p>And who doesn’t want<a href="#fn5" class="footnote-ref" id="fnref5" role="doc-noteref"><sup>5</sup></a> that?</p>
+<section id="a-prelude-measure-transport-for-sampling-from-arbitrary-distributions" class="level2">
+<h2 class="anchored" data-anchor-id="a-prelude-measure-transport-for-sampling-from-arbitrary-distributions">A prelude: Measure transport for sampling from arbitrary distributions</h2>
+<p>One of the fundamental tasks in computational statistics is to sample from a probability distribution. There are millions of ways of doing this, but the most popular generic method is Markov chain Monte Carlo. But this is not the post about MCMC methods. I’ve already made <a href="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">a post about MCMC methods</a>.</p>
+<p>Instead, let’s focus on stranger ways to do it. In particular, let’s think about methods that, create a mapping <span class="math inline">\(T: \mathbb{R}^d \rightarrow \mathbb{R}^d\)</span> that may depend on some properties of the target distribution such that the following procedure constructs a sample <span class="math inline">\(x \sim p(x)\)</span>:</p>
+<ol type="1">
+<li>Sample <span class="math inline">\(u \sim p(u)\)</span> for some known distribution <span class="math inline">\(q(u)\)</span></li>
+<li>Set <span class="math inline">\(x = T(u)\)</span></li>
+</ol>
+<p>The general problem of starting with a distribution <span class="math inline">\(q(\cdot)\)</span> and mapping it to another distribution <span class="math inline">\(p(\cdot)\)</span> is an example of a problem known as <em>measure transport</em>. Transport problems have been studied by mathematicians for yonks. It turns out that there are an infinite number of mappings <span class="math inline">\(T\)</span> that will do the job, so it’s up to us to choose a good one.</p>
+<p>Probably the most famous<a href="#fn6" class="footnote-ref" id="fnref6" role="doc-noteref"><sup>6</sup></a> transport problem is the <em>optimal transport problem</em> that was first studied by Monge and Kantorovich that tries to find a mapping <span class="math inline">\(T\)</span> that minimises <span class="math display">\[
+\mathbb{E}_{x \sim q}(c(x, T(x)))
+\]</span> subject to the constraint that <span class="math inline">\(T(x) \sim p\)</span> whenever <span class="math inline">\(x \sim q\)</span>, where <span class="math inline">\(c(x,y)\)</span> is some sort of cost function. There are canonical choices of cost function, but for the most part we are free to choose something that is convenient.</p>
+<p>The measure transport concept is underneath the method of <a href="https://arxiv.org/abs/1908.09257">normalising flows</a>, but the presentation that I’m most familiar with is due to <a href="https://arxiv.org/abs/1109.1516">Youssef Marzouk and his collaborators</a> in 2011 and predates the big sexy normalising flow papers by a few years.</p>
+<section id="continuous-distributions-in-1d" class="level3">
+<h3 class="anchored" data-anchor-id="continuous-distributions-in-1d">Continuous distributions in 1D</h3>
+<p>If <span class="math inline">\(p\)</span> and <span class="math inline">\(q\)</span> are both continuous, univariate distributions, it is pretty easy to construct a transport map. In particular, if <span class="math inline">\(F_p\)</span> is the cumulative distribution function of <span class="math inline">\(p\)</span>, then <span class="math display">\[
+T(x) = F_p^{-1}(F_q(x))
+\]</span> is a transport map. This works because, if <span class="math inline">\(x \sim q\)</span>, then <span class="math inline">\(F_q(x) \sim \text{Unif}(0,1)\)</span>. From this, we can use everyone’s favourite result that you can sample from a continuous univariate random variable <span class="math inline">\(p\)</span> by evaluating the quantile function at a uniform random value.</p>
+<p>There are, of course, two problems with this: it only works in one dimension and we usually don’t know <span class="math inline">\(F^{-1}\)</span> explicitly.</p>
+<p>The second of these isn’t really a problem if we are willing to do something splendifferously dumb. And I am. Because I’m gay and frivolous<a href="#fn7" class="footnote-ref" id="fnref7" role="doc-noteref"><sup>7</sup></a>.</p>
+<p>If I write <span class="math inline">\(Q(t) = F^{-1}(t)\)</span> then I can differentiate this to get <span class="math display">\[
+\frac{dQ}{dt} = \frac{1}{p(Q)},\qquad Q(0) = -\infty.
+\]</span> This is a <em>very</em> non-linear differential equation. We can make it even more non-linear differential equation by repeating the procedure to get <span class="math display">\[
+\frac{d^2Q}{dt^2} = \frac{1}{p(Q)^2} p'(Q)\frac{dQ}{dt}.
+\]</span> Noting that <span class="math inline">\(Q' = 1/p(Q)\)</span> we get <span class="math display">\[
+\frac{d^2 Q}{dt^2} = \frac{p'(Q)}{p(Q)} \left(\frac{dQ}{dt}\right)^2.
+\]</span> This is a rubbish differential equation, but it has the singular advantage that it doesn’t depend<a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> on the normalising constant for <span class="math inline">\(p\)</span>, which can be useful. The downside is that the boundary conditions are infinite on both ends.</p>
+<p>Regardless of that particular challenge, we could use this to build a generic algorithm.</p>
+<ol type="1">
+<li><p>Sample <span class="math inline">\(u \sim \text{Unif}(0,1)\)</span></p></li>
+<li><p>Use a numerical differential equation solver to solve the equation with boundary conditions <span class="math display">\[
+q(0) = -M, \quad q(1) = M
+\]</span> for some sufficiently large number <span class="math inline">\(M\)</span> and return <span class="math inline">\(x = q(u)\)</span></p></li>
+</ol>
+<p>This will sample from <span class="math inline">\(p(x)\)</span> truncated to <span class="math inline">\([-M, M]\)</span>.</p>
+<p>I was going to write some python code to do this, but honestly it hurts my soul. So I shan’t.</p>
+</section>
+<section id="transport-maps-a-less-terrible-method-that-works-on-general-densities" class="level3">
+<h3 class="anchored" data-anchor-id="transport-maps-a-less-terrible-method-that-works-on-general-densities">Transport maps: A less terrible method that works on general densities</h3>
+<p>Outside of one dimension, there is (to the best of my knowledge) no direct solution to the transport problem. That means that we need to solve our own. Thankfully, the glorious <a href="https://aeroastro.mit.edu/people/youssef-m-marzouk/">Youssef Marzouk</a> and a bunch of his collaborators have spent some quality time mapping out this idea. A really nice survey of their results can be found <a href="https://arxiv.org/pdf/1602.05023.pdf">in this paper</a>.</p>
+<p>Essentially the idea is that we can try to find the most convenient transport map available to us. In particular, it’s useful to minimise the <em>Kullback-Leibler</em> divergence between <span class="math inline">\(q\)</span> and its transport. After a little bit<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> of maths, this is equivalent to minimising <span class="math display">\[
+\mathbb{E}_{x \sim q}\left(\log p(T(x)) + \log \det \nabla T(x)\right),
+\]</span> where <span class="math inline">\(\nabla T(x)\)</span> is the Jacobian of <span class="math inline">\(T\)</span>. To finish the specification of the optimisation problem, it’s enough to consider <em>triangular</em> maps<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> <span class="math display">\[
+T(x) = \begin{pmatrix} T_1(x_1) \\ T_2(x_1,x_2,) \\ \vdots \\ T_d(x_1, \ldots, x_d) \end{pmatrix}
+\]</span> with the additional constraint that their Jacobians have positive determinants. Using a triangular map has two distinct advantages: it’s parsimonious and it makes the positive determinant constraint <em>much</em> easier to deal with. Triangular maps are also sufficient for the problem (my man Bogachev <a href="https://iopscience.iop.org/article/10.1070/SM2005v196n03ABEH000882/meta">showed it in 2005</a>).</p>
+<p>That said, this can be a somewhat tricky optimisation problem. Youssef and his friends have spilt a lot of ink on this topic. And if you’re the sort of person who just fucking loves a weird optimisation problem, I’m sure you’ve got thoughts. With and without the triangular constraint, this can be parameterised as the composition of a sequence of simple functions, in which case you turn three times and scream <em>neural net</em> and a normalising<a href="#fn11" class="footnote-ref" id="fnref11" role="doc-noteref"><sup>11</sup></a> flow appears.</p>
+</section>
+<section id="what-if-we-only-have-samples-from-the-target-density" class="level3">
+<h3 class="anchored" data-anchor-id="what-if-we-only-have-samples-from-the-target-density">What if we only have samples from the target density</h3>
+<p>All of that is very lovely. And quite nice in its context. But what happens if you don’t actually have access of the (unnormalised) log density of the target? What if you only have samples?</p>
+<p>The good news is that you’re not shit out of luck. But it’s a bit tricky. And once again, that <a href="https://arxiv.org/pdf/1602.05023.pdf">lovely review paper</a> by Youssef and friends will tell us how to do it.</p>
+<p>In particular, they noticed that if you swap the direction of the KL divergence, you get the optimisation problem for the inverse mapping <span class="math inline">\(S(x) = T^{-1}(x)\)</span> that aims to minimise <span class="math display">\[
+\mathbb{E}_{x \sim p}\left(\log(q(S(x)) + \log \det \nabla S(x)\right)
+\]</span> where <span class="math inline">\(S\)</span> is once again a triangular map subject to the monotonicity constraints <span class="math display">\[
+\frac{\partial S_k}{\partial x_k} &gt; 0.
+\]</span> Because we have the freedom to choose the reference density <span class="math inline">\(q(x)\)</span>, we can choose it to be iid standard normals, in which case we get the optimisation problem <span class="math display">\[\begin{align*}
+&amp;\min_S \mathbb{E}_{x \sim p}\left[\sum_{k = 1}^d \frac{1}{2}\left(S_k(z_1, \ldots, s_k)\right)^2 -  \log \frac{\partial S_k}{\partial x_k} \right]\\
+&amp;\text{s.t.}&amp; \\
+&amp;\quad \frac{\partial S_k}{\partial x_k} &gt;0 \\
+&amp;\quad S \text{ is triangular},
+\end{align*}\]</span> which is a convex, separable optimisation problem that can be solved<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> using, for instance, a stochastic gradient method. This can be turned into an unconstrained optimisation problem by <a href="https://joss.theoj.org/papers/10.21105/joss.04843">explicitly parameterising the monotonicity constraint</a>.</p>
+<p>The monotonicity of <span class="math inline">\(S\)</span> makes the resulting nonlinear solve to compute <span class="math inline">\(T = S^{-1}\)</span> relatively straightforward. In fact, if <span class="math inline">\(d\)</span> isn’t too big you can solve this sequentially dimension-by-dimension. But, of course, when you’ve got a lot of parameters this is a poor method and it would make more sense<a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> to attack it with some sort of gradient descent method. It might even be worth taking the time to learn the inverse function <span class="math inline">\(T = S^{-1}\)</span> so that can be applied for, essentially, free.</p>
+</section>
+<section id="so-does-it-work" class="level3">
+<h3 class="anchored" data-anchor-id="so-does-it-work">So does it work?</h3>
+<p>To some extent, the answer is <em>yes</em>. This is <em>very much</em> normalising flows in its most embryonic form. They work to some extent. And this presentation makes some of the problems fairly obvious:</p>
+<ol type="1">
+<li><p>There’s no real guarantee that <span class="math inline">\(T\)</span> is going to be a nice smooth map, which means that we may have problems moving beyond the training sample.</p></li>
+<li><p>The most natural way to organise the computations are naturally sequential involving sweeps across the <span class="math inline">\(d\)</span> parameters. This can be difficult to parallelise efficiently on modern architectures.</p></li>
+<li><p>The complexity of the triangular map is going to depend on the order of variables. This is fine if you’re processing something that is inherently sequential, but if you’re working with image data, this can be challenging.</p></li>
+</ol>
+<p>Of course, there are a <em>pile</em> of ways that these problems can be overcome in whole or in part. I’d point you to the last five years of ML conference papers. You’re welcome.</p>
+</section>
+</section>
+<section id="continuous-normalising-flows-making-the-problem-easier-by-making-it-harder" class="level2">
+<h2 class="anchored" data-anchor-id="continuous-normalising-flows-making-the-problem-easier-by-making-it-harder">Continuous normalising flows: Making the problem easier by making it harder</h2>
+<p>A really clever idea, which is related to normalising flows, is to ask <em>what if, instead of looking for a single</em><a href="#fn14" class="footnote-ref" id="fnref14" role="doc-noteref"><sup>14</sup></a> <em>map</em> <span class="math inline">\(S(x) = T^{-1}(x)\)</span>, <em>we tried to find a sequence of maps</em> <span class="math inline">\(S(x,t)\)</span> <em>that smoothly move from the identity map to to the transport map</em>.</p>
+<p>This seems like it would be a harder problem. And it is. You need to make an infinite number of maps. But the saving grace is that as <span class="math inline">\(t\)</span> changes slightly, the map <span class="math inline">\(S(\cdot, t)\)</span> is also only going to change slightly. This means that we can parameterise the <em>change</em> relatively simply.</p>
+<p>To this end, we write <span class="math display">\[
+\frac{\partial S}{\partial t} = f(S, t),
+\]</span> for some relatively simple function <span class="math inline">\(f\)</span> that models the infinitesimal change in the transport map as we move along the path. The hope is that learning the vector field <span class="math inline">\(f\)</span> will be <em>easier</em> than learning <span class="math inline">\(S\)</span> directly. To finish the specification, we require that <span class="math display">\[
+S(x,0) = x.
+\]</span></p>
+<p>The question is _can we learn the function <span class="math inline">\(f\)</span> from data? If we can, it will be (relatively) easy to evaluate the transport map for any sample by just solving<a href="#fn15" class="footnote-ref" id="fnref15" role="doc-noteref"><sup>15</sup></a> the differential equation.</p>
+<p>It turns out that the map <span class="math inline">\(S\)</span> is most useful for <em>training</em> the normalising flow, while <span class="math inline">\(T\)</span> is useful for generating samples from the trained model. If we were using the methods in the previous section, we would have had to commit to <em>either</em> modelling <span class="math inline">\(S\)</span> <em>or</em> <span class="math inline">\(T\)</span>. One of the real advantages of the continuous formulation is that we can just as easily solve the equation with the <em>terminal condition</em><a href="#fn16" class="footnote-ref" id="fnref16" role="doc-noteref"><sup>16</sup></a> <span class="math display">\[
+S(x,1) = u
+\]</span> and solve the equation backwards in time to calculate <span class="math inline">\(T(u) = S(x, 0)\)</span>! The dynamics of both equations are driven by the vector field <span class="math inline">\(f\)</span>!</p>
+<section id="a-very-quick-introduction-to-inverse-problems" class="level3">
+<h3 class="anchored" data-anchor-id="a-very-quick-introduction-to-inverse-problems">A very quick introduction to inverse problems</h3>
+<p>It turns out that learning parameters of differential equation (and other physical models) has a long and storied history in applied mathematics under the name of <em>inverse problems</em>. If that sounds like statistics, you’d be right. It’s statistics, except with no interest in measurement or, classically, uncertainty.</p>
+<p>The classic inverse problem framing involves a <em>forward map</em> <span class="math inline">\(\mathcal{F}(f)(t, x)\)</span> that takes as its input some parameters (often a function) and returns the full state of a system (often another function). For instance, the forwards map could be the solution of a partial differential equation like <span class="math display">\[
+  \frac{\partial S}{\partial t} = f(S, t), \qquad S(0) = x.
+\]</span> The thing that you should notice about this is that the forward map is a) possibly expensive to compute, b) not explicitly known, and c) extremely<a href="#fn17" class="footnote-ref" id="fnref17" role="doc-noteref"><sup>17</sup></a> non-linear.</p>
+<p>The problem is specified with <span class="math inline">\(n\)</span> data points <span class="math inline">\((t_1, x_1), \ldots, (t_n, x_n)\)</span> and the aim is to find the value of <span class="math inline">\(f\)</span> that best fits the data. The traditional choice is to minimise the mean-square error <span class="math display">\[
+  \theta = \arg \min_\theta \sum_{i=1}^n \left(y_i - \mathcal{F}(f)(t_i,x_i)\right)^2.
+\]</span></p>
+<p>Now every single one of you will know immediately that this question is both vague and ill-posed. There are <em>many</em> functions <span class="math inline">\(f\)</span> that will fit the data. This means that we need to enforce<a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a> some sort of complexity penalty on <span class="math inline">\(f\)</span>. This leads to the method known as Tikhonov regularisation<a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a> <span class="math display">\[
+  \theta = \arg \min_{\theta \in B} \sum_{i=1}^n \left(y_i - \mathcal{F}(f)(t_i,x_i)\right)^2 + \lambda\|f\|_B^2,
+  \]</span> where <span class="math inline">\(B\)</span> is some Banach space and <span class="math inline">\(\lambda&gt;0\)</span> is some tuning parameter.</p>
+<p>As you can imagine, there’s a lot of maths under this about when there is a unique minimum, how the reconstruction behaves as <span class="math inline">\(n\rightarrow \infty\)</span> and <span class="math inline">\(\lambda \rightarrow 0\)</span>, and how the choice of <span class="math inline">\(B\)</span> effects the estimation of <span class="math inline">\(\theta\)</span>. There is also quite a lot of work<a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a> looking at how to actually solve these sorts of optimisation problems.</p>
+<p>Eventually, the field evolved and people started to realise that it’s actually fairly important to quantify the uncertainty in the estimate. This is … tricky under the Tikhonov regularlisation framework, which became a big motivation for <em>Bayesian</em> inverse problems.</p>
+<p>As with all Bayesianifications, we just need to turn the above into a likelihood and a prior. Easy. Well, the likelihood part, at least, is easy. If we want to line up with Tikhonov regularisation, we can choose a Gaussian likelihood <span class="math display">\[
+y_i \mid f, x_i, t_i, \sigma \sim N(\mathcal{F}(f)(t_i,x_i), \sigma^2).
+\]</span></p>
+<p>This is familiar to statisticians, the forward model is essentially working as a non-standard link function in a generalised linear model. There are two big practical differences. The first one is that <span class="math inline">\(\mathcal{F}\)</span> is <em>very</em> non-linear and almost certainly not monotone. The second problem is that evaluations of <span class="math inline">\(\mathcal{F}\)</span> are typically very<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a> expensive. For instance, you may need to solve a system of differential equations. This means that any computational method<a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a> is going to need to minimise the number of likelihood evaluations.</p>
+<p>The choice of prior on <span class="math inline">\(f\)</span> can, however, be a bit tricky. The problem is that in most traditional inverse problems <span class="math inline">\(f\)</span> is a function<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> and so we need to put a carefully specified prior on it. And there is a lot of really interesting work on what this means in a Bayesian setting. This is really the topic for another blogpost, but it’s certainly an area where you need to be aware of the limitations of different high-dimensional priors and how they perform in various contexts. For instance, if the function you are trying to reconstruct is likely to have a lot of sharp boundaries<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> then you need to make sure that your prior can support functions with sharp boundaries. My little soldier bois<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> don’t, so you need to get more<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> creative.</p>
+</section>
+<section id="the-likelihood-for-a-normalising-flow" class="level3">
+<h3 class="anchored" data-anchor-id="the-likelihood-for-a-normalising-flow">The likelihood for a normalising flow</h3>
+<p>Our aim now is to cast the normalising flow idea into the inverse problems framework. To do this, we remember that we begin our flow from a sample from <span class="math inline">\(p(x)\)</span> and we then deform it until it becomes a sample from <span class="math inline">\(q(u)\)</span> at some known time (which I’m going to choose as <span class="math inline">\(t=1\)</span>). This means that if <span class="math inline">\(x_i \sim p\)</span>, then <span class="math display">\[
+S(x_i, 1) \sim q.
+\]</span></p>
+<p>We can now derive a relationship between <span class="math inline">\(p\)</span> and <span class="math inline">\(q\)</span> using the change of variables formula. In particular, <span class="math display">\[
+p(x \mid f) = q(S(x,1))\left|\det \left( \frac{d S(x,1)}{dx }\right)\right|,
+\]</span> which means that our log likelihood will be <span class="math display">\[
+\log p(x \mid f) = \log q(S(x,1)) + \log \left|\det \left( \frac{d S(x,1)}{dx }\right)\right|.
+\]</span></p>
+<p>The log-determinant term looks like it might cause some trouble. If <span class="math inline">\(S\)</span> is parameterised as a triangular map it can be written explicitly, but there is, of course, another route.</p>
+<p>For notational ease, let’s consider <span class="math inline">\(z_t = S(x, t)\)</span>, for some <span class="math inline">\(t &lt;1\)</span>. Then <span class="math display">\[
+\log p(z_t \mid f) = \log q(S(x,1)) + \log \left|\det \left( \frac{d S(x,t)}{dx }\right)\right|.
+\]</span> We can differentiate this with respect to <span class="math inline">\(t\)</span> to get <a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> to get <span class="math display">\[
+\frac{\partial \log p(z_t \mid f)}{\partial t} = \operatorname{tr}\left(\frac{df}{dx}(z_t,t)\right),
+\]</span> where I used one of those <em>magical</em> vector calculus identities to get that trace. Remembering that <span class="math inline">\(S(x,0) = x\)</span>, the log-determinant of the Jacobian at zero is zero and so we get the initial condition <span class="math display">\[
+\log p(z_t \mid f) = \log q(S(x,1)).
+\]</span></p>
+<p>The likelihood can be evaluated<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> by solving the system of differential equations <span class="math display">\[\begin{align*}
+\frac{d z_t}{dt} &amp;= f(z_t, t) \\
+\frac{d \ell}{dt} &amp;=\operatorname{tr}\left(\frac{df}{dx}(z_t,t)\right) \\
+z_0 &amp;= x \\
+\ell(0) &amp;= 0,
+\end{align*}\]</span> and the log likelihood is evaluated as <span class="math display">\[
+\log p(x \mid f) = \log q(z_1) + \ell(1).
+\]</span></p>
+<p>It turns out that you can take gradients of the log-likelihood efficiently by solving <a href="https://papers.nips.cc/paper/2018/file/69386f6bb1dfed68692a24c8686939b9-Paper.pdf">an augmented system of differential equations</a> that’s twice the size of the original. This allows for all kinds of gradient-driven inferential shenanigans.</p>
+</section>
+<section id="but-oh-that-complexity" class="level3">
+<h3 class="anchored" data-anchor-id="but-oh-that-complexity">But oh that complexity</h3>
+<p>One big problem with normalising flows as written is that we only have two pieces of information about the entire trajectory <span class="math inline">\(z_t\)</span>:</p>
+<ol type="1">
+<li><p>we know that <span class="math inline">\(z(1) \sim q\)</span>, and</p></li>
+<li><p>we know that <span class="math inline">\(z(0) \sim p\)</span>.</p></li>
+</ol>
+<p>We know <em>absolutely nothing</em> about <span class="math inline">\(z_t\)</span> outside of those boundary conditions. This means that our model for <span class="math inline">\(f\)</span> basically gets to freestyle in those areas.</p>
+<p>We can avoid this to some extent by choosing appropriate neural network architectures and/or appropriate penalties in the classical case or priors in the Bayesian case. There’s a whole mini-literature on choosing appropriate penalties.</p>
+<p>Just to show how complex it is, let me quickly sketch what <a href="https://arxiv.org/abs/2002.02798">Finlay etc</a> suggest as a way to keep the dynamics as boring as possible in the information desert. They lean into the literature on optimal transport theory to come up with the double penalty <span class="math display">\[
+\min_f \sum_{i=1}^n \left(-\log p(x_i) + \lambda_1 \int_0^T \|f(S(x_i,s),s)\|_2^2\,ds + \lambda_2 \int_0^T\left\|\frac{d f(S(x_i,s))}{ds}\right\|_F^2\,ds\right),
+\]</span> where the first term minimises the kinetic energy and, essentially, finds the least exciting path from <span class="math inline">\(p\)</span> to <span class="math inline">\(q\)</span>, while the second term ensures that the Jacobian of <span class="math inline">\(f\)</span> doesn’t get too big<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a>, which means that the mapping doesn’t have many sharp changes. Both of these penalty terms are designed to both aid generalisation and to make sure the differential equation isn’t unnecessarily difficult for a ODE solver.</p>
+<p>A slightly odd feature of these penalties is that they are both data dependent. That suggests that a prior would, probably, require an <em>amount</em> of work. This is work that I don’t feel like doing today. Especially because this blog post isn’t about bloody normalising flows.</p>
+</section>
+</section>
+<section id="diffusion-models" class="level2">
+<h2 class="anchored" data-anchor-id="diffusion-models">Diffusion models</h2>
+<p>Ok, so normalising flows are cool, but there are a couple of places where they could potentially be improved. There is a <em>long</em> literature on diffusion models, but the one I’m mostly stealing from is <a href="https://arxiv.org/abs/2011.13456">this one by Song et al.&nbsp;(2021)</a></p>
+<p>Firstly, the vector field <span class="math inline">\(f\)</span> <em>directly</em> effects how easy the differential equations are to solve. This means that if <span class="math inline">\(f\)</span> is too complicated, it can take a long time to both train the model and generate samples from the trained model. To get around this you need to put fairly strict penalties<a href="#fn30" class="footnote-ref" id="fnref30" role="doc-noteref"><sup>30</sup></a> and/or structural assumptions on <span class="math inline">\(f\)</span>.</p>
+<p>Secondly, we only have information<a href="#fn31" class="footnote-ref" id="fnref31" role="doc-noteref"><sup>31</sup></a> at two ends of the flow. The problem would become <em>a lot</em> easier if we could somehow get information about intermediate states. In the inverse problems literature, there’s a concept of <em>value of information</em> that talks about how useful sampling a particular time point can be in terms of reducing model uncertainty. In general this, or other criteria, can be used to design a set of useful sampling times. I don’t particularly feel like working any of this out but one thing I am fairly certain of is that no optimal design would only have information at <span class="math inline">\(t=0\)</span> and <span class="math inline">\(t=1\)</span>!</p>
+<p>Diffusion models fix these two aspects of normalising flows at the cost of both a more complex mathematical formulation and some inexactness<a href="#fn32" class="footnote-ref" id="fnref32" role="doc-noteref"><sup>32</sup></a> around the base distribution <span class="math inline">\(q\)</span> when generating new samples.</p>
+<section id="diffusions-and-stochastic-differential-equations" class="level3">
+<h3 class="anchored" data-anchor-id="diffusions-and-stochastic-differential-equations">Diffusions and stochastic differential equations</h3>
+<p>Diffusions are to applied mathematicians what gaffer tape is to<a href="#fn33" class="footnote-ref" id="fnref33" role="doc-noteref"><sup>33</sup></a> a roadie. They are a ubiquitous, convenient, and they hold down the fort when nothing else works.</p>
+<p>There are a number of diffusions that are familiar in statistics and machine learning. The most famous one is probably the Langevin diffusion <span class="math display">\[
+dX_t = \frac{1}{2}\nabla \log p(x) dt + \sigma dW_t,
+\]</span> which is asymptotically distributed according to <span class="math inline">\(p\)</span>. This forms the basis of a bunch of MCMC methods as well as some faster, less adjusted methods.</p>
+<p>But that is not the only diffusion. Today’s friend is the Ornstein-Uhlenbeck (OU) process, which is a Gaussian process that <span class="math display">\[
+dX_t = - \frac{1}{2} X_t \,dt + \sigma dW_t.
+\]</span> The OU process can be thought of as a mean-reverting Brownian motion. As such, it has continuous but nowhere differentiable sample paths</p>
+<p>The stationary distribution of <span class="math inline">\(X_t\)</span> is <span class="math inline">\(X_\infty \sim N(0, \sigma^2I)\)</span>, where <span class="math inline">\(I\)</span> is the identity matrix. In fact, if we <em>start</em> the diffusion at stationarity by setting <span class="math display">\[
+X_0 \sim N(0, \sigma^2I),
+\]</span> then X_t is a <em>stationary</em> Gaussian process with covariance function <span class="math display">\[
+c(t, t') = \sigma^2e^{-\frac{1}{2} |t-t'|}I.
+\]</span></p>
+<p>More interestingly in our context, however, is what happens if we start the diffusion from a fixed point <span class="math inline">\(x\)</span>, that will eventually be a sample from <span class="math inline">\(p(x)\)</span>. In that case, we can solve the linear stochastic differential equation exactly to get <span class="math display">\[
+X_t = xe^{-\frac{1}{2}t} + \sigma \int_0^t e^{\frac{1}{2}(s-t)}\,dW_s,
+\]</span> where the integral on the right hand side can be interpreted<a href="#fn34" class="footnote-ref" id="fnref34" role="doc-noteref"><sup>34</sup></a> as a <a href="https://dansblog.netlify.app/posts/2023-01-21-markov/markov.html#white-noise-and-its-associated-things">white noise integral</a> and so <span class="math display">\[
+X_t \sim N\left(xe^{-t}, \sigma^2\int_0^t e^{s-t}\,dt\right),
+\]</span> and the variance is <span class="math display">\[
+\sigma^2\int_0^t e^{s-t}\,dt = \sigma^2 e^{-t}\frac{1}{2}\left(e^{t} - 1\right) = \sigma^2(1-e^{-t}).
+\]</span> From these equations, we see that the mean of the diffusion hurtles exponentially fast towards zero and the variance moves at the same speed towards <span class="math inline">\(\sigma^2\)</span>.</p>
+<p>More importantly, this means that, given a starting point <span class="math inline">\(X_0 = x\)</span>, we can generate data from any part of the diffusion <span class="math inline">\(X_t\)</span>! If we want a sequence of observations from the same trajectory, we can generate them sequentially using the fact that and OU process is a Markov<a href="#fn35" class="footnote-ref" id="fnref35" role="doc-noteref"><sup>35</sup></a> process. This means that we are no longer limited to information at just two points along the trajectory.</p>
+</section>
+<section id="reversing-the-diffusion" class="level3">
+<h3 class="anchored" data-anchor-id="reversing-the-diffusion">Reversing the diffusion</h3>
+<p>So far, there is nothing to learn here. The OU process has a known drift and variance, so everything is splendid. It’s even easy to simulate from. The challenge pops up when we try to reverse the diffusion, that is, when we try to <em>remove</em> noise from a sample rather than add noise to it.</p>
+<p>In some sense, this shouldn’t be too disgusting. A diffusion is a Markov process and, if we run the Markov process back in time, we still get a Markov process. In fact, we are going to get another diffusion process.</p>
+<p>The twist is that the new diffusion process is going to be quite a bit more complex than the original one. The problem is that unless <span class="math inline">\(X_0\)</span> comes from a Gaussian distribution, this process will be non-Gaussian, and thus somewhat tricky to find the reverse trajectory of.</p>
+<p>To see this, consider <span class="math inline">\(s&gt;t\)</span> and recall that <span class="math display">\[
+p(X_0, X_t, X_s) = p(X_s \mid X_t)p(X_t \mid X_0)p(X_0)
+\]</span> and <span class="math display">\[
+p(X_t, X_s) = \int_{\mathbb{R}^d} p(X_s \mid X_t) p(X_t \mid X_0) p(X_0)\,dX_0.
+\]</span> The first two terms in that integrand are Gaussian densities and thus their product is a bivariate Gaussian density <span class="math display">\[
+X_t, X_s \mid X_0 \sim N\left(X_0\begin{pmatrix}e^{-\frac{t}{2}}\\e^{-\frac{s}{2}}\end{pmatrix}, \sigma^2 \begin{pmatrix} 1 &amp; e^{-\frac{s-t}{2}} - e^{-\frac{s+t}{2}} \\ e^{-\frac{s-t}{2}} - e^{-\frac{s+t}{2}} &amp; 1\end{pmatrix}\right).
+\]</span> Unfortunately, as <span class="math inline">\(X_0\)</span> is not Gaussian, the marginal distribution will be non-Gaussian. This means that our reverse time transition density <span class="math display">\[
+p(X_t \mid X_s) = \frac{ \int_{\mathbb{R}^d} p(X_t,X_s \mid X_0) p(X_0)\,dX_0}{ \int_{\mathbb{R}^d} p(X_s \mid X_t)  p(X_0)\,dX_0}
+\]</span> is also going to be <em>very</em> non-linear.</p>
+<p>In order to work out a stochastic differential equation that runs backwards in time and generates the same trajectory, we need a little bit of theory on how the unconditional density <span class="math inline">\(p(X_t)\)</span> and the transition density <span class="math inline">\(p(X_t \mid X_s)\)</span> evolves in time <span class="math inline">\(t\)</span> (here and everywhere st). These are related through the Kolmogorov equations.</p>
+<p>To introduce these, we need to briefly consider the more general diffusion <span class="math display">\[
+dX_t = f(X_t, t)dt + g(X_t,t)dW_t
+\]</span> for nice<a href="#fn36" class="footnote-ref" id="fnref36" role="doc-noteref"><sup>36</sup></a> vector/matrix-valued functions <span class="math inline">\(f\)</span> and <span class="math inline">\(g\)</span>. Kolmogorov showed that the unconditional density <span class="math inline">\(p(X_t) = p(x,t)\)</span> evolves according the the partial differential equation <span class="math display">\[
+\frac{\partial p(x,t)}{\partial t} = - \sum_{i=1}^d \frac{\partial}{\partial x_i}\left(f_i(x,t)p(x,t)\right) + \frac{1}{2}\sum_{i,j,k = 1}^d\frac{\partial^2}{\partial x_j}\left( g_{ik}(x,t)g_{jk}(x,t)p(x,t)\right)
+\]</span> subject to the initial condition <span class="math display">\[
+p(x,0) =p(x).
+\]</span> This is known as Kolmogorov’s forward equation or the Fokker-Planck equation.</p>
+<p>The other key result is about the density of <span class="math inline">\(X_t\)</span> <em>conditioned on some future value</em> <span class="math inline">\(X_s = y\)</span>, <span class="math inline">\(s \geq t\)</span>. We write this density as <span class="math inline">\(p(X_s =y\mid X_t =x) =p(x,t; u,s)\)</span> and it satisfies the partial differential equation <span class="math display">\[
+\frac{\partial q(x,t;u,s)}{\partial t} = -\sum_{i=1}^d f_i(x,t)\frac{\partial q(x,t;u,s)}{\partial x_i} - \frac{1}{2}\sum_{i,j,k=1}^d g_{ik}(x,t)g_{jk}(x,t)\frac{\partial^2 q(x,t;u,s)}{\partial x_i\partial x_j}
+\]</span> subject to the <em>terminal</em> condition <span class="math display">\[
+p(x,s;u,s) = p(u,s).
+\]</span> This is known as the Kolmogorov backward equation. Great names. Beautiful names.</p>
+<p>Let’s consider a differential equation for the joint density <span class="math display">\[
+p(X_t = x, X_s= y) = p(x,t,u,s) = q(x,t;u,s)p(x,t).
+\]</span> Going ham with the product rule gives <span id="eq-diff1"><span class="math display">\[
+\begin{align*}
+\frac{\partial p(x,t,u,s)}{\partial t} &amp;= p(x, t)\frac{\partial q(x,t;u,s)}{\partial t} + q(x,t;u,s) \frac{\partial p(x,t)}{\partial t} \\
+&amp;=-\sum_{i=1}^d p(x,t)f_i(x,t)\frac{\partial q(x,t;u,s)}{\partial x_i} - \frac{1}{2}\sum_{ijk} p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial^2 q(x,t;u,s)}{\partial x_i \partial x_j} \\ &amp;\qquad-\sum_{i=1}^dq(x,t;u,s)\frac{\partial}{\partial x_i}(p(x,t)f(x,t)) + \frac{1}{2} \sum_{ijk}q(x,t;u,s)\frac{\partial^2}{\partial x_i \partial x_j}(g_{ik}(x,t)g_{jk}(x,t)p(x,t)) .
+\end{align*}
+\tag{1}\]</span></span> The first-order derivatives simplify, using the product rule, to <span class="math display">\[
+-\sum_{i=1}^d\frac{\partial}{\partial x_i}(p(x,t,u,s)f(x,t))
+\]</span></p>
+<p>Staring at this for a moment, we notice that this looks has the same structure as the first-order term on the forward equation. In that case, the second-order term would be <span class="math display">\[
+\begin{align*}
+&amp;\frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i x_j}[p(x,t,u,s) g_{ik}(x,t)g_{jk}(x,t)] = \frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i x_j}[q(x,t;u,s) (p(x,t)g_{ik}(x,t)g_{jk}(x,t))] \\
+&amp;\qquad\qquad=\frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial}{\partial x_i}\left[ q(x,t;u,s)\frac{\partial }{\partial x_j}\left(p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right) + p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial q(x,t;u,s)}{\partial x_j}\right]
+\end{align*}
+\]</span></p>
+<p>If we notice that <span class="math display">\[
+\begin{align*}
+\frac{\partial}{\partial x_i}\left[p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial q(x,t;u,s)}{\partial x_j}\right] =&amp;  p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial^2 q(x,t;u,s)}{\partial x_i \partial x_j} \\
+&amp;\quad+ \frac{\partial}{\partial x_i} \left[p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right]\left[ \frac{\partial q(x,t;u,s)}{ \partial x_j}\right]
+\end{align*}
+\]</span> and <span class="math display">\[
+\begin{align*}
+\frac{\partial}{\partial x_i}\left[ q(x,t;u,s)\frac{\partial }{\partial x_j}\left(p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right)\right] =&amp;  q(x,t;u,s)\frac{\partial^2 }{\partial x_i \partial x_j} p(x,t)g_{ik}(x,t)g_{jk}(x,t) \\
+&amp;\quad+ \frac{\partial}{\partial x_i} \left[p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right]\left[ \frac{\partial q(x,t;u,s)}{ \partial x_j}\right]
+\end{align*}
+\]</span> we can re-write the second-order derivative terms in <a href="#eq-diff1">Equation&nbsp;1</a> as <span class="math display">\[
+\frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial}{\partial x_i}\left[ q(x,t;u,s)\frac{\partial }{\partial x_j}\left(p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right) - p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial q(x,t;u,s)}{\partial x_j}\right]
+\]</span></p>
+<p>This is almost, but not quite, what we want. We are a single minus sign away. Remembering that <span class="math inline">\(q(x,t;u,s) = p(x,t,u,s)/p(x,t)\)</span> we probably don’t want it to turn up in any derivatives<a href="#fn37" class="footnote-ref" id="fnref37" role="doc-noteref"><sup>37</sup></a>. To this end, let’s make the substitution <span class="math display">\[
+\begin{align*}
+\frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial}{\partial x_i}\left[ p(x,t)g_{ik}(x,t)g_{jk}(x,t) \frac{\partial q(x,t;u,s)}{\partial x_j}\right]
+=&amp; \frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i\partial x_j}[p(x,t,u,s) g_{ik}(x,t)g_{jk}(x,t)]\\
+&amp; -\frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial}{\partial x_i}\left[ q(x,t;u,s)\frac{\partial }{\partial x_j}\left(p(x,t)g_{ik}(x,t)g_{jk}(x,t)\right) \right].
+\end{align*}
+\]</span> With this substitution the second order terms are <span class="math display">\[
+\sum_{i=1}^d\frac{\partial}{\partial x_i}\left[ p(x,t,u,s) h(x,t)\right] - \frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i\partial x_j}[p(x,t,u,s) g_{ik}(x,t)g_{jk}(x,t)],
+\]</span> where <span class="math display">\[
+h(x,t) = \frac{1}{p(x,t)}\sum_{j,k=1}^d\frac{\partial}{\partial x_j}\left[p(x,t)g_{ik}(x,t)g_{jk}(x,t))\right].
+\]</span></p>
+<p>If we write <span class="math display">\[
+[\bar{f}(x,t)]_i = f(x,t) - h(x,t) = f(x,t) -  \frac{1}{p(x,t)}\sum_{j,k=1}^d\frac{\partial}{\partial x_j}\left[p(x,t)g_{ik}(x,t)g_{jk}(x,t))\right],
+\]</span> we get the joint PDE <span id="eq-diff2"><span class="math display">\[
+\frac{\partial p(x,t,u,s)}{\partial t} = -\sum_{i=1}^d\frac{\partial}{\partial x_i}[p(x,t,u,s)\bar{f}(x,t)] - \frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i\partial x_j}[p(x,t,u,s) g_{ik}(x,t)g_{jk}(x,t)].
+\tag{2}\]</span></span></p>
+<p>In order to identify the reverse time diffusion, we are going to find the reverse time backward equation, which confusingly, is for <span class="math display">\[
+q(u,s; x,t) =\frac{p(X_t = x, X_s =y))}{p(X_s =y)} =\frac{p(x,t,s,y)}{p(u,s)}.
+\]</span> As <span class="math inline">\(p(u,s)\)</span> is a constant in both <span class="math inline">\(x\)</span> and <span class="math inline">\(t\)</span>, we can divide both sides of <a href="#eq-diff2">Equation&nbsp;2</a> by it to get <span class="math display">\[
+\frac{\partial q(x,t;u,s)}{\partial t} = -\sum_{i=1}^d\frac{\partial}{\partial x_i}[q(x,t;u,s)\bar{f}(x,t)] - \frac{1}{2}\sum_{i,j,k=1}^d\frac{\partial^2}{\partial x_i\partial x_j}[q(x,t;u,s) g_{ik}(x,t)g_{jk}(x,t)].
+\]</span> where again <span class="math inline">\(s&gt;t\)</span> and <span class="math inline">\(s\)</span> and <span class="math inline">\(y\)</span> are known.</p>
+<p>This is the forward Kolmogorov equation for the time-reversed<a href="#fn38" class="footnote-ref" id="fnref38" role="doc-noteref"><sup>38</sup></a> diffusion <span class="math display">\[
+dX_t = \bar{f}(X_t, t)dt + g(X_t, t)d\tilde{W}_t, \qquad X_s = u,
+\]</span> where <span class="math inline">\(d \tilde{W}_t\)</span> is another white nose. <a href="https://core.ac.uk/download/pdf/82826666.pdf">Anderson (1982)</a> shows how to connect the white noise <span class="math inline">\(dW_t\)</span> that’s driving the forward dynamics with the white noise that’s driving the reverse dynamics <span class="math inline">\(d\tilde{W}_t\)</span>, but that’s overkill for our present situation.</p>
+<p>In the context of an OU process, we get the reverse equation <span class="math display">\[
+dX_t= -\left[\frac{1}{2} X_t + \sigma^2 \nabla  \log p(X_t, t)\right]\,dt + \sigma\, dW_t,
+\]</span> where time runs backwards and I’ve used the formula for the logarithmic derivative.</p>
+<p>Unlike the forward process, the reverse process is the solution to a <em>non-linear</em> stochastic differential equation. In general, this cannot be solved in closed form and we need to use a numerical SDE solver to generate a sample.</p>
+<p>It’s worth noting that the OU process is an overly simple cartoon of a diffusion model. In practice, <span class="math inline">\(\sigma = \sigma_t\)</span> is usually an increasing function of time so the system injects more noise as the diffusion moves along. This changes some of the exact equations slightly, but you can still sample <span class="math inline">\(X_t \mid X_0\)</span> analytically for any <span class="math inline">\(t\)</span> (as long as you choose a fairly simple function for <span class="math inline">\(\sigma_t\)</span>). There is a <em>large</em> literature on these choices and, to be honest, I can’t be bothered going through them here. But obviously if you want to implement a diffusion model yourself you should look this stuff up.</p>
+</section>
+<section id="estimating-the-score" class="level3">
+<h3 class="anchored" data-anchor-id="estimating-the-score">Estimating the score</h3>
+<p>The reverse dynamics are driven by the score function <span class="math display">\[
+s_t(x) = \nabla \log(p(x,t)).
+\]</span> Typically, we do not know the density <span class="math inline">\(p(x,t) = p(X_t= x \mid X_0 = x_0)\)</span> and while we could solve the forward equation in order to estimate it, that is wildly inefficient in high dimensions.</p>
+<p>If we can assume that for each <span class="math inline">\(t\)</span>, <span class="math inline">\(X_t \mid X_0=x_0\)</span> is approximately <span class="math inline">\(N(\mu_t, \Sigma_t)\)</span>, then the resulting reverse diffusion is linear <span class="math display">\[
+dX_t = \left[\Sigma_t^{-1}\mu_t -\left(\frac{1}{2} I + \sigma^2\Sigma_t^{-1} \right)X_t\right]dt + \sigma dW_t, \qquad X_T = u.
+\]</span> In this case <span class="math inline">\(X_t \mid X_T = u\)</span> is Gaussian with a mean and covariance that has closed form solution in terms of <span class="math inline">\(\Sigma_t\)</span> and <span class="math inline">\(\mu_t\)</span> (perhaps after some numerical quadrature and matrix exponentials).</p>
+<p>Unfortunately, as discussed above this is not true. A better approximation would be a mixture of Gaussians but, in general, we can use <em>any</em> method to approximate <span class="math display">\[
+s_t(x,t).
+\]</span> There are no particular constraints on it, except we expect it to be fairly smooth<a href="#fn39" class="footnote-ref" id="fnref39" role="doc-noteref"><sup>39</sup></a> in both <span class="math inline">\(t\)</span> and <span class="math inline">\(x\)</span>. Hence, we can just learn the score.</p>
+<p>As we are going to solve the SDE numerically, we only need to estimate the score at a finite set of locations. In every application that I’ve seen, these are pre-specified, however it would also be possible to use a basis function expansion to interpolate to arbitrary time points. But, to be honest, I think every single example I’ve seen just uses a regularly spaced grid.</p>
+<p>So how do we estimate <span class="math inline">\(s_t\)</span>? Well just like every other situation, we need to define a likelihood (or, I guess, an optimisation criterion). One way to think about this would be to note that you’ll never <em>perfectly</em> recover the initial signal. This is because we need to solve a non-linear stochastic partial differential equation and there will, inherently, be noise in that solution. So instead, assume that we have an initial sample <span class="math inline">\(x_0 \sim p(X_0)\)</span> and that after solving the backward equation we have an unbiased estimator of <span class="math inline">\(x_0\)</span> with standard deviation <span class="math inline">\(\tau_N\)</span>, where <span class="math inline">\(N\)</span> is the number of time steps. We know a lot about how the error of SDE solvers scale with <span class="math inline">\(N\)</span> and so we can use that to set an appropriate scale for <span class="math inline">\(\tau_N\)</span>. For instance, if you’re using the Euler–Maruyama method, then it has strong order <span class="math inline">\(1/2\)</span> and <span class="math inline">\(\tau_N = \mathcal{O}(N^{-1/2})\)</span> would likely be an appropriate scaling.</p>
+<p>This strongly suggests a likelihood that looks like <span class="math display">\[
+\hat{X}_0(x_0, t) \mid s_t, x_0, t \sim N(x_0, \tau_N^2),
+\]</span> where <span class="math inline">\(\hat{X}_0(x_0,t)\)</span> is the estimate of <span class="math inline">\(X_0\)</span> you get by running the reverse diffusion conditioned on <span class="math inline">\(\hat{X}_t = X_t(x_0)\)</span>, where <span class="math inline">\(X_t(x_0)\)</span> is an exact sample at time <span class="math inline">\(t\)</span> from the forward diffusion started at <span class="math inline">\(X_0 = x_0\)</span>.</p>
+<p>This is the key to the success of diffusion models: given our training sample <span class="math inline">\(\{x_0^{(i)}\}_{i=1}^n\)</span>, we generate new data <span class="math inline">\(x_t(x_0)\)</span> and we can generate as much of that data as we want. Furthermore, we can choose any set of <span class="math inline">\(t\)</span>s we want. We can sample a single <span class="math inline">\((t, x_0)\)</span> pair multiple times or we can look at a diversity of sampling data.</p>
+<p>We can even try to recover an intermediate state <span class="math inline">\(\hat{X}_{t_1}(x_0,t_2)\)</span> from information about a future state <span class="math inline">\(X_{t_2}(x_0)\)</span>, <span class="math inline">\(t_2 &gt;t_1 \geq 0\)</span>. This gives us quite the opportunity to target our learning to areas of the <span class="math inline">\((t,x)\)</span> space where we have relatively poor estimates of the score function.</p>
+<p>Of course, that’s not what people do. They do stochastic gradient descent to minimise <span class="math display">\[
+\min_{s_t}\mathbb{E}_{x_0 \sim p(X_0), t \sim \text{Unif}[0,1]}\left(\|x_0 - \hat{X}_0(x_0,t)\|^2\right)
+\]</span> possibly subject to some penalties on <span class="math inline">\(s_t\)</span>. In fact, the distribution on <span class="math inline">\(t\)</span> is usually a discrete uniform. As with any sufficiently complex task, there is a lot of detailed work on exactly how to best parameterise, solve, and evaluate this optimisation procedure.</p>
+</section>
+<section id="generating-samples" class="level3">
+<h3 class="anchored" data-anchor-id="generating-samples">Generating samples</h3>
+<p>Once the model is trained and we have an estimate <span class="math inline">\(\hat{s}_t\)</span> of the score function, we can generate new samples by first sampling <span class="math inline">\(u \sim N(0, \sigma^2)\)</span> and running the reverse diffusion starting from <span class="math inline">\(X_t = u\)</span> for some sufficiently large <span class="math inline">\(t\)</span>. One of the advantages of using a variant of the OU process with a non-constant <span class="math inline">\(\sigma\)</span> is that we can choose <span class="math inline">\(t\)</span> to be smaller. Nevertheless, there will always be a little bit of error introduced by the fact that <span class="math inline">\(X_t\)</span> is only <em>approximately</em> <span class="math inline">\(N(0, \sigma^2)\)</span>. But really, in the context of all of the other errors, this one is pretty small.</p>
+<p>Anyway, run the diffusion backwards and if you’ve estiamted <span class="math inline">\(s_t(x)\)</span> well for the entire trajectory, you will get something that looks a lot like a new sample from <span class="math inline">\(p(X_0)\)</span>.</p>
+</section>
+</section>
+<section id="some-closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="some-closing-thoughts">Some closing thoughts</h2>
+<p>So there you have it, a very high-level mathematical introduction to diffusion models. Along the way, I accidentally put them in some sort of historical context, which hopefully helped make some things clearer.</p>
+<p>Obviously there are <em>a lot</em> of cool things that can happen. The ability to, essentially, design our training trajectories should definitely be utilised. To do that, we would need some measure of uncertainty in the recovery of <span class="math inline">\(s_t\)</span>. A possible way to do this would be to insert a <a href="https://arxiv.org/abs/1812.03973">probabilistic layer</a> into neural net architecture. If this isn’t the final layer in the network, it should be possible to clean up any artifacts it introduces with further layers, but the uncertainty estimates from this hidden layer would still be indicative of the uncertainty in the recovery of the scores. Assuming, of course, that this is successful, it would be possible to target the training at improving the uncertainty.</p>
+<p>Beyond the possibility of using a non-uniform distribution for <span class="math inline">\(t\)</span>, these uncertainty estimates might also help indicate the reliability of the generated sample. If the reverse diffusion spends too much time in areas with highly uncertain scores, it is unlikely that the generated data will be a good sample.</p>
+<p>I am also somewhat curious about whether or not this type of system could be a reasonable alternative to bootstrap resampling in some contexts. I mean image creation is cool, but it’s not the only time people want to sample from a distribution that we only know empirically.</p>
+
+
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Maybe my favourite running gag was Ronny Chieng refusing to use the American pronunciation of Megan. <a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>I mean, my last post was recounting literature on the Markov property from the 70s and 80s. My only desire for this blog is for it to be very difficult to guess the topic of the next post.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>I can’t stress enough that I made that tomato and feta tiktok pasta for dinner. Because that’s exactly how on trend I am.<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn4"><p>I am very much managing expectations here<a href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn5"><p>I cannot stress enough that this post will not help you implement a diffusion model. It might help you understand what is being implemented, but it also might not.<a href="#fnref5" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn6"><p>Really fucking relative.<a href="#fnref6" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn7"><p>Find a lesbian and follow her blog. Then you’ll get the good shit. There are tonnes of queer women in statistics. If you don’t know any it’s because they probably hate you.<a href="#fnref7" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn8"><p>The wokerati among you will notice that the quotient is the derivative of <span class="math inline">\(\log p(Q)\)</span>.<a href="#fnref8" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn9"><p>Look. I love you all. But I don’t want to introduce measure push-forwards. So if you want the maths read the damn paper.<a href="#fnref9" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn10"><p>This is the Knothe-Rosenblatt rearrangement of the optimal transport problem if you’re curious. And let’s face it, you’re not curious.<a href="#fnref10" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn11"><p>The normalising flow literature also has a lot of nice chats about how to model the <span class="math inline">\(T_j\)</span>s using masked versions of the same neural net.<a href="#fnref11" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn12"><p>If you don’t have too much data, you could just replace that expectation with its empirical approximation. But when there is a lot of data, that will be expensive and stochastic gradient methods will perform better.<a href="#fnref12" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn13"><p>And be more likely to appropriately use your computational resources<a href="#fnref13" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn14"><p>We will see later that it doesn’t matter if we model <span class="math inline">\(T\)</span> or <span class="math inline">\(S\)</span>, but the likelihood calculations come out nicer if we map from <span class="math inline">\(p(x)\)</span> to <span class="math inline">\(q(u)\)</span> rather than the other way around<a href="#fnref14" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn15"><p>There is a tonne of excellent software for efficiently solving differential equations!<a href="#fnref15" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn16"><p>My notation here is a bit awkward. The <span class="math inline">\(x\)</span> in <span class="math inline">\(S(x,t)\)</span> is keeping track of the <em>initial condition</em>, which in this case we do not know. But hey. Whatever.<a href="#fnref16" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn17"><p>Potentially even multi-modal<a href="#fnref17" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn18"><p>Classically this is done with a penalty, but you could also do it with things like early stopping and specific representations of the function. Which is nice because the continuous nomalising flow people use neural nets<a href="#fnref18" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn19"><p>The square on the norm isn’t always there<a href="#fnref19" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn20"><p>This was a big-sexy area in optimisation.<a href="#fnref20" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn21"><p>or at least a lot more expensive than, say, evaluating an exponential!<a href="#fnref21" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn22"><p>If you’re familiar with scalable ML methods, you might think <em>well we have solved this problem</em>. But I promise that it is not solved. The problem is that there’s no convenient analogue to subsampling the data. You can’t be half pregnant and you can’t half evaluate the forward map. There are, however, a pile of fabulous techniques that do their best to use multiple resolutions to get something that resembles a sensible MCMC scheme.<a href="#fnref22" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn23"><p>In our context, it’s a vector-valued function<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn24"><p>Examples abound, but they include image reconstruction, tomographic inversion, and really anything where you’re estimating diffusivity<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn25"><p>Gaussian processes<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn26"><p>But not necessarily too creative. Not every transformation of a penalyy makes a sensible prior. I’m looking at you <a href="http://www.siltanen-research.net/publ/LassasSiltanen2004.pdf">lasso on increments</a>.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p>Using the “well known” fact that the derivative of the log-determinant is the trace <a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn28"><p>There are some complexities in practice around computing that trace. A straightforward implementation would require <span class="math inline">\(d\)</span> autodiff sweeps, which would make the model totally impractical. There are basically two options: <a href="https://arxiv.org/abs/1912.03579">massively simplify</a> <span class="math inline">\(f\)</span> to be something like <span class="math inline">\(f(x) = h(Ax + b)\)</span> for a smooth function <span class="math inline">\(h\)</span> or use a stochastic trace estimator.<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn29"><p>Measured in the Frobenius norm, of course<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn30"><p>or priors<a href="#fnref30" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn31"><p>data + distributional assumptions = information<a href="#fnref31" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn32"><p><span class="math inline">\(q\)</span> will be the asymptotic distribution of the diffusion, but it isn’t achieved at finite time.<a href="#fnref32" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn33"><p>Arguably, gradient descent is to machine learners what arse crack is to roadies. It’s always present, but with just enough variation to make it interesting.<a href="#fnref33" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn34"><p>Technically it’s an Ito integral, but because the integrand is deterministic it reduces to a white noise integral<a href="#fnref34" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn35"><p>The Markov property implies that <span class="math inline">\(p(X_{t_1}, X_{t_2}\mid X_0 = x) = p(X_{t_1}\mid X_0 = x)p(X_{t_2} \mid X_{t_1})\)</span>. <a href="#fnref35" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn36"><p>Lipschitz and bounded<a href="#fnref36" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn37"><p>I hate the quotient rule<a href="#fnref37" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn38"><p>This is why the signs don’t seem to match the forwards equation from before, but you can convince yourself if you do the change of variables <span class="math inline">\(\tau = s - t\)</span>, the new variable <span class="math inline">\(\tau\)</span> runs forward in time and <span class="math inline">\(\bar{f}\)</span> switches signs, which gives the right forwards equations (with different signs on the first and second order terms) in <span class="math inline">\((\tau,x)\)</span>.<a href="#fnref38" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn39"><p>If the <span class="math inline">\(p(X_0)\)</span> is very rough, then, for very small <span class="math inline">\(t\)</span>, <span class="math inline">\(p(x,t)\)</span> will also be quite rough but it will quickly become infinitely differentiable. It turns out that mathematicians know quite a lot about parabolic equations!<a href="#fnref39" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2023,
+  author = {Dan Simpson},
+  editor = {},
+  title = {Diffusion Models; or {Yet} Another Way to Sample from an
+    Aribrary Distribution},
+  date = {2023-02-09},
+  url = {https://dansblog.netlify.app/posts/},
+  langid = {en}
+}
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2023" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
+Dan Simpson. 2023. <span>“Diffusion Models; or Yet Another Way to Sample
+from an Aribrary Distribution.”</span> February 9, 2023. <a href="https://dansblog.netlify.app/posts/">https://dansblog.netlify.app/posts/</a>.
+</div></div></section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    setTimeout(function() {
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
+    tippyHover(ref, function() {
+      var popup = window.document.createElement('div');
+      cites.forEach(function(cite) {
+        var citeDiv = window.document.createElement('div');
+        citeDiv.classList.add('hanging-indent');
+        citeDiv.classList.add('csl-entry');
+        var biblioDiv = window.document.getElementById('ref-' + cite);
+        if (biblioDiv) {
+          citeDiv.innerHTML = biblioDiv.innerHTML;
+        }
+        popup.appendChild(citeDiv);
+      });
+      return popup.innerHTML;
+    });
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
