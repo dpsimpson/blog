@@ -1,12 +1,12 @@
 ---
-title: "Diffusion models; or Yet another way to sample from an aribrary distribution"
+title: "Diffusion models; or Yet another way to sample from an arbitrary distribution"
 description: |
   If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.
 date: 2023-02-09
 image: megan.jpeg
 categories: [Diffusion model, Introductions]
 twitter-card:
-  title: "Diffusion models; or Yet another way to sample from an aribrary distribution"
+  title: "Diffusion models; or Yet another way to sample from an arbitrary distribution"
   creator: "@dan_p_simpson"
 citation: 
   url: https://dansblog.netlify.app/posts/

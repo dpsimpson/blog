@@ -17,7 +17,7 @@
 <generator>quarto-1.2.15</generator>
 <lastBuildDate>Wed, 08 Feb 2023 13:00:00 GMT</lastBuildDate>
 <item>
-  <title>Diffusion models; or Yet another way to sample from an aribrary distribution</title>
+  <title>Diffusion models; or Yet another way to sample from an arbitrary distribution</title>
   <dc:creator>Dan Simpson</dc:creator>
   <link>https://dansblog.netlify.app/posts/2023-01-30-diffusion/diffusion.html</link>
   <description><![CDATA[ 
@@ -230,14 +230,14 @@
   author = {Dan Simpson},
   editor = {},
   title = {Diffusion Models; or {Yet} Another Way to Sample from an
-    Aribrary Distribution},
+    Arbitrary Distribution},
   date = {2023-02-09},
   url = {https://dansblog.netlify.app/posts/},
   langid = {en}
 }
 </code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2023" class="csl-entry quarto-appendix-citeas">
 Dan Simpson. 2023. <span>“Diffusion Models; or Yet Another Way to Sample
-from an Aribrary Distribution.”</span> February 9, 2023. <a href="https://dansblog.netlify.app/posts/">https://dansblog.netlify.app/posts/</a>.
+from an Arbitrary Distribution.”</span> February 9, 2023. <a href="https://dansblog.netlify.app/posts/">https://dansblog.netlify.app/posts/</a>.
 </div></div></section></div> ]]></description>
   <category>Diffusion model</category>
   <category>Introductions</category>
