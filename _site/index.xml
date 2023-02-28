@@ -211,7 +211,7 @@
 <li id="fn23"><p>In our context, it’s a vector-valued function↩︎</p></li>
 <li id="fn24"><p>Examples abound, but they include image reconstruction, tomographic inversion, and really anything where you’re estimating diffusivity↩︎</p></li>
 <li id="fn25"><p>Gaussian processes↩︎</p></li>
-<li id="fn26"><p>But not necessarily too creative. Not every transformation of a penalyy makes a sensible prior. I’m looking at you <a href="http://www.siltanen-research.net/publ/LassasSiltanen2004.pdf">lasso on increments</a>.↩︎</p></li>
+<li id="fn26"><p>But not necessarily too creative. Not every transformation of a penalty makes a sensible prior. I’m looking at you <a href="http://www.siltanen-research.net/publ/LassasSiltanen2004.pdf">lasso on increments</a>.↩︎</p></li>
 <li id="fn27"><p>Using the “well known” fact that the derivative of the log-determinant is the trace ↩︎</p></li>
 <li id="fn28"><p>There are some complexities in practice around computing that trace. A straightforward implementation would require <img src="https://latex.codecogs.com/png.latex?d"> autodiff sweeps, which would make the model totally impractical. There are basically two options: <a href="https://arxiv.org/abs/1912.03579">massively simplify</a> <img src="https://latex.codecogs.com/png.latex?f"> to be something like <img src="https://latex.codecogs.com/png.latex?f(x)%20=%20h(Ax%20+%20b)"> for a smooth function <img src="https://latex.codecogs.com/png.latex?h"> or use a stochastic trace estimator.↩︎</p></li>
 <li id="fn29"><p>Measured in the Frobenius norm, of course↩︎</p></li>
