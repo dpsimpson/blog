@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.15">
+<meta name="generator" content="quarto-1.4.553">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -18,7 +18,7 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
 </style>
@@ -48,7 +48,13 @@ ul.task-list li input[type="checkbox"] {
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -57,8 +63,10 @@ ul.task-list li input[type="checkbox"] {
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 <script>
@@ -91,13 +99,41 @@ ul.task-list li input[type="checkbox"] {
   })
   </script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
 <link rel="stylesheet" href="styles.css">
-<link rel="alternate" type="application/rss+xml" title="Un garçon pas comme les autres (Bayes)" href="index.xml"><meta property="og:title" content="Un garçon pas comme les autres (Bayes)">
+<link rel="alternate" type="application/rss+xml" title="Un garçon pas comme les autres (Bayes)" href="index.xml" data-external="1"><meta property="og:title" content="Un garçon pas comme les autres (Bayes)">
 <meta property="og:description" content="A blog about statistics, I guess.">
 <meta property="og:image" content="https://dansblog.netlify.app/better.JPG">
-<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta name="twitter:title" content="Un garçon pas comme les autres (Bayes)">
 <meta name="twitter:description" content="A blog about statistics, I guess.">
 <meta name="twitter:image" content="https://dansblog.netlify.app/better.JPG">
@@ -108,45 +144,48 @@ ul.task-list li input[type="checkbox"] {
 <body class="nav-fixed">
 
 <div id="quarto-search-results"></div>
-  <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="./index.html">
     <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
     </a>
   </div>
+            <div id="quarto-search" class="" title="Search"></div>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="./about.html">About this blog</a>
+    <a class="nav-link" href="./about.html"> 
+<span class="menu-text">About this blog</span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="./index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="./index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -164,9 +203,10 @@ ul.task-list li input[type="checkbox"] {
   </div>
     
   
-  <div class="quarto-title-meta">
+  <div class="quarto-title-meta column-page-left">
 
       
+    
       
     </div>
     
@@ -187,21 +227,22 @@ ul.task-list li input[type="checkbox"] {
 
 
 
+
 <div class="quarto-listing quarto-listing-container-default" id="listing-listing">
 <div class="list quarto-listing-default">
-<div class="quarto-post image-right" data-index="0" data-categories="Diffusion model,Introductions" data-listing-date-sort="1675861200000" data-listing-file-modified-sort="1675983899599" data-listing-reading-time-sort="31.125">
+<div class="quarto-post image-right" data-index="0" data-categories="Diffusion model,Introductions" data-listing-date-sort="1675918800000" data-listing-file-modified-sort="1675983899599" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="32" data-listing-word-count-sort="6225">
 <div class="thumbnail">
-<p><a href="./posts/2023-01-30-diffusion/diffusion.html"> <img src="./posts/2023-01-30-diffusion/megan.jpeg" class="thumnail-image"> </a></p>
+<p><a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external"></a></p><a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external">
+<p><img src="./posts/2023-01-30-diffusion/megan.jpeg" class="thumbnail-image"></p>
+</a><p><a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2023-01-30-diffusion/diffusion.html">
 <h3 class="no-anchor listing-title">
-Diffusion models; or Yet another way to sample from an arbitrary distribution
+<a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external">Diffusion models; or Yet another way to sample from an arbitrary distribution</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Diffusion model'); return false;">
 Diffusion model
@@ -210,14 +251,12 @@ Diffusion model
 Introductions
 </div>
 </div>
-<a href="./posts/2023-01-30-diffusion/diffusion.html">
 <div class="listing-description">
-<p>If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn.</p>
+<a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external">If you gaze for long into an abyss, the abyss creates a cutting-edge AI method. So saddle up your Ganzfeld effect, girls. We ride at dawn. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2023-01-30-diffusion/diffusion.html">
+<a href="./posts/2023-01-30-diffusion/diffusion.html" class="no-external">
 <div class="listing-date">
 Feb 9, 2023
 </div>
@@ -227,19 +266,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="1" data-categories="Gaussian processes,Fundamentals,Theory,Deep Dives" data-listing-date-sort="1674219600000" data-listing-file-modified-sort="1674391867405" data-listing-reading-time-sort="30.6">
+<div class="quarto-post image-right" data-index="1" data-categories="Gaussian processes,Fundamentals,Theory,Deep Dives" data-listing-date-sort="1674277200000" data-listing-file-modified-sort="1674391867405" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="31" data-listing-word-count-sort="6120">
 <div class="thumbnail">
-<p><a href="./posts/2023-01-21-markov/markov.html"> <img src="./posts/2023-01-21-markov/gays.png" class="thumnail-image"> </a></p>
+<p><a href="./posts/2023-01-21-markov/markov.html" class="no-external"></a></p><a href="./posts/2023-01-21-markov/markov.html" class="no-external">
+<p><img src="./posts/2023-01-21-markov/gays.png" class="thumbnail-image"></p>
+</a><p><a href="./posts/2023-01-21-markov/markov.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2023-01-21-markov/markov.html">
 <h3 class="no-anchor listing-title">
-Markovian Gaussian processes: A lot of theory and some practical stuff
+<a href="./posts/2023-01-21-markov/markov.html" class="no-external">Markovian Gaussian processes: A lot of theory and some practical stuff</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2023-01-21-markov/markov.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Gaussian processes'); return false;">
 Gaussian processes
@@ -254,14 +293,12 @@ Theory
 Deep Dives
 </div>
 </div>
-<a href="./posts/2023-01-21-markov/markov.html">
 <div class="listing-description">
-<p>Well this is gonna be technical. And yes, I’m going to define it three ways. Because that’s how comedy works.</p>
+<a href="./posts/2023-01-21-markov/markov.html" class="no-external">Well this is gonna be technical. And yes, I’m going to define it three ways. Because that’s how comedy works. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2023-01-21-markov/markov.html">
+<a href="./posts/2023-01-21-markov/markov.html" class="no-external">
 <div class="listing-date">
 Jan 21, 2023
 </div>
@@ -271,19 +308,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="2" data-categories="JAX,Sparse matrices,Autodiff" data-listing-date-sort="1669899600000" data-listing-file-modified-sort="1669992649948" data-listing-reading-time-sort="40.24">
+<div class="quarto-post image-right" data-index="2" data-categories="JAX,Sparse matrices,Autodiff" data-listing-date-sort="1669957200000" data-listing-file-modified-sort="1669992649948" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="41" data-listing-word-count-sort="8048">
 <div class="thumbnail">
-<p><a href="./posts/2022-11-27-sparse7/sparse7.html"> <img src="./posts/2022-11-27-sparse7/south_pac.png" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external"></a></p><a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external">
+<p><img src="./posts/2022-11-27-sparse7/south_pac.png" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-11-27-sparse7/sparse7.html">
 <h3 class="no-anchor listing-title">
-Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition
+<a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external">Sparse matrices part 7a: Another shot at JAX-ing the Cholesky decomposition</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('JAX'); return false;">
 JAX
@@ -295,14 +332,12 @@ Sparse matrices
 Autodiff
 </div>
 </div>
-<a href="./posts/2022-11-27-sparse7/sparse7.html">
 <div class="listing-description">
-<p>I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern.</p>
+<a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external">I work in R a lot so I should be used to weird syntax. This part looks at the non-zero pattern. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-11-27-sparse7/sparse7.html">
+<a href="./posts/2022-11-27-sparse7/sparse7.html" class="no-external">
 <div class="listing-date">
 Dec 2, 2022
 </div>
@@ -312,19 +347,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="3" data-categories="Fundamentals,MCMC,Bayes" data-listing-date-sort="1669122000000" data-listing-file-modified-sort="1674019174300" data-listing-reading-time-sort="17.44">
+<div class="quarto-post image-right" data-index="3" data-categories="Fundamentals,MCMC,Bayes" data-listing-date-sort="1669179600000" data-listing-file-modified-sort="1674019174300" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3488">
 <div class="thumbnail">
-<p><a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html"> <img src="./posts/2022-11-23-wrong-mcmc/elvira.jpg" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external"></a></p><a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external">
+<p><img src="./posts/2022-11-23-wrong-mcmc/elvira.jpg" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">
 <h3 class="no-anchor listing-title">
-MCMC with the wrong acceptance probability
+<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external">MCMC with the wrong acceptance probability</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Fundamentals'); return false;">
 Fundamentals
@@ -336,14 +371,12 @@ MCMC
 Bayes
 </div>
 </div>
-<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">
 <div class="listing-description">
-<p>Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times.</p>
+<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external">Sometimes I chat work with people. Sometimes an interesting factlet comes up. Sometimes I blog about it. This is one of those times. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html">
+<a href="./posts/2022-11-23-wrong-mcmc/wrong-mcmc.html" class="no-external">
 <div class="listing-date">
 Nov 23, 2022
 </div>
@@ -353,19 +386,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="4" data-categories="Fundamentals,Survey sampling,MRP,Bayes" data-listing-date-sort="1668430800000" data-listing-file-modified-sort="1668595639737" data-listing-reading-time-sort="22.925">
+<div class="quarto-post image-right" data-index="4" data-categories="Fundamentals,Survey sampling,MRP,Bayes" data-listing-date-sort="1668488400000" data-listing-file-modified-sort="1668595639737" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="23" data-listing-word-count-sort="4585">
 <div class="thumbnail">
-<p><a href="./posts/2022-11-12-robins-ritov/robins-ritov.html"> <img src="./posts/2022-11-12-robins-ritov/misandrists.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external"></a></p><a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external">
+<p><img src="./posts/2022-11-12-robins-ritov/misandrists.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html">
 <h3 class="no-anchor listing-title">
-On that example of Robins and Ritov; or A sleeping dog in harbor is safe, but that’s not what sleeping dogs are for
+<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external">On that example of Robins and Ritov; or A sleeping dog in harbor is safe, but that’s not what sleeping dogs are for</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Fundamentals'); return false;">
 Fundamentals
@@ -380,14 +413,12 @@ MRP
 Bayes
 </div>
 </div>
-<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html">
 <div class="listing-description">
-<p>Look, it’s a dull example of Bayes being bad. But it comes up often enough to be worth talking about. I’m going to, unsurprisingly, argue that Bayes isn’t bad. Neither are Robings/Ritov/Wasserman wrong. They’re just looking at the problem through a different lens.</p>
+<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external">Look, it’s a dull example of Bayes being bad. But it comes up often enough to be worth talking about. I’m going to, unsurprisingly, argue that Bayes isn’t bad. Neither are Robings/Ritov/Wasserman wrong. They’re just looking at the problem through a different lens. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html">
+<a href="./posts/2022-11-12-robins-ritov/robins-ritov.html" class="no-external">
 <div class="listing-date">
 Nov 15, 2022
 </div>
@@ -397,19 +428,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="5" data-categories="Prior distributions,Gaussian Processes,PC priors" data-listing-date-sort="1664200800000" data-listing-file-modified-sort="1674391483505" data-listing-reading-time-sort="73.665">
+<div class="quarto-post image-right" data-index="5" data-categories="Prior distributions,Gaussian Processes,PC priors" data-listing-date-sort="1664251200000" data-listing-file-modified-sort="1674391483505" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="74" data-listing-word-count-sort="14733">
 <div class="thumbnail">
-<p><a href="./posts/2022-09-07-priors5/priors5.html"> <img src="./posts/2022-09-07-priors5/chair.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-09-07-priors5/priors5.html" class="no-external"></a></p><a href="./posts/2022-09-07-priors5/priors5.html" class="no-external">
+<p><img src="./posts/2022-09-07-priors5/chair.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-09-07-priors5/priors5.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-09-07-priors5/priors5.html">
 <h3 class="no-anchor listing-title">
-Priors for the parameters in a Gaussian process
+<a href="./posts/2022-09-07-priors5/priors5.html" class="no-external">Priors for the parameters in a Gaussian process</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-09-07-priors5/priors5.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -421,14 +452,12 @@ Gaussian Processes
 PC priors
 </div>
 </div>
-<a href="./posts/2022-09-07-priors5/priors5.html">
 <div class="listing-description">
-<p>If you’re not a machine learner (and sometimes if you are), Gaussian processes need priors on their parameters. Like everything else to do with Gaussian processes, this can be delicate. This post works through some options.</p>
+<a href="./posts/2022-09-07-priors5/priors5.html" class="no-external">If you’re not a machine learner (and sometimes if you are), Gaussian processes need priors on their parameters. Like everything else to do with Gaussian processes, this can be delicate. This post works through some options. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-09-07-priors5/priors5.html">
+<a href="./posts/2022-09-07-priors5/priors5.html" class="no-external">
 <div class="listing-date">
 Sep 27, 2022
 </div>
@@ -438,19 +467,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="6" data-categories="Multilevel models,Visual diagnostics,Prior distributions,fundamentals" data-listing-date-sort="1662386400000" data-listing-file-modified-sort="1664201181488" data-listing-reading-time-sort="37.97">
+<div class="quarto-post image-right" data-index="6" data-categories="Multilevel models,Visual diagnostics,Prior distributions,fundamentals" data-listing-date-sort="1662436800000" data-listing-file-modified-sort="1664201181488" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="38" data-listing-word-count-sort="7594">
 <div class="thumbnail">
-<p><a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html"> <img src="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external"></a></p><a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external">
+<p><img src="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html">
 <h3 class="no-anchor listing-title">
-A first look at multilevel regression; or Everybody’s got something to hide except me and my macaques
+<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external">A first look at multilevel regression; or Everybody’s got something to hide except me and my macaques</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Multilevel models'); return false;">
 Multilevel models
@@ -465,14 +494,12 @@ Prior distributions
 fundamentals
 </div>
 </div>
-<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html">
 <div class="listing-description">
-<p>A small introduction to multilevel models. Why? Because I said so, that’s why. And you will simply not believe what happens to residual plots.</p>
+<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external">A small introduction to multilevel models. Why? Because I said so, that’s why. And you will simply not believe what happens to residual plots. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html">
+<a href="./posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html" class="no-external">
 <div class="listing-date">
 Sep 6, 2022
 </div>
@@ -482,19 +509,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="7" data-categories="Prior distributions,fundamentals,PC priors" data-listing-date-sort="1662127200000" data-listing-file-modified-sort="1662874029259" data-listing-reading-time-sort="28.325">
+<div class="quarto-post image-right" data-index="7" data-categories="Prior distributions,fundamentals,PC priors" data-listing-date-sort="1662177600000" data-listing-file-modified-sort="1662874029259" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="29" data-listing-word-count-sort="5665">
 <div class="thumbnail">
-<p><a href="./posts/2022-08-29-priors4/priors4.html"> <img src="./posts/2022-08-29-priors4/tina.jpg" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-08-29-priors4/priors4.html" class="no-external"></a></p><a href="./posts/2022-08-29-priors4/priors4.html" class="no-external">
+<p><img src="./posts/2022-08-29-priors4/tina.jpg" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-08-29-priors4/priors4.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-08-29-priors4/priors4.html">
 <h3 class="no-anchor listing-title">
-Priors part 4: Specifying priors that appropriately penalise complexity
+<a href="./posts/2022-08-29-priors4/priors4.html" class="no-external">Priors part 4: Specifying priors that appropriately penalise complexity</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-08-29-priors4/priors4.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -506,14 +533,12 @@ fundamentals
 PC priors
 </div>
 </div>
-<a href="./posts/2022-08-29-priors4/priors4.html">
 <div class="listing-description">
-<p>Let us not lie. Specifying priors are hard. This post steps through a technique for setting priors that I think gives a good basis for realistically complex problems.</p>
+<a href="./posts/2022-08-29-priors4/priors4.html" class="no-external">Let us not lie. Specifying priors are hard. This post steps through a technique for setting priors that I think gives a good basis for realistically complex problems. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-08-29-priors4/priors4.html">
+<a href="./posts/2022-08-29-priors4/priors4.html" class="no-external">
 <div class="listing-date">
 Sep 3, 2022
 </div>
@@ -523,19 +548,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="8" data-categories="Importance sampling,Computation,Truncated importance sampling,Windsorized importance sampling,Pareto smoothed importance sampling,PSIS" data-listing-date-sort="1655215200000" data-listing-file-modified-sort="1661621430853" data-listing-reading-time-sort="33.565">
+<div class="quarto-post image-right" data-index="8" data-categories="Importance sampling,Computation,Truncated importance sampling,Windsorized importance sampling,Pareto smoothed importance sampling,PSIS" data-listing-date-sort="1655265600000" data-listing-file-modified-sort="1661621430853" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="34" data-listing-word-count-sort="6713">
 <div class="thumbnail">
-<p><a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html"> <img src="./posts/2022-06-03-that-psis-proof/judy.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external"></a></p><a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external">
+<p><img src="./posts/2022-06-03-that-psis-proof/judy.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html">
 <h3 class="no-anchor listing-title">
-Tail stabilization of importance sampling etimators: A bit of theory
+<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external">Tail stabilization of importance sampling etimators: A bit of theory</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Importance sampling'); return false;">
 Importance sampling
@@ -556,14 +581,12 @@ Pareto smoothed importance sampling
 PSIS
 </div>
 </div>
-<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html">
 <div class="listing-description">
-<p>Look. I had to do it so I wrote it out in detail. This is some of the convergence theory for truncated and winzorised importance sampling estimators</p>
+<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external">Look. I had to do it so I wrote it out in detail. This is some of the convergence theory for truncated and winzorised importance sampling estimators </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html">
+<a href="./posts/2022-06-03-that-psis-proof/that-psis-proof.html" class="no-external">
 <div class="listing-date">
 Jun 15, 2022
 </div>
@@ -573,19 +596,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="9" data-categories="JAX,Sparse matrices,Autodiff" data-listing-date-sort="1653832800000" data-listing-file-modified-sort="1661621430845" data-listing-reading-time-sort="46.415">
+<div class="quarto-post image-right" data-index="9" data-categories="JAX,Sparse matrices,Autodiff" data-listing-date-sort="1653883200000" data-listing-file-modified-sort="1714594999217" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="47" data-listing-word-count-sort="9283">
 <div class="thumbnail">
-<p><a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html"> <img src="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/sob.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external"></a></p><a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external">
+<p><img src="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/sob.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html">
 <h3 class="no-anchor listing-title">
-Sparse matrices 6: To catch a derivative, first you’ve got to think like a derivative
+<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external">Sparse matrices 6: To catch a derivative, first you’ve got to think like a derivative</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('JAX'); return false;">
 JAX
@@ -597,14 +620,12 @@ Sparse matrices
 Autodiff
 </div>
 </div>
-<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html">
 <div class="listing-description">
-<p>Open up the kennels, Kenneth. Mamma’s coming home tonight.</p>
+<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external">Open up the kennels, Kenneth. Mamma’s coming home tonight. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html">
+<a href="./posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html" class="no-external">
 <div class="listing-date">
 May 30, 2022
 </div>
@@ -614,19 +635,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="10" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1652968800000" data-listing-file-modified-sort="1661621430831" data-listing-reading-time-sort="12.925">
+<div class="quarto-post image-right" data-index="10" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1653019200000" data-listing-file-modified-sort="1661621430831" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="13" data-listing-word-count-sort="2585">
 <div class="thumbnail">
-<p><a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html"> <img src="./posts/2022-05-18-sparse4-some-primatives/nancy.jpg" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external"></a></p><a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external">
+<p><img src="./posts/2022-05-18-sparse4-some-primatives/nancy.jpg" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html">
 <h3 class="no-anchor listing-title">
-Sparse Matrices 5: I bind you Nancy
+<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external">Sparse Matrices 5: I bind you Nancy</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Sparse matrices'); return false;">
 Sparse matrices
@@ -641,14 +662,12 @@ Python
 JAX
 </div>
 </div>
-<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html">
 <div class="listing-description">
-<p>A new JAX primitive? In this economy?</p>
+<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external">A new JAX primitive? In this economy? </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html">
+<a href="./posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html" class="no-external">
 <div class="listing-date">
 May 20, 2022
 </div>
@@ -658,19 +677,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="11" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1652623200000" data-listing-file-modified-sort="1661621430816" data-listing-reading-time-sort="7.77">
+<div class="quarto-post image-right" data-index="11" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1652673600000" data-listing-file-modified-sort="1661621430816" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1554">
 <div class="thumbnail">
-<p><a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html"> <img src="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/scrod.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external"></a></p><a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external">
+<p><img src="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/scrod.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html">
 <h3 class="no-anchor listing-title">
-Sparse Matrices 4: Design is my passion
+<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external">Sparse Matrices 4: Design is my passion</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Sparse matrices'); return false;">
 Sparse matrices
@@ -685,14 +704,12 @@ Python
 JAX
 </div>
 </div>
-<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html">
 <div class="listing-description">
-<p>Just some harmeless notes. Like the ones Judy Dench took in that movie.</p>
+<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external">Just some harmeless notes. Like the ones Judy Dench took in that movie. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html">
+<a href="./posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html" class="no-external">
 <div class="listing-date">
 May 16, 2022
 </div>
@@ -702,19 +719,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="12" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1652450400000" data-listing-file-modified-sort="1661621430808" data-listing-reading-time-sort="17.59">
+<div class="quarto-post image-right" data-index="12" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python,JAX" data-listing-date-sort="1652500800000" data-listing-file-modified-sort="1661621430808" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3518">
 <div class="thumbnail">
-<p><a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html"> <img src="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/alien.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external"></a></p><a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external">
+<p><img src="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/alien.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html">
 <h3 class="no-anchor listing-title">
-Sparse Matrices 3: Failing at JAX
+<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external">Sparse Matrices 3: Failing at JAX</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Sparse matrices'); return false;">
 Sparse matrices
@@ -729,14 +746,12 @@ Python
 JAX
 </div>
 </div>
-<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html">
 <div class="listing-description">
-<p><em>Takes a long drag on cigarette.</em> JAX? Where was he when I had my cancer?</p>
+<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external"><em>Takes a long drag on cigarette.</em> JAX? Where was he when I had my cancer? </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html">
+<a href="./posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html" class="no-external">
 <div class="listing-date">
 May 14, 2022
 </div>
@@ -746,19 +761,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="13" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python" data-listing-date-sort="1648645200000" data-listing-file-modified-sort="1661621430804" data-listing-reading-time-sort="26.2">
+<div class="quarto-post image-right" data-index="13" data-categories="Sparse matrices,Sparse Cholesky factorisation,Python" data-listing-date-sort="1648699200000" data-listing-file-modified-sort="1661621430804" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="27" data-listing-word-count-sort="5239">
 <div class="thumbnail">
-<p><a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html"> <img src="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/tori.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external"></a></p><a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external">
+<p><img src="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/tori.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">
 <h3 class="no-anchor listing-title">
-Sparse Matrices 2: An invitation to a sparse Cholesky factorisation
+<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external">Sparse Matrices 2: An invitation to a sparse Cholesky factorisation</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Sparse matrices'); return false;">
 Sparse matrices
@@ -770,14 +785,12 @@ Sparse Cholesky factorisation
 Python
 </div>
 </div>
-<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">
 <div class="listing-description">
-<p>Come for the details, stay for the shitty Python, leave with disappointment. Not unlike the experience of dating me.</p>
+<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external">Come for the details, stay for the shitty Python, leave with disappointment. Not unlike the experience of dating me. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html">
+<a href="./posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html" class="no-external">
 <div class="listing-date">
 Mar 31, 2022
 </div>
@@ -787,19 +800,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="14" data-categories="Sparse matrices,Linear mixed models" data-listing-date-sort="1647867600000" data-listing-file-modified-sort="1661621430794" data-listing-reading-time-sort="22.05">
+<div class="quarto-post image-right" data-index="14" data-categories="Sparse matrices,Linear mixed models" data-listing-date-sort="1647921600000" data-listing-file-modified-sort="1661621430794" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="23" data-listing-word-count-sort="4410">
 <div class="thumbnail">
-<p><a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html"> <img src="./posts/2022-03-22-a-linear-mixed-effects-model/patti.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external"></a></p><a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external">
+<p><img src="./posts/2022-03-22-a-linear-mixed-effects-model/patti.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html">
 <h3 class="no-anchor listing-title">
-Sparse Matrices 1: The linear algebra of linear mixed effects models and their generalisations
+<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external">Sparse Matrices 1: The linear algebra of linear mixed effects models and their generalisations</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Sparse matrices'); return false;">
 Sparse matrices
@@ -808,14 +821,12 @@ Sparse matrices
 Linear mixed models
 </div>
 </div>
-<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html">
 <div class="listing-description">
-<p>Hubris. Just hubris. But before the fall comes the statement of purpose. This is that statement.</p>
+<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external">Hubris. Just hubris. But before the fall comes the statement of purpose. This is that statement. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html">
+<a href="./posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html" class="no-external">
 <div class="listing-date">
 Mar 22, 2022
 </div>
@@ -825,19 +836,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="15" data-categories="Computation,Assessing algorithms" data-listing-date-sort="1643115600000" data-listing-file-modified-sort="1661621430783" data-listing-reading-time-sort="17.81">
+<div class="quarto-post image-right" data-index="15" data-categories="Computation,Assessing algorithms" data-listing-date-sort="1643173200000" data-listing-file-modified-sort="1661621430783" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3562">
 <div class="thumbnail">
-<p><a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html"> <img src="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/yetta.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external"></a></p><a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external">
+<p><img src="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/yetta.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html">
 <h3 class="no-anchor listing-title">
-Barry Gibb came fourth in a Barry Gibb look alike contest (Repost)
+<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external">Barry Gibb came fourth in a Barry Gibb look alike contest (Repost)</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Computation'); return false;">
 Computation
@@ -846,14 +857,12 @@ Computation
 Assessing algorithms
 </div>
 </div>
-<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html">
 <div class="listing-description">
-<p>A repost from Andrew’s blog about comparing computational methods for performing a task. (Lightly edited.) Original posted 20 October, 2017.</p>
+<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external">A repost from Andrew’s blog about comparing computational methods for performing a task. (Lightly edited.) Original posted 20 October, 2017. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html">
+<a href="./posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html" class="no-external">
 <div class="listing-date">
 Jan 26, 2022
 </div>
@@ -863,19 +872,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="16" data-categories="Prior distributions,Fundamentals,Design dependence" data-listing-date-sort="1638968400000" data-listing-file-modified-sort="1661621430772" data-listing-reading-time-sort="17.9">
+<div class="quarto-post image-right" data-index="16" data-categories="Prior distributions,Fundamentals,Design dependence" data-listing-date-sort="1639026000000" data-listing-file-modified-sort="1661621430772" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3580">
 <div class="thumbnail">
-<p><a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html"> <img src="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external"></a></p><a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external">
+<p><img src="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html">
 <h3 class="no-anchor listing-title">
-Why won’t you cheat with me? (Repost)
+<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external">Why won’t you cheat with me? (Repost)</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -887,14 +896,12 @@ Fundamentals
 Design dependence
 </div>
 </div>
-<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html">
 <div class="listing-description">
-<p>A repost from Andrew’s blog about how design information infects multivariate priors. (Lightly edited. Well, a bit more than lightly because the last version didn’t fully make sense. But whatever. Blogs, eh.) Original posted 5 November, 2017.</p>
+<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external">A repost from Andrew’s blog about how design information infects multivariate priors. (Lightly edited. Well, a bit more than lightly because the last version didn’t fully make sense. But whatever. Blogs, eh.) Original posted 5 November, 2017. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html">
+<a href="./posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html" class="no-external">
 <div class="listing-date">
 Dec 9, 2021
 </div>
@@ -904,46 +911,61 @@ Dan Simpson, Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="17" data-categories="Bayesian Lasso,Variable Selection,Fundamentals,Theory,Things that don" t="" work'="" data-listing-date-sort="1638882000000" data-listing-file-modified-sort="1661621430759" data-listing-reading-time-sort="12.42">
+<div class="quarto-post image-right" data-index="17" data-categories="Bayesian Lasso,Variable Selection,Fundamentals,Theory,Things that don" t="" work'="" data-listing-date-sort="1638939600000" data-listing-file-modified-sort="1661621430759" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="13" data-listing-word-count-sort="2484">
+
 <div class="thumbnail">
-<a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html">
-<img src="./posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" class="thumnail-image">
+<a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html" class="no-external">
+
+<img src="./posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" class="thumbnail-image">
+
 </a>
 </div>
-<div class="body"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html">
-<h3 class="no-anchor listing-title">The king must die (repost)</h3>
-<div class="listing-subtitle"></div>
-</a>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('Bayesian Lasso'); return false;">Bayesian Lasso</div>
-<div class="listing-category" onclick="window.quartoListingCategory('Variable Selection'); return false;">Variable Selection</div>
-<div class="listing-category" onclick="window.quartoListingCategory('Fundamentals'); return false;">Fundamentals</div>
-<div class="listing-category" onclick="window.quartoListingCategory('Theory'); return false;">Theory</div>
-<div class="listing-category" onclick="window.quartoListingCategory('Things that don't work'); return false;">Things that don't work</div>
-</div>
-<a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html">
-<div class="delink listing-description">
-A repost (with edits, revisions, and footnotes) from Andrew's blog about how much I hate the Bayesian Lasso. Originally published 2nd November, 2017.
-</div>
-</a></div>
-<div class="metadata"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html">
-<div class="listing-date">Dec 8, 2021</div>
-<div class="listing-author">Dan Simpson, Dan Simpson</div>
-</a></div>
-</div>
-<div class="quarto-post image-right" data-index="18" data-categories="Gaussian processes,Fundamentals,Theory" data-listing-date-sort="1637672400000" data-listing-file-modified-sort="1662360532031" data-listing-reading-time-sort="44.805">
-<div class="thumbnail">
-<p><a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html"> <img src="./posts/2021-11-24-getting-into-the-subspace/pika.JPG" class="thumnail-image"> </a></p>
-</div>
+
 <div class="body">
-<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html">
-<h3 class="no-anchor listing-title">
-Getting into the subspace; or what happens when you approximate a Gaussian process
-</h3>
-<div class="listing-subtitle">
+
+<h3 class="no-anchor listing-title"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html" class="no-external">The king must die (repost)</a></h3>
+<div class="listing-subtitle"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html" class="no-external"></a></div>
+
+ 
+<div class="listing-categories">
+
+<div class="listing-category" onclick="window.quartoListingCategory('Bayesian Lasso'); return false;">Bayesian Lasso</div>
+
+<div class="listing-category" onclick="window.quartoListingCategory('Variable Selection'); return false;">Variable Selection</div>
+
+<div class="listing-category" onclick="window.quartoListingCategory('Fundamentals'); return false;">Fundamentals</div>
+
+<div class="listing-category" onclick="window.quartoListingCategory('Theory'); return false;">Theory</div>
+
+<div class="listing-category" onclick="window.quartoListingCategory('Things that don't work'); return false;">Things that don't work</div>
 
 </div>
-</a>
+ 
+
+<div class="delink listing-description"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html" class="no-external">A repost (with edits, revisions, and footnotes) from Andrew's blog about how much I hate the Bayesian Lasso. Originally published 2nd November, 2017.
+</a></div>
+
+</div>
+<div class="metadata"><a href="./posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html" class="no-external">
+<div class="listing-date">`Dec 8, 2021`{=html}</div>
+<div class="listing-author">Dan Simpson, Dan Simpson</div>
+
+</a></div>
+
+</div>
+<div class="quarto-post image-right" data-index="18" data-categories="Gaussian processes,Fundamentals,Theory" data-listing-date-sort="1637730000000" data-listing-file-modified-sort="1662360532031" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="45" data-listing-word-count-sort="8961">
+<div class="thumbnail">
+<p><a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external"></a></p><a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external">
+<p><img src="./posts/2021-11-24-getting-into-the-subspace/pika.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external">Getting into the subspace; or what happens when you approximate a Gaussian process</a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external"></a>
+</div>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Gaussian processes'); return false;">
 Gaussian processes
@@ -955,14 +977,12 @@ Fundamentals
 Theory
 </div>
 </div>
-<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html">
 <div class="listing-description">
-<p>Fuck man, I don’t know about this one. A lot of stuff happens. At some point there’s a lot of PDEs. There are proofs. Back away.</p>
+<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external">Fuck man, I don’t know about this one. A lot of stuff happens. At some point there’s a lot of PDEs. There are proofs. Back away. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html">
+<a href="./posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html" class="no-external">
 <div class="listing-date">
 Nov 24, 2021
 </div>
@@ -972,19 +992,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="19" data-categories="Gaussian processes,Fundamentals,Theory,Deep dive" data-listing-date-sort="1635858000000" data-listing-file-modified-sort="1662360370728" data-listing-reading-time-sort="40.23">
+<div class="quarto-post image-right" data-index="19" data-categories="Gaussian processes,Fundamentals,Theory,Deep dive" data-listing-date-sort="1635912000000" data-listing-file-modified-sort="1662360370728" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="41" data-listing-word-count-sort="8046">
 <div class="thumbnail">
-<p><a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html"> <img src="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/beaches.jpg" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external"></a></p><a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external">
+<p><img src="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/beaches.jpg" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html">
 <h3 class="no-anchor listing-title">
-Yes but what is a Gaussian process? or, Once, twice, three times a definition; or A descent into madness
+<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external">Yes but what is a Gaussian process? or, Once, twice, three times a definition; or A descent into madness</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Gaussian processes'); return false;">
 Gaussian processes
@@ -999,14 +1019,12 @@ Theory
 Deep dive
 </div>
 </div>
-<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html">
 <div class="listing-description">
-<p>Gaussian processes. As narrated by an increasingly deranged man during a day of torrential rain.</p>
+<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external">Gaussian processes. As narrated by an increasingly deranged man during a day of torrential rain. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html">
+<a href="./posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html" class="no-external">
 <div class="listing-date">
 Nov 3, 2021
 </div>
@@ -1016,19 +1034,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="20" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634389200000" data-listing-file-modified-sort="1661621430732" data-listing-reading-time-sort="7.34">
+<div class="quarto-post image-right" data-index="20" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634443200000" data-listing-file-modified-sort="1661621430732" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1468">
 <div class="thumbnail">
-<p><a href="./posts/2021-10-15-priors3/priors3.html"> <img src="./posts/2021-10-15-priors3/strictly.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-10-15-priors3/priors3.html" class="no-external"></a></p><a href="./posts/2021-10-15-priors3/priors3.html" class="no-external">
+<p><img src="./posts/2021-10-15-priors3/strictly.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-10-15-priors3/priors3.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-10-15-priors3/priors3.html">
 <h3 class="no-anchor listing-title">
-Priors: Fire With Fire (Track 3)
+<a href="./posts/2021-10-15-priors3/priors3.html" class="no-external">Priors: Fire With Fire (Track 3)</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-10-15-priors3/priors3.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -1037,14 +1055,12 @@ Prior distributions
 Fundamentals
 </div>
 </div>
-<a href="./posts/2021-10-15-priors3/priors3.html">
 <div class="listing-description">
-<p>Objective priors? In finite dimensions? A confidence trick? Yes.</p>
+<a href="./posts/2021-10-15-priors3/priors3.html" class="no-external">Objective priors? In finite dimensions? A confidence trick? Yes. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-10-15-priors3/priors3.html">
+<a href="./posts/2021-10-15-priors3/priors3.html" class="no-external">
 <div class="listing-date">
 Oct 17, 2021
 </div>
@@ -1054,19 +1070,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="21" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634302800000" data-listing-file-modified-sort="1661621430732" data-listing-reading-time-sort="6.145">
+<div class="quarto-post image-right" data-index="21" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634356800000" data-listing-file-modified-sort="1661621430732" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="7" data-listing-word-count-sort="1229">
 <div class="thumbnail">
-<p><a href="./posts/2021-10-14-priors2/priors2.html"> <img src="./posts/2021-10-14-priors2/nun.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-10-14-priors2/priors2.html" class="no-external"></a></p><a href="./posts/2021-10-14-priors2/priors2.html" class="no-external">
+<p><img src="./posts/2021-10-14-priors2/nun.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-10-14-priors2/priors2.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-10-14-priors2/priors2.html">
 <h3 class="no-anchor listing-title">
-Priors: Whole New Way (Track 2)
+<a href="./posts/2021-10-14-priors2/priors2.html" class="no-external">Priors: Whole New Way (Track 2)</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-10-14-priors2/priors2.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -1075,14 +1091,12 @@ Prior distributions
 Fundamentals
 </div>
 </div>
-<a href="./posts/2021-10-14-priors2/priors2.html">
 <div class="listing-description">
-<p>Conjugate Priors? The crystal deoderant of Bayesian statistics</p>
+<a href="./posts/2021-10-14-priors2/priors2.html" class="no-external">Conjugate Priors? The crystal deoderant of Bayesian statistics </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-10-14-priors2/priors2.html">
+<a href="./posts/2021-10-14-priors2/priors2.html" class="no-external">
 <div class="listing-date">
 Oct 16, 2021
 </div>
@@ -1092,19 +1106,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="22" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634216400000" data-listing-file-modified-sort="1661621430730" data-listing-reading-time-sort="7.39">
+<div class="quarto-post image-right" data-index="22" data-categories="Prior distributions,Fundamentals" data-listing-date-sort="1634270400000" data-listing-file-modified-sort="1661621430730" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1478">
 <div class="thumbnail">
-<p><a href="./posts/2021-10-14-priors1/priors1.html"> <img src="./posts/2021-10-14-priors1/perm.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-10-14-priors1/priors1.html" class="no-external"></a></p><a href="./posts/2021-10-14-priors1/priors1.html" class="no-external">
+<p><img src="./posts/2021-10-14-priors1/perm.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-10-14-priors1/priors1.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-10-14-priors1/priors1.html">
 <h3 class="no-anchor listing-title">
-Priors: Night work (Track 1)
+<a href="./posts/2021-10-14-priors1/priors1.html" class="no-external">Priors: Night work (Track 1)</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-10-14-priors1/priors1.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Prior distributions'); return false;">
 Prior distributions
@@ -1113,14 +1127,12 @@ Prior distributions
 Fundamentals
 </div>
 </div>
-<a href="./posts/2021-10-14-priors1/priors1.html">
 <div class="listing-description">
-<p>Priors? Defined. Questions? Outlined. Purpose? Declared.</p>
+<a href="./posts/2021-10-14-priors1/priors1.html" class="no-external">Priors? Defined. Questions? Outlined. Purpose? Declared. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-10-14-priors1/priors1.html">
+<a href="./posts/2021-10-14-priors1/priors1.html" class="no-external">
 <div class="listing-date">
 Oct 15, 2021
 </div>
@@ -1130,19 +1142,19 @@ Dan Simpson
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="23" data-categories="Teaching,Fundamentals,Opinionated" data-listing-date-sort="1634130000000" data-listing-file-modified-sort="1661621430725" data-listing-reading-time-sort="7.36">
+<div class="quarto-post image-right" data-index="23" data-categories="Teaching,Fundamentals,Opinionated" data-listing-date-sort="1634184000000" data-listing-file-modified-sort="1661621430725" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1472">
 <div class="thumbnail">
-<p><a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html"> <img src="./posts/2021-10-11-n-sane-in-the-membrane/police.JPG" class="thumnail-image"> </a></p>
+<p><a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external"></a></p><a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external">
+<p><img src="./posts/2021-10-11-n-sane-in-the-membrane/police.JPG" class="thumbnail-image"></p>
+</a><p><a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external"></a></p>
 </div>
 <div class="body">
-<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html">
 <h3 class="no-anchor listing-title">
-<span class="math inline">\((n-1)\)</span>-sane in the membrane
+<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external"><span class="math inline">\((n-1)\)</span>-sane in the membrane</a>
 </h3>
 <div class="listing-subtitle">
-
+<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external"></a>
 </div>
-</a>
 <div class="listing-categories">
 <div class="listing-category" onclick="window.quartoListingCategory('Teaching'); return false;">
 Teaching
@@ -1154,14 +1166,12 @@ Fundamentals
 Opinionated
 </div>
 </div>
-<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html">
 <div class="listing-description">
-<p>Windmills? Tilted. Topic? Boring. (n-1)? No.</p>
+<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external">Windmills? Tilted. Topic? Boring. (n-1)? No. </a>
 </div>
-</a>
 </div>
 <div class="metadata">
-<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html">
+<a href="./posts/2021-10-11-n-sane-in-the-membrane/n-sane-in-the-membrane.html" class="no-external">
 <div class="listing-date">
 Oct 14, 2021
 </div>
@@ -1203,9 +1213,23 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     icon: icon
   };
   anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
   const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
     }
   });
   clipboard.on('success', function(e) {
@@ -1217,17 +1241,51 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     button.classList.add('code-copy-button-checked');
     var currentTitle = button.getAttribute("title");
     button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
     setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
       button.setAttribute("title", currentTitle);
       button.classList.remove('code-copy-button-checked');
     }, 1000);
     // clear code selection
     e.clearSelection();
   });
-  function tippyHover(el, contentFn) {
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
     const config = {
       allowHTML: true,
-      content: contentFn,
       maxWidth: 500,
       delay: 100,
       arrow: false,
@@ -1237,8 +1295,17 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       interactive: true,
       interactiveBorder: 10,
       theme: 'quarto',
-      placement: 'bottom-start'
+      placement: 'bottom-start',
     };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
     window.tippy(el, config); 
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
@@ -1250,31 +1317,286 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       try { href = new URL(href).hash; } catch {}
       const id = href.replace(/^#\/?/, "");
       const note = window.document.getElementById(id);
-      return note.innerHTML;
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
     });
   }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
   var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
   for (var i=0; i<bibliorefs.length; i++) {
     const ref = bibliorefs[i];
-    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
-    tippyHover(ref, function() {
-      var popup = window.document.createElement('div');
-      cites.forEach(function(cite) {
-        var citeDiv = window.document.createElement('div');
-        citeDiv.classList.add('hanging-indent');
-        citeDiv.classList.add('csl-entry');
-        var biblioDiv = window.document.getElementById('ref-' + cite);
-        if (biblioDiv) {
-          citeDiv.innerHTML = biblioDiv.innerHTML;
-        }
-        popup.appendChild(citeDiv);
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
       });
-      return popup.innerHTML;
-    });
+    }
   }
 });
 </script>
 </div> <!-- /content -->
+
 
 
 

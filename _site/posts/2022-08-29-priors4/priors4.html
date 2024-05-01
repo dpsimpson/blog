@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.15">
+<meta name="generator" content="quarto-1.4.553">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -20,11 +20,12 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -49,43 +50,13 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
@@ -111,7 +82,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -120,21 +97,50 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
-
 <link href="../../site_libs/pagedtable-1.1/css/pagedtable.css" rel="stylesheet">
 <script src="../../site_libs/pagedtable-1.1/js/pagedtable.js"></script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="../../styles.css">
 <meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Priors part 4: Specifying priors that appropriately penalise complexity">
 <meta property="og:description" content="Let us not lie. Specifying priors are hard. This post steps through a technique for setting priors that I think gives a good basis for realistically complex problems.">
 <meta property="og:image" content="https://dansblog.netlify.app/posts/2022-08-29-priors4/tina.jpg">
-<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta name="twitter:title" content="Priors part 4: Specifying priors that appropriately penalise complexity">
 <meta name="twitter:description" content="Let us not lie. Specifying priors are hard. This post steps through a technique for setting priors that I think gives a good basis for realistically complex problems.">
 <meta name="twitter:image" content="https://dansblog.netlify.app/posts/2022-08-29-priors4/tina.jpg">
@@ -145,45 +151,48 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <body class="floating nav-fixed">
 
 <div id="quarto-search-results"></div>
-  <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
     </a>
   </div>
+            <div id="quarto-search" class="" title="Search"></div>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">About this blog</a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About this blog</span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -211,7 +220,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
       <div>
       <div class="quarto-title-meta-heading">Author</div>
       <div class="quarto-title-meta-contents">
-               <p>Dan Simpson </p>
+               <p><a href="https://dansblog.netlify.app">Dan Simpson</a> </p>
             </div>
     </div>
       
@@ -221,13 +230,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
         <p class="date">September 3, 2022</p>
       </div>
     </div>
+    
       
     </div>
     
   
   </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
     <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">Table of contents</h2>
    
@@ -242,11 +252,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </ul>
 </nav>
 </nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
     </div>
 <!-- main -->
 <main class="content quarto-banner-title-block" id="quarto-document-content">
+
 
 
 
@@ -285,17 +297,17 @@ u_i &amp;\sim \text{Gamma}(\alpha^{-1}, \alpha^{-1}),\qquad i=1,\ldots, n\text{?
 <p>There are a lot of ways to set prior distributions. I’ve covered some in previous posts and there are certainly more. But today I’m going to focus on one constructive method that I’m particular fond of: <a href="https://projecteuclid.org/journals/statistical-science/volume-32/issue-1/Penalising-Model-Component-Complexity--A-Principled-Practical-Approach-to/10.1214/16-STS576.full">penalised complexity priors</a>.</p>
 <p>These priors fall out from a certain way of seeing parameters. The idea is that some parameters in a model function as <em>flexibility parameters</em>. These naturally have a base value, which corresponds to the simplest model that they index. I’ll refer to the distribution you get when the parameter takes its base value as the <em>base model</em>.</p>
 <div id="exm-neg-binom" class="theorem example">
-<p><span class="theorem-title"><strong>Example 1 (Overdispersion of a negative binomial) </strong></span>The negative binomial distribution has two parameters: a mean <span class="math inline">\(\mu\)</span> and an overdispersion parameter <span class="math inline">\(\alpha\)</span> so the variance is <span class="math inline">\(\mu(1 + \alpha \mu)\)</span>. The mean parameter is <em>not</em> a flexibility parameter. Conceptually, changing the mean<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> does not make a distribution more or less complex, it simply shuttles it around.</p>
+<p><span class="theorem-title"><strong>Example 1 (Overdispersion of a negative binomial)</strong></span> The negative binomial distribution has two parameters: a mean <span class="math inline">\(\mu\)</span> and an overdispersion parameter <span class="math inline">\(\alpha\)</span> so the variance is <span class="math inline">\(\mu(1 + \alpha \mu)\)</span>. The mean parameter is <em>not</em> a flexibility parameter. Conceptually, changing the mean<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> does not make a distribution more or less complex, it simply shuttles it around.</p>
 <p>On the other hand, the overdispersion parameter <span class="math inline">\(\alpha\)</span> <em>is</em> a flexibility parameter. It’s special value is <span class="math inline">\(\alpha =0\)</span>, which corresponds to a Poisson distribution, which is the base model for the negative binomial distribution.</p>
 </div>
 <div id="exm-student-t" class="theorem example">
-<p><span class="theorem-title"><strong>Example 2 (Student-t degrees of freedom) </strong></span>The three parameter student-t distribution has density (parameterised by its standard deviation assuming <span class="math inline">\(\nu &gt; 2\)</span>!) <span class="math display">\[
+<p><span class="theorem-title"><strong>Example 2 (Student-t degrees of freedom)</strong></span> The three parameter student-t distribution has density (parameterised by its standard deviation assuming <span class="math inline">\(\nu &gt; 2\)</span>!) <span class="math display">\[
 p(y \mid \mu, \sigma, \nu) = \frac{\Gamma\left(\frac{\nu + 1}{2}\right)}{\sigma\nu \sqrt{\frac{\pi}{\nu-2}} \Gamma\left(\frac{\nu}{2}\right)}\left(1 + \frac{\frac{\nu-2}{\nu}\left(\frac{y - \mu}{\sigma}\right)^2}{\nu}\right)^{-\frac{\nu+1}{2}}, \qquad \nu &gt; 2.
 \]</span> This has mean <span class="math inline">\(\mu\)</span> and variance <span class="math inline">\(\sigma^2\)</span>. The slightly strange parameterisation and the restriction to <span class="math inline">\(\nu&gt;0\)</span> is useful because it lets us specify a prior on the <em>variance</em> itself and not some parameter that is the variance divided by some function<a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> of <span class="math inline">\(\nu\)</span>.</p>
 <p>The natural base model here is <span class="math inline">\(N(\mu, \sigma^2)\)</span>, which corresponds to <span class="math inline">\(\nu = \infty\)</span>.</p>
 </div>
 <div id="exm-gaussian" class="theorem example">
-<p><span class="theorem-title"><strong>Example 3 (Variance of a Gaussian random effect) </strong></span>A Gaussian distribution has two parameters: a mean <span class="math inline">\(\mu\)</span> and a standard deviation <span class="math inline">\(\tau\)</span>. Once again, <span class="math inline">\(\mu\)</span> is not a flexibility parameter, but in some circumstances <span class="math inline">\(\tau\)</span> can be.</p>
+<p><span class="theorem-title"><strong>Example 3 (Variance of a Gaussian random effect)</strong></span> A Gaussian distribution has two parameters: a mean <span class="math inline">\(\mu\)</span> and a standard deviation <span class="math inline">\(\tau\)</span>. Once again, <span class="math inline">\(\mu\)</span> is not a flexibility parameter, but in some circumstances <span class="math inline">\(\tau\)</span> can be.</p>
 <p>To see this, imagine that we have a simple random intercept model <span class="math display">\[\begin{align*}
 y_{ij} \mid u_j &amp;\sim N(u_j, \sigma^2),\qquad i=1,\ldots,n, j =1,\ldots,J \\
 u_j &amp;\sim N(\mu, \tau).
@@ -360,7 +372,7 @@ d(\xi) = \sqrt{2 \operatorname{KL}(f(\cdot \mid \xi) || f(\cdot \mid \xi_0))}.
 \]</span> If you’re wondering about that 2, it doesn’t really matter but it makes a couple of things ever so slightly cleaner down the road.</p>
 <p>Ok. Let’s compute some of these distances!</p>
 <div id="exm-neg-binom2" class="theorem example">
-<p><span class="theorem-title"><strong>Example 4 (Overdispersion of a negative binomial (continued)) </strong></span>The negative binomial distribution is discrete so <span class="math display">\[\begin{multline}
+<p><span class="theorem-title"><strong>Example 4 (Overdispersion of a negative binomial (continued))</strong></span> The negative binomial distribution is discrete so <span class="math display">\[\begin{multline}
 \frac{1}{2}d^2(\alpha) = \sum_{k=1}^\infty \frac{\Gamma(k + \alpha^{-1})}{\Gamma(\alpha^{-1})\Gamma(k+1)}  \left(\frac{\mu}{\mu + \alpha^{-1}}\right)^k \left(\frac{\alpha^{-1}}{\mu + \alpha^{-1}}\right)^{1/\alpha} \\
 \times \left[\log \Gamma(k  +\alpha^{-1}) - \log \Gamma(\alpha^{-1})  - k \log(\mu + \alpha^{-1})\right. \\ \left. + \alpha^{-1}\log \left(\alpha^{-1}(\mu + \alpha^{-2})\right)  + \mu \right].
 \end{multline}\]</span> This has two problems: I can’t work out what it is and it might<a href="#fn32" class="footnote-ref" id="fnref32" role="doc-noteref"><sup>32</sup></a> end up depending on <span class="math inline">\(\mu\)</span>.</p>
@@ -394,13 +406,17 @@ d(\alpha) \approx \sqrt{\alpha}.
 <span id="cb1-8"><a href="#cb1-8"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> approx), <span class="at">colour =</span> <span class="st">"blue"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb1-9"><a href="#cb1-9"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>It’s ok but it’s not perfect.</p>
 </div>
 <div id="exm-student-t-2" class="theorem example">
-<p><span class="theorem-title"><strong>Example 5 (Student-t degrees of freedom (Continued)) </strong></span>In our original paper, we computed the distance for the degrees of freedom numerically. However, <a href="https://arxiv.org/pdf/1811.08042.pdf">Yongqiang Tang</a> derived an analytic expression for it. <span class="math display">\[
+<p><span class="theorem-title"><strong>Example 5 (Student-t degrees of freedom (Continued))</strong></span> In our original paper, we computed the distance for the degrees of freedom numerically. However, <a href="https://arxiv.org/pdf/1811.08042.pdf">Yongqiang Tang</a> derived an analytic expression for it. <span class="math display">\[
 d(\nu) = \sqrt{1 +  \log\left(\frac{2\Gamma((\nu+1)/2)^2}{(\nu-2)\Gamma(\nu/2)^2}\right) - (\nu + 1)(\psi((\nu+1)/2) - \psi(\nu/2))}.
 \]</span></p>
 <p>If we note that <span class="math display">\[
@@ -426,13 +442,17 @@ d(\nu)^2 \approx&amp; {} 1 + \log \left(\frac{2}{\nu-2}\right) \\
 <span id="cb2-10"><a href="#cb2-10"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> approx), <span class="at">colour =</span> <span class="st">"blue"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb2-11"><a href="#cb2-11"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>Once again, this is not a terrible approximation, but it’s also not an excellent one.</p>
 </div>
 <div id="exm-gaussian-2" class="theorem example">
-<p><span class="theorem-title"><strong>Example 6 (Variance of a Gaussian random effect (Continued)) </strong></span>The distance calculation for the standard deviation of a Gaussian random effect has a very similar structure to the negative binomial case. We note, via wikipedia, that <span class="math display">\[\begin{align*}
+<p><span class="theorem-title"><strong>Example 6 (Variance of a Gaussian random effect (Continued))</strong></span> The distance calculation for the standard deviation of a Gaussian random effect has a very similar structure to the negative binomial case. We note, via wikipedia, that <span class="math display">\[\begin{align*}
 \operatorname{KL}(N(\mu, \tau^2) || N(\mu, \epsilon^2)) &amp;= \log \frac{\tau}{\epsilon} + \frac{\tau^2}{\epsilon^2} - \frac{1}{2}  \\
 &amp;= \frac{\tau^2}{\epsilon^2}\left(1 + \frac{\epsilon^2}{\tau^2}\log \frac{\tau}{\epsilon}- \frac{\epsilon^2}{2\tau^2}\right).
 \end{align*}\]</span></p>
@@ -455,7 +475,7 @@ p_\xi(\xi) = p_d(d(\xi))\left|\frac{d}{d\xi} d(\xi)\right|,
 p(\xi) = \lambda e^{-\lambda d(\xi)}\left|\frac{d}{d\xi} d(\xi)\right|.
 \]</span></p>
 <div id="exm-neg-bin-3" class="theorem example">
-<p><span class="theorem-title"><strong>Example 7 (Overdispersion of a negative binomial (continued)) </strong></span>The exact PC prior for the overdispersion parameter in the negative binomial distribution is <span class="math display">\[
+<p><span class="theorem-title"><strong>Example 7 (Overdispersion of a negative binomial (continued))</strong></span> The exact PC prior for the overdispersion parameter in the negative binomial distribution is <span class="math display">\[
 p(\alpha) = \frac{\lambda}{\alpha^{2}}\frac{\left|\psi'\left(\alpha^{-1}\right)-\alpha\right|}{ \sqrt{2 \log (\alpha^{-1}) - 2 \psi(\alpha^{-1})}} \exp \left[ -\lambda \sqrt{2 \log (\alpha^{-1}) - 2 \psi(\alpha^{-1})}\right],
 \]</span> where <span class="math inline">\(\psi'(\cdot)\)</span> is the derivative of the digamma function.</p>
 <p>On the other hand, if we use the approximate distance we get <span class="math display">\[
@@ -477,20 +497,28 @@ p_\text{approx}(\alpha) = \frac{\lambda}{2\sqrt{\alpha}} e^{-\lambda \sqrt{\alph
 <span id="cb3-13"><a href="#cb3-13"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> approx), <span class="at">colour =</span> <span class="st">"blue"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb3-14"><a href="#cb3-14"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1"></a>dat <span class="sc">|&gt;</span></span>
 <span id="cb4-2"><a href="#cb4-2"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> alpha, <span class="at">y =</span> exact <span class="sc">-</span> approx)) <span class="sc">+</span> </span>
 <span id="cb4-3"><a href="#cb4-3"></a>  <span class="fu">geom_line</span>(<span class="at">colour =</span> <span class="st">"black"</span>) <span class="sc">+</span></span>
 <span id="cb4-4"><a href="#cb4-4"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-3-2.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-3-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>That’s a pretty good agreement!</p>
 </div>
 <div id="exm-student-t-3" class="theorem example">
-<p><span class="theorem-title"><strong>Example 8 (Student-t degrees of freedom (Continued)) </strong></span>An interesting feature of the PC prior (and any prior where the density on the distance scale takes its maximum at the base model) is that the implied prior on <span class="math inline">\(\nu\)</span> has no finite moments. In fact, if your prior on <span class="math inline">\(\nu\)</span> has finite moments, the density on the distance scale is zero at zero!</p>
+<p><span class="theorem-title"><strong>Example 8 (Student-t degrees of freedom (Continued))</strong></span> An interesting feature of the PC prior (and any prior where the density on the distance scale takes its maximum at the base model) is that the implied prior on <span class="math inline">\(\nu\)</span> has no finite moments. In fact, if your prior on <span class="math inline">\(\nu\)</span> has finite moments, the density on the distance scale is zero at zero!</p>
 <p>The exact PC prior for the degrees of freedom in a Student-t distribution is <span class="math display">\[
 p(\nu) = \lambda \frac{\frac{1}{\nu-2} + \frac{\nu+1}{2}\left[\psi'\left(\frac{\nu+1}{2}\right)-\psi'\left(\frac{\nu}{2}\right)\right]}{4d(\nu)}e^{-\lambda d(\nu)},
 \]</span> where <span class="math inline">\(d(\nu)\)</span> is given above.</p>
@@ -515,14 +543,22 @@ p_\text{approx}(\nu) = \lambda\frac{\nu(\nu+2)(2\nu+9) + 4}{3\nu^2(\nu+1)^2(\nu-
 <span id="cb5-15"><a href="#cb5-15"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> approx), <span class="at">colour =</span> <span class="st">"blue"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb5-16"><a href="#cb5-16"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1"></a>dat <span class="sc">|&gt;</span></span>
 <span id="cb6-2"><a href="#cb6-2"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> nu, <span class="at">y =</span> exact <span class="sc">-</span> approx)) <span class="sc">+</span> </span>
 <span id="cb6-3"><a href="#cb6-3"></a>  <span class="fu">geom_line</span>(<span class="at">colour =</span> <span class="st">"black"</span>) <span class="sc">+</span></span>
 <span id="cb6-4"><a href="#cb6-4"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="priors4_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="priors4_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>The approximate prior isn’t so good for <span class="math inline">\(\nu\)</span> near 2. In the original paper, the distance was tabulated for <span class="math inline">\(\nu &lt; 9\)</span> and a different high-precision asymptotic expansion was given for <span class="math inline">\(\nu&gt;9\)</span>.</p>
@@ -530,12 +566,12 @@ p_\text{approx}(\nu) = \lambda\frac{\nu(\nu+2)(2\nu+9) + 4}{3\nu^2(\nu+1)^2(\nu-
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="student_t.png" class="img-fluid figure-img"></p>
-<p></p><figcaption class="figure-caption">(Left) Exponential priors on <span class="math inline">\(\nu\)</span> shown on the distance scale, from right to left the mean of the prior increases (5, 10, 20). (Right) <span class="math inline">\(\text{Uniform}[2, M]\)</span> priors on <span class="math inline">\(\nu\)</span> shown on the distance scale. From left to right <span class="math inline">\(M\)</span> increases (20, 50, 100).</figcaption><p></p>
+<figcaption>(Left) Exponential priors on <span class="math inline">\(\nu\)</span> shown on the distance scale, from right to left the mean of the prior increases (5, 10, 20). (Right) <span class="math inline">\(\text{Uniform}[2, M]\)</span> priors on <span class="math inline">\(\nu\)</span> shown on the distance scale. From left to right <span class="math inline">\(M\)</span> increases (20, 50, 100).</figcaption>
 </figure>
 </div>
 </div>
 <div id="exm-gaussian-3" class="theorem example">
-<p><span class="theorem-title"><strong>Example 9 (Variance of a Gaussian random effect (Continued)) </strong></span>This is the easy one because the distance is equal to the standard deviation! The PC prior for the standard deviation of a Gaussian distribution is an exponential prior <span class="math display">\[
+<p><span class="theorem-title"><strong>Example 9 (Variance of a Gaussian random effect (Continued))</strong></span> This is the easy one because the distance is equal to the standard deviation! The PC prior for the standard deviation of a Gaussian distribution is an exponential prior <span class="math display">\[
 p(\sigma) = \lambda e^{-\lambda \sigma}.
 \]</span> More generally, if <span class="math inline">\(u \sim N(0, \sigma^2 R)\)</span> is a multivariate normal distribution, than the PC prior for <span class="math inline">\(\sigma\)</span> is still <span class="math display">\[
 p(\sigma) = \lambda e^{-\lambda \sigma}.
@@ -628,17 +664,16 @@ p(\gamma) = \frac{\lambda}{2}\gamma^{-3/2} e^{-\lambda \gamma^{-1/2}}.
 <li id="fn39"><p>Always average on the natural scale. For non-negative parameters geometric means make a lot more sense than arithmetic means!<a href="#fnref39" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn40"><p>Homosexually titled <em>You just keep on pushing my love over the borderline: a rejoinder</em>. I’m still not sure how I got away with that.<a href="#fnref40" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
-  author = {Dan Simpson},
-  editor = {},
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
+  author = {Simpson, Dan},
   title = {Priors Part 4: {Specifying} Priors That Appropriately
     Penalise Complexity},
   date = {2022-09-03},
   url = {https://dansblog.netlify.app/2022-08-29-priors4/2022-08-29-priors4.html},
   langid = {en}
 }
-</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
-Dan Simpson. 2022. <span>“Priors Part 4: Specifying Priors That
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="listitem">
+Simpson, Dan. 2022. <span>“Priors Part 4: Specifying Priors That
 Appropriately Penalise Complexity.”</span> September 3, 2022. <a href="https://dansblog.netlify.app/2022-08-29-priors4/2022-08-29-priors4.html">https://dansblog.netlify.app/2022-08-29-priors4/2022-08-29-priors4.html</a>.
 </div></div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -668,9 +703,23 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     icon: icon
   };
   anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
   const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
     }
   });
   clipboard.on('success', function(e) {
@@ -682,17 +731,51 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     button.classList.add('code-copy-button-checked');
     var currentTitle = button.getAttribute("title");
     button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
     setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
       button.setAttribute("title", currentTitle);
       button.classList.remove('code-copy-button-checked');
     }, 1000);
     // clear code selection
     e.clearSelection();
   });
-  function tippyHover(el, contentFn) {
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
     const config = {
       allowHTML: true,
-      content: contentFn,
       maxWidth: 500,
       delay: 100,
       arrow: false,
@@ -702,8 +785,17 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       interactive: true,
       interactiveBorder: 10,
       theme: 'quarto',
-      placement: 'bottom-start'
+      placement: 'bottom-start',
     };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
     window.tippy(el, config); 
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
@@ -715,31 +807,286 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       try { href = new URL(href).hash; } catch {}
       const id = href.replace(/^#\/?/, "");
       const note = window.document.getElementById(id);
-      return note.innerHTML;
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
     });
   }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
   var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
   for (var i=0; i<bibliorefs.length; i++) {
     const ref = bibliorefs[i];
-    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
-    tippyHover(ref, function() {
-      var popup = window.document.createElement('div');
-      cites.forEach(function(cite) {
-        var citeDiv = window.document.createElement('div');
-        citeDiv.classList.add('hanging-indent');
-        citeDiv.classList.add('csl-entry');
-        var biblioDiv = window.document.getElementById('ref-' + cite);
-        if (biblioDiv) {
-          citeDiv.innerHTML = biblioDiv.innerHTML;
-        }
-        popup.appendChild(citeDiv);
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
       });
-      return popup.innerHTML;
-    });
+    }
   }
 });
 </script>
 </div> <!-- /content -->
+
 
 
 

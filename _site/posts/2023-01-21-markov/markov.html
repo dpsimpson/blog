@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.15">
+<meta name="generator" content="quarto-1.4.553">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -20,7 +20,7 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
 </style>
@@ -48,7 +48,13 @@ ul.task-list li input[type="checkbox"] {
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -57,18 +63,48 @@ ul.task-list li input[type="checkbox"] {
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="../../styles.css">
 <meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Markovian Gaussian processes: A lot of theory and some practical stuff">
 <meta property="og:description" content="Well this is gonna be technical. And yes, I’m going to define it three ways. Because that’s how comedy works.">
 <meta property="og:image" content="https://dansblog.netlify.app/posts/2023-01-21-markov/gays.png">
-<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta property="og:image:height" content="640">
 <meta property="og:image:width" content="560">
 <meta name="twitter:title" content="Markovian Gaussian processes: A lot of theory and some practical stuff">
@@ -83,45 +119,48 @@ ul.task-list li input[type="checkbox"] {
 <body class="floating nav-fixed">
 
 <div id="quarto-search-results"></div>
-  <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
     </a>
   </div>
+            <div id="quarto-search" class="" title="Search"></div>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">About this blog</a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About this blog</span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -150,7 +189,7 @@ ul.task-list li input[type="checkbox"] {
       <div>
       <div class="quarto-title-meta-heading">Author</div>
       <div class="quarto-title-meta-contents">
-               <p>Dan Simpson </p>
+               <p><a href="https://dansblog.netlify.app">Dan Simpson</a> </p>
             </div>
     </div>
       
@@ -160,13 +199,14 @@ ul.task-list li input[type="checkbox"] {
         <p class="date">January 21, 2023</p>
       </div>
     </div>
+    
       
     </div>
     
   
   </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
     <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">Table of contents</h2>
    
@@ -191,11 +231,13 @@ ul.task-list li input[type="checkbox"] {
   </ul>
 </nav>
 </nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
     </div>
 <!-- main -->
 <main class="content quarto-banner-title-block" id="quarto-document-content">
+
 
 
 
@@ -218,7 +260,7 @@ ul.task-list li input[type="checkbox"] {
 <h3 class="anchored" data-anchor-id="white-noise-and-its-associated-things">White noise and its associated things</h3>
 <p>Thankfully I’ve covered this <a href="https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html#part-2-an-invitation-to-the-theory-of-stationary-gaussian-processes">in a previous blog</a>. The engineering definition of white noise as a GP <span class="math inline">\(w(\cdot)\)</span> such that for every <span class="math inline">\(s\)</span>, <span class="math inline">\(w(s)\)</span> is an iid <span class="math inline">\(N(0,1)\)</span> random variable is not good enough for our purposes. Such a process is hauntingly irregular<a href="#fn7" class="footnote-ref" id="fnref7" role="doc-noteref"><sup>7</sup></a> and it’s fairly difficult to actually do anything with it. Instead, we consider white noise as a random function defined on the subsets of our domain. This feels like it’s just needless technicality, but it turns out to actually be very very useful.</p>
 <div id="def-white-noise" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 1 (White noise) </strong></span>A (complex) Gaussian white noise is a random measure<a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> <span class="math inline">\(W(\cdot)\)</span> such that, for every<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> disjoint<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> pair of sets <span class="math inline">\(A, B\)</span> satisfies the following properties</p>
+<p><span class="theorem-title"><strong>Definition 1 (White noise)</strong></span> A (complex) Gaussian white noise is a random measure<a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> <span class="math inline">\(W(\cdot)\)</span> such that, for every<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> disjoint<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> pair of sets <span class="math inline">\(A, B\)</span> satisfies the following properties</p>
 <ol type="1">
 <li><span class="math inline">\(W(A) \sim N(0, |A|)\)</span></li>
 <li>If <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span> are disjoint then <span class="math inline">\(W(A\cup B) = W(A) + W(B)\)</span></li>
@@ -242,7 +284,7 @@ f(s) = f_11_{A_1}(s) + f_2 1_{A_2}(s),
 \]</span></p>
 <p>With this notion in hand, we can finally define the action of an operator on white noise.</p>
 <div id="def-operator-on-noise" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 2 (The action of an operator on white noise) </strong></span>Let <span class="math inline">\(\mathcal{A}\)</span> be an operator on some Hilbert space of functions <span class="math inline">\(H\)</span> with adjoint <span class="math inline">\(\mathcal{A}^*\)</span>, then we define <span class="math inline">\(\mathcal{A}W\)</span> to be the random measure that satisfies, for every <span class="math inline">\(f \in \operatorname{Dom}(\mathcal{A^*})\)</span>, <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 2 (The action of an operator on white noise)</strong></span> Let <span class="math inline">\(\mathcal{A}\)</span> be an operator on some Hilbert space of functions <span class="math inline">\(H\)</span> with adjoint <span class="math inline">\(\mathcal{A}^*\)</span>, then we define <span class="math inline">\(\mathcal{A}W\)</span> to be the random measure that satisfies, for every <span class="math inline">\(f \in \operatorname{Dom}(\mathcal{A^*})\)</span>, <span class="math display">\[
 \int_T f(s) \, d (\mathcal{A}W)(s) = \int_T \mathcal{A}^*f(s) \, dW(s).
 \]</span></p>
 </div>
@@ -251,7 +293,7 @@ f(s) = f_11_{A_1}(s) + f_2 1_{A_2}(s),
 <h3 class="anchored" data-anchor-id="the-generalised-gaussian-process-eta-mathcalc12w">The generalised Gaussian process <span class="math inline">\(\eta = \mathcal{C}^{1/2}W\)</span></h3>
 <p>One of those inconvenient things that you may have noticed from above is that <span class="math inline">\(\mathcal{C}^{1/2}W\)</span> is <em>not</em> going to be a function. It is going to be a measure or, as it is more commonly known, a <em>generalised Gaussian process</em>. This is the GP analogue of a generalised function and, as such, only gives an actual value when you integrate it against some sufficiently smooth function.</p>
 <div id="def-generalised-gp" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 3 (Generalised Gaussian Process) </strong></span>A generalised Gaussian process <span class="math inline">\(\xi\)</span> is a random signed measure (or a random generalised function) that, for any <span class="math inline">\(f \in C^\infty_0(T)\)</span>, <span class="math inline">\(\int_T f(s)\,d\xi(s)\)</span> is Gaussian. We will often write <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 3 (Generalised Gaussian Process)</strong></span> A generalised Gaussian process <span class="math inline">\(\xi\)</span> is a random signed measure (or a random generalised function) that, for any <span class="math inline">\(f \in C^\infty_0(T)\)</span>, <span class="math inline">\(\int_T f(s)\,d\xi(s)\)</span> is Gaussian. We will often write <span class="math display">\[
 \xi(f) = \int_T f(s)\,d\xi(s),
 \]</span> which helps us understand that a generalised GP is indexed by functions.</p>
 </div>
@@ -276,7 +318,7 @@ f(s) = f_11_{A_1}(s) + f_2 1_{A_2}(s),
 </ol>
 <p>As this has to be true for <em>every</em> vector <span class="math inline">\(f\)</span>, this is equivalent to the linear system <span class="math display">\[
 K u \sim N(0, C),
-\]</span> where <span class="math inline">\(K_{kj} = \int_T \psi_k(s) \mathcal{C}^{-1/2} \psi_j(s)\,ds\)</span> and <span class="math inline">\(C_{kj} = \sum_{j,k=1}^n \psi_j(s)\psi_k(s)\)</span>.</p>
+\]</span> where <span class="math inline">\(K_{kj} =  \int_T \psi_k(s) \mathcal{C}^{-1/2} \psi_j(s)\,ds\)</span> and <span class="math inline">\(C_{kj} = \sum_{j,k=1}^n \psi_j(s)\psi_k(s)\)</span>.</p>
 <p>Obviously this method is only going to be useful if it’s possible to compute the elements of <span class="math inline">\(K\)</span> and <span class="math inline">\(C\)</span> efficiently. In the special case where <span class="math inline">\(\mathcal{C}^{-1/2}\)</span> is a differential operator<a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a> and the basis functions are chosen to have compact support<a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a>, these calculations form the basis of the finite element method for solving partial differential equations.</p>
 <p>The most important thing, however, is that if <span class="math inline">\(\mathcal{C}^{-1/2}\)</span> is a differential operator <em>and</em> the basis functions have compact support, the matrix <span class="math inline">\(K\)</span> is sparse and the matrix <span class="math inline">\(C\)</span> can be made<a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a> diagonal, which means that <span class="math display">\[
 u \sim N(0, K^{-1} C K^{-T})
@@ -290,18 +332,18 @@ u \sim N(0, K^{-1} C K^{-T})
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="markov.png" class="img-fluid figure-img"></p>
-<p></p><figcaption class="figure-caption">A graphical illustration of the three sets used above Markov property.</figcaption><p></p>
+<figcaption>A graphical illustration of the three sets used above Markov property.</figcaption>
 </figure>
 </div>
 <p>That definition is all well and good for a hand-wavey approach, but unfortunately it doesn’t quite hold up to mathematics. In particular, if we try to make <span class="math inline">\(\Gamma\)</span> a line<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a>, we will hit a few problems. So instead let’s do this properly.</p>
 <p>All of the material here is covered in Rozanov’s excellent but unimaginatively named book <em>Markov Random Fields</em>.</p>
-<p>To set us up, we should consider the types of sets we have. There are three main sets that we are going to be using: the open<a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a> set <span class="math inline">\(S_1 \subset T\)</span>, its boundary<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> <span class="math inline">\(\Gamma \supseteq \partial S\)</span>. For example, if <span class="math inline">\(T = \mathbb{R}^2\)</span> and <span class="math inline">\(S\)</span> is the interior of the unit circle, and its open complement <span class="math inline">\(S_2 = S_1^C \backslash \partial S_1\)</span>. For a 2D example, if <span class="math inline">\(S_1\)</span> is the <em>interior</em> of the unit circle, then <span class="math inline">\(\Gamma\)</span> could be the unit circle, and <span class="math inline">\(S_2\)</span> would be the <em>exterior</em> of the unit circle.</p>
+<p>To set us up, we should consider the types of sets we have. There are three main sets that we are going to be using: the open<a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a> set <span class="math inline">\(S_1 \subset T\)</span>, its boundary<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> <span class="math inline">\(\Gamma \supseteq \partial S\)</span>. For example, if <span class="math inline">\(T  = \mathbb{R}^2\)</span> and <span class="math inline">\(S\)</span> is the interior of the unit circle, and its open complement <span class="math inline">\(S_2 = S_1^C \backslash \partial S_1\)</span>. For a 2D example, if <span class="math inline">\(S_1\)</span> is the <em>interior</em> of the unit circle, then <span class="math inline">\(\Gamma\)</span> could be the unit circle, and <span class="math inline">\(S_2\)</span> would be the <em>exterior</em> of the unit circle.</p>
 <p>One problem with these sets, is that while <span class="math inline">\(S_1\)</span> will be a 2D set, <span class="math inline">\(\Gamma\)</span> is only one dimensional (it’s a circle, so it’s a line!). This causes some troubles mathematically, which we need to get around by using the <span class="math inline">\(\epsilon\)</span> fattening of <span class="math inline">\(\Gamma\)</span>, which is the set <span class="math display">\[
 \Gamma^\epsilon = \{s \in T : d(s, \Gamma) &lt; \epsilon\},
 \]</span> where <span class="math inline">\(d(s, \Gamma)\)</span> is the distance from <span class="math inline">\(s\)</span> to the nearest point in <span class="math inline">\(\Gamma\)</span>.</p>
 <p>With all of this in hand we can now give a general definition of the Markov property.</p>
 <div id="def-markov" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 4 (The Markov property for a generalised Gaussian process) </strong></span>Consider a zero mean generalised GP<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> <span class="math inline">\(\xi\)</span>. For any<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> subset <span class="math inline">\(A \subset T\)</span>, we define the collection of random variables<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 4 (The Markov property for a generalised Gaussian process)</strong></span> Consider a zero mean generalised GP<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a> <span class="math inline">\(\xi\)</span>. For any<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a> subset <span class="math inline">\(A \subset T\)</span>, we define the collection of random variables<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> <span class="math display">\[
 H(A) = \operatorname{span}\{\xi(f): \operatorname{supp}(f) \subseteq A\}.
 \]</span> We will call <span class="math inline">\(\{H(A); A \subseteq T\}\)</span> the <em>random field</em><a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> associated with <span class="math inline">\(\xi\)</span>.</p>
 <p>Let <span class="math inline">\(\mathcal{G}\)</span> be a system of domains<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> in <span class="math inline">\(T\)</span>. We say that <span class="math inline">\(\xi\)</span> has the Markov<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a> property (with respect to <span class="math inline">\(\mathcal{G}\)</span>) if, for all <span class="math inline">\(S_1 \in \mathcal{G}\)</span> and for any sufficiently small <span class="math inline">\(\epsilon &gt; 0\)</span>, <span class="math display">\[
@@ -312,7 +354,7 @@ H(A) = \operatorname{span}\{\xi(f): \operatorname{supp}(f) \subseteq A\}.
 <h3 class="anchored" data-anchor-id="rewriting-the-markov-property-i-splitting-spaces">Rewriting the Markov property I: Splitting spaces</h3>
 <p>The Markov property defined above is great and everything, but in order to manipulate it, we need to think carefully about the how the domains <span class="math inline">\(S_1\)</span>, <span class="math inline">\(\Gamma^\epsilon\)</span> and <span class="math inline">\(S_2\)</span> can be used to divide up the space <span class="math inline">\(H(T)\)</span>. To do this, we need to basically localise the Markov property to one set of <span class="math inline">\(S_1\)</span>, <span class="math inline">\(\Gamma\)</span>, <span class="math inline">\(S_2\)</span>. This concept is called a <em>splitting</em><a href="#fn30" class="footnote-ref" id="fnref30" role="doc-noteref"><sup>30</sup></a> of <span class="math inline">\(H(S_1)\)</span> and <span class="math inline">\(H(S_2)\)</span> by <span class="math inline">\(H(\Gamma^\epsilon)\)</span>.</p>
 <div id="def-splitting" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 5 </strong></span>For some domain <span class="math inline">\(S_1\)</span> and <span class="math inline">\(\Gamma \supseteq \partial S_1\)</span>, set <span class="math inline">\(S_2 = (S_1 \cup \Gamma)^c\)</span>. The space <span class="math inline">\(H(\Gamma^\epsilon)\)</span> splits <span class="math inline">\(H(S_1)\)</span> and <span class="math inline">\(H(S_2)\)</span> if <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 5</strong></span> For some domain <span class="math inline">\(S_1\)</span> and <span class="math inline">\(\Gamma \supseteq \partial S_1\)</span>, set <span class="math inline">\(S_2 = (S_1 \cup \Gamma)^c\)</span>. The space <span class="math inline">\(H(\Gamma^\epsilon)\)</span> splits <span class="math inline">\(H(S_1)\)</span> and <span class="math inline">\(H(S_2)\)</span> if <span class="math display">\[
 H(T) = H(S_1 \ominus \Gamma^\epsilon) \oplus H(\Gamma^\epsilon) \oplus H(S_2 \ominus \Gamma^\epsilon),
 \]</span> where <span class="math inline">\(\oplus\)</span> is the sum of orthogonal components<a href="#fn31" class="footnote-ref" id="fnref31" role="doc-noteref"><sup>31</sup></a> and <span class="math inline">\(x\in H(S \ominus \Gamma^\epsilon)\)</span> if and only if there is some <span class="math inline">\(y \in H(S)\)</span> such that<a href="#fn32" class="footnote-ref" id="fnref32" role="doc-noteref"><sup>32</sup></a> <span class="math display">\[
 x = y - \mathbb{E}(y \mid H(\Gamma^\epsilon)).
@@ -330,7 +372,7 @@ H_+(\Gamma) = \bigcap_{\epsilon&gt;0} H(\Gamma^\epsilon)
 \end{align*}\]</span></p>
 <p>This gives the following statement of the Markov property.</p>
 <div id="def-markov2" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 6 </strong></span>Let <span class="math inline">\(\mathcal{G}\)</span> be a system of domains<a href="#fn36" class="footnote-ref" id="fnref36" role="doc-noteref"><sup>36</sup></a> in <span class="math inline">\(T\)</span>. We say that <span class="math inline">\(\xi\)</span> has the Markov property (with respect to <span class="math inline">\(\mathcal{G}\)</span>) if, for all <span class="math inline">\(S_1 \in \mathcal{G}\)</span>, <span class="math inline">\(\Gamma\supseteq \partial S_1\)</span> ,<span class="math inline">\(S_2 = S_1^C \backslash \Gamma\)</span>, we have, for some <span class="math inline">\(\epsilon &gt; 0\)</span> <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 6</strong></span> Let <span class="math inline">\(\mathcal{G}\)</span> be a system of domains<a href="#fn36" class="footnote-ref" id="fnref36" role="doc-noteref"><sup>36</sup></a> in <span class="math inline">\(T\)</span>. We say that <span class="math inline">\(\xi\)</span> has the Markov property (with respect to <span class="math inline">\(\mathcal{G}\)</span>) if, for all <span class="math inline">\(S_1 \in \mathcal{G}\)</span>, <span class="math inline">\(\Gamma\supseteq \partial S_1\)</span> ,<span class="math inline">\(S_2 = S_1^C \backslash \Gamma\)</span>, we have, for some <span class="math inline">\(\epsilon &gt; 0\)</span> <span class="math display">\[
 H_+(\Gamma^\epsilon) = H_+(S_1 \cup \Gamma^\epsilon) \cap H_+(S_1 \cup \Gamma^\epsilon)
 \]</span> and <span class="math display">\[
 H_+(S_1 \cup \Gamma)^\perp \perp H_+(S_2 \cup \Gamma)^\perp.
@@ -341,7 +383,7 @@ H_+(S_1 \cup \Gamma)^\perp \perp H_+(S_2 \cup \Gamma)^\perp.
 <h3 class="anchored" data-anchor-id="rewriting-the-markov-property-ii-the-dual-random-field-ha">Rewriting the Markov property II: The dual random field <span class="math inline">\(H^*(A)\)</span></h3>
 <p>We are going to fall further down the abstraction rabbit hole in the hope of ending up somewhere useful. In this case, we are going to invent an object that has no reason to exist and we will show that it can be used to compactly restate the Markov property. It will turn out in the next section that it is actually a useful characterization that will lead (finally) to an operational characterisation of a Markovian Gaussian process.</p>
 <div id="def-dual-field" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 7 (Dual random field) </strong></span>Let <span class="math inline">\(\xi\)</span> be a generalised Gaussian process with an associated random field <span class="math inline">\(H(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> and let <span class="math inline">\(\mathcal{G}\)</span> be a complete system of open domains in <span class="math inline">\(T\)</span>. The <em>dual</em> to the random field <span class="math inline">\(H(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> on the system <span class="math inline">\(\mathcal{G}\)</span> is the random field <span class="math inline">\(H^*(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> that satisfies <span class="math display">\[
+<p><span class="theorem-title"><strong>Definition 7 (Dual random field)</strong></span> Let <span class="math inline">\(\xi\)</span> be a generalised Gaussian process with an associated random field <span class="math inline">\(H(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> and let <span class="math inline">\(\mathcal{G}\)</span> be a complete system of open domains in <span class="math inline">\(T\)</span>. The <em>dual</em> to the random field <span class="math inline">\(H(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> on the system <span class="math inline">\(\mathcal{G}\)</span> is the random field <span class="math inline">\(H^*(A)\)</span>, <span class="math inline">\(A \subseteq T\)</span> that satisfies <span class="math display">\[
 H^*(T) = H(T)
 \]</span> and <span class="math display">\[
 H^*(A) = H_+(A^c)^\perp, \qquad A \in \mathcal{G}.
@@ -359,7 +401,7 @@ H_+(S_1 \cup \Gamma)^\perp = H^*(S_2 \backslash \Gamma).
 \]</span></p>
 <p>This gives us our third (and final) characterisation of the (second-order) Markov property.</p>
 <div id="def-markov3" class="theorem definition">
-<p><span class="theorem-title"><strong>Definition 8 </strong></span>Let <span class="math inline">\(\mathcal{G}\)</span> be a system of domains<a href="#fn37" class="footnote-ref" id="fnref37" role="doc-noteref"><sup>37</sup></a> in <span class="math inline">\(T\)</span>. Assume that the random field <span class="math inline">\(H(\cdot)\)</span> has an associated dual random field <span class="math inline">\(H^*(\cdot)\)</span>.</p>
+<p><span class="theorem-title"><strong>Definition 8</strong></span> Let <span class="math inline">\(\mathcal{G}\)</span> be a system of domains<a href="#fn37" class="footnote-ref" id="fnref37" role="doc-noteref"><sup>37</sup></a> in <span class="math inline">\(T\)</span>. Assume that the random field <span class="math inline">\(H(\cdot)\)</span> has an associated dual random field <span class="math inline">\(H^*(\cdot)\)</span>.</p>
 <p>We say that <span class="math inline">\(H(A)\)</span>, <span class="math inline">\(A \in \mathcal{G}\)</span> has the Markov property (with respect to<a href="#fn38" class="footnote-ref" id="fnref38" role="doc-noteref"><sup>38</sup></a> <span class="math inline">\(\mathcal{G}\)</span>) if and only if for all <span class="math inline">\(S_1 \in \mathcal{G}\)</span>, <span class="math display">\[
 H^*(S_1 \backslash \Gamma) \perp H^*(S_2 \backslash \Gamma).
 \]</span> When this holds, we say that the dual field is <em>orthogonal</em> with respect to <span class="math inline">\(\mathcal{G}\)</span>.</p>
@@ -411,7 +453,7 @@ C_0^\infty(T) \subseteq V(T), \qquad \overline{C_0^\infty(T)} = V(T).
 \]</span> It turns out that if <span class="math inline">\(C_0^\infty(T)\)</span> is dense in <span class="math inline">\(V(T)\)</span> then that implies that there exists a conjugate function defined through the isomorphism <span class="math inline">\(\eta(\cdot)\)</span>. This is because <span class="math inline">\(H(T) = \eta(V(T))\)</span> and <span class="math inline">\(\eta\)</span> is continuous. Hence if we choose <span class="math inline">\(\xi^*(v) = \eta(v)\)</span> then <span class="math inline">\(H^*(T) = H(T)\)</span>.</p>
 <p>We have shown the following.</p>
 <div id="thm-conjugate-exist" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 1 </strong></span>A conjugate GP exists if and only if <span class="math inline">\(C_0^\infty(T)\)</span> is dense in <span class="math inline">\(V(T)\)</span>.</p>
+<p><span class="theorem-title"><strong>Theorem 1</strong></span> A conjugate GP exists if and only if <span class="math inline">\(C_0^\infty(T)\)</span> is dense in <span class="math inline">\(V(T)\)</span>.</p>
 </div>
 <p>This is our first step towards making statements about the stochastic process <span class="math inline">\(\xi\)</span> into statements about the RKHS. We shall continue along this road.</p>
 <p>You might, at this point, be wondering if that condition ever actually holds. The answer is yes. It does fairly often. For instance, if <span class="math inline">\(\xi\)</span> is a <a href="https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html#part-2-an-invitation-to-the-theory-of-stationary-gaussian-processes">stationary GP</a> with spectral density <span class="math inline">\(f(\omega)\)</span>, the biorthogonal function exists if and only if there is some <span class="math inline">\(k&gt;0\)</span> such that <span class="math display">\[
@@ -465,7 +507,7 @@ H^*(S_1 \backslash \Gamma) \perp H^*(S_2 \backslash \Gamma).
 \]</span></p>
 <p>Let’s memorialise this as a theorem.</p>
 <div id="thm-markov-rkhs" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 2 </strong></span>A GP <span class="math inline">\(\xi\)</span> with a conjugate GP <span class="math inline">\(\xi^*\)</span> is Markov if and only if its RKHS is local, ie if <span class="math inline">\(v_1\)</span> and <span class="math inline">\(v_2\)</span> have disjoint supports, then <span class="math display">\[
+<p><span class="theorem-title"><strong>Theorem 2</strong></span> A GP <span class="math inline">\(\xi\)</span> with a conjugate GP <span class="math inline">\(\xi^*\)</span> is Markov if and only if its RKHS is local, ie if <span class="math inline">\(v_1\)</span> and <span class="math inline">\(v_2\)</span> have disjoint supports, then <span class="math display">\[
 \langle v_1, v_2\rangle_{V(T)} = 0.
 \]</span></p>
 </div>
@@ -474,7 +516,7 @@ H^*(S_1 \backslash \Gamma) \perp H^*(S_2 \backslash \Gamma).
 \]</span> where<a href="#fn57" class="footnote-ref" id="fnref57" role="doc-noteref"><sup>57</sup></a> <span class="math inline">\(a_{\mathbf{k}\mathbf{j}}(s)\)</span> are integrable functions and only a finite number of them are non-zero at any point <span class="math inline">\(s\)</span>.</p>
 <p>This connection between the RKHS and the dual space also gives the following result for stationary GPs.</p>
 <div id="thm-stationary-gp" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 3 </strong></span>Let <span class="math inline">\(\xi\)</span> be a stationary Gaussian process. Then <span class="math inline">\(\xi\)</span> has the Markov property if and only if its spectral density is the inverse of a non-negative, symmetric polynomial.</p>
+<p><span class="theorem-title"><strong>Theorem 3</strong></span> Let <span class="math inline">\(\xi\)</span> be a stationary Gaussian process. Then <span class="math inline">\(\xi\)</span> has the Markov property if and only if its spectral density is the inverse of a non-negative, symmetric polynomial.</p>
 </div>
 <p>This follows from the characterisation of the RKHS as having the inner product as <span class="math display">\[
 \langle v_1, v_2\rangle_{V(T)} = \int_T \hat{v_1}(\omega) \hat{v_2}(\omega) f(\omega)^{-1}\,d\omega,
@@ -547,7 +589,7 @@ u^{(n)}(s) = \sum_{j = 1}^n u_j \psi_j(s),
 <li id="fn28"><p>non-empty connected open sets<a href="#fnref28" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn29"><p>Strictly, this is the <em>weak</em> or <em>second-order</em> Markov property<a href="#fnref29" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn30"><p>If you’re curious, this is basically the same thing as a splitting <span class="math inline">\(\sigma\)</span>-algebra. But, you know, sans the <span class="math inline">\(\sigma\)</span>-algebra bullshit.<a href="#fnref30" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
-<li id="fn31"><p>That is, any <span class="math inline">\(x \in H(T)\)</span> can be written as the sum <span class="math inline">\(x = x_1 + x_2 + x_3\)</span>, where <span class="math inline">\(x_1 \in H(S_1 \ominus \Gamma^\epsilon)\)</span>, <span class="math inline">\(x_2 \in H(\Gamma^\epsilon)\)</span>, and <span class="math inline">\(x_3 \in H(S_2 \ominus \Gamma^\epsilon)\)</span> are <em>mutually orthogonal</em> (ie <span class="math inline">\(\mathbb{E}(x_1x_2) = \mathbb{E}(x_1x_3) = \mathbb{E}(x_2x_3) =0\)</span>!).<a href="#fnref31" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn31"><p>That is, any <span class="math inline">\(x \in H(T)\)</span> can be written as the sum <span class="math inline">\(x = x_1 + x_2 + x_3\)</span>, where <span class="math inline">\(x_1 \in  H(S_1 \ominus \Gamma^\epsilon)\)</span>, <span class="math inline">\(x_2 \in H(\Gamma^\epsilon)\)</span>, and <span class="math inline">\(x_3 \in H(S_2 \ominus \Gamma^\epsilon)\)</span> are <em>mutually orthogonal</em> (ie <span class="math inline">\(\mathbb{E}(x_1x_2) = \mathbb{E}(x_1x_3) = \mathbb{E}(x_2x_3) =0\)</span>!).<a href="#fnref31" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn32"><p>This is using the idea that the conditional expectation is a projection.<a href="#fnref32" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn33"><p>Typically any open set, or any open connected set, or any open, bounded set. A subtlety that I don’t really want to dwell on is that it is possible to have a GP that is Markov with respect to one system of domains but not another.<a href="#fnref33" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn34"><p>The Markov property can be restated in this language as for every system of complementary domains and boundary <span class="math inline">\(S_1\)</span>, <span class="math inline">\(\Gamma\)</span>, <span class="math inline">\(S_2\)</span>, there exists a small enough <span class="math inline">\(\epsilon &gt; 0\)</span> such that <span class="math inline">\(\Gamma^\epsilon\)</span> splits <span class="math inline">\(S_1\)</span> and <span class="math inline">\(S_2\)</span><a href="#fnref34" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
@@ -581,17 +623,16 @@ u^{(n)}(s) = \sum_{j = 1}^n u_j \psi_j(s),
 <li id="fn60"><p>Technically, you need to choose different basis functions for <span class="math inline">\(f\)</span>. In particular, you need to choose <span class="math inline">\(f = \sum_{j=1}^n f_j \phi_j\)</span> where <span class="math inline">\(\phi_j = \mathcal{C}^{-1/2} \psi_j\)</span>. This is then called a Petrov-Galerkin approximation and truly we don’t need to think about it at all. Also I am completely eliding issues of smoothness in all of this. It maters, but it doesn’t matter too much. So let’s just assume everything exists.<a href="#fnref60" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn61"><p>If you don’t believe me you are welcome to read <a href="https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html">the monster blog post</a>, where it’s an example.<a href="#fnref61" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2023,
-  author = {Dan Simpson},
-  editor = {},
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2023,
+  author = {Simpson, Dan},
   title = {Markovian {Gaussian} Processes: {A} Lot of Theory and Some
     Practical Stuff},
   date = {2023-01-21},
   url = {https://dansblog.netlify.app/posts/},
   langid = {en}
 }
-</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2023" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
-Dan Simpson. 2023. <span>“Markovian Gaussian Processes: A Lot of Theory
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2023" class="csl-entry quarto-appendix-citeas" role="listitem">
+Simpson, Dan. 2023. <span>“Markovian Gaussian Processes: A Lot of Theory
 and Some Practical Stuff.”</span> January 21, 2023. <a href="https://dansblog.netlify.app/posts/">https://dansblog.netlify.app/posts/</a>.
 </div></div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -621,9 +662,23 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     icon: icon
   };
   anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
   const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
     }
   });
   clipboard.on('success', function(e) {
@@ -635,17 +690,51 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     button.classList.add('code-copy-button-checked');
     var currentTitle = button.getAttribute("title");
     button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
     setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
       button.setAttribute("title", currentTitle);
       button.classList.remove('code-copy-button-checked');
     }, 1000);
     // clear code selection
     e.clearSelection();
   });
-  function tippyHover(el, contentFn) {
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
     const config = {
       allowHTML: true,
-      content: contentFn,
       maxWidth: 500,
       delay: 100,
       arrow: false,
@@ -655,8 +744,17 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       interactive: true,
       interactiveBorder: 10,
       theme: 'quarto',
-      placement: 'bottom-start'
+      placement: 'bottom-start',
     };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
     window.tippy(el, config); 
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
@@ -668,31 +766,286 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       try { href = new URL(href).hash; } catch {}
       const id = href.replace(/^#\/?/, "");
       const note = window.document.getElementById(id);
-      return note.innerHTML;
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
     });
   }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
   var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
   for (var i=0; i<bibliorefs.length; i++) {
     const ref = bibliorefs[i];
-    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
-    tippyHover(ref, function() {
-      var popup = window.document.createElement('div');
-      cites.forEach(function(cite) {
-        var citeDiv = window.document.createElement('div');
-        citeDiv.classList.add('hanging-indent');
-        citeDiv.classList.add('csl-entry');
-        var biblioDiv = window.document.getElementById('ref-' + cite);
-        if (biblioDiv) {
-          citeDiv.innerHTML = biblioDiv.innerHTML;
-        }
-        popup.appendChild(citeDiv);
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
       });
-      return popup.innerHTML;
-    });
+    }
   }
 });
 </script>
 </div> <!-- /content -->
+
 
 
 

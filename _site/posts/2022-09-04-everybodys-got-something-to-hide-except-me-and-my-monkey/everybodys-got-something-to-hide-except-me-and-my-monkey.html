@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.15">
+<meta name="generator" content="quarto-1.4.553">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -20,11 +20,12 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -49,43 +50,13 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
@@ -111,7 +82,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -120,21 +97,50 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
-
 <link href="../../site_libs/pagedtable-1.1/css/pagedtable.css" rel="stylesheet">
 <script src="../../site_libs/pagedtable-1.1/js/pagedtable.js"></script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="../../styles.css">
 <meta property="og:title" content="Un garçon pas comme les autres (Bayes) - A first look at multilevel regression; or Everybody’s got something to hide except me and my macaques">
 <meta property="og:description" content="A small introduction to multilevel models. Why? Because I said so, that’s why. And you will simply not believe what happens to residual plots.">
 <meta property="og:image" content="https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png">
-<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta property="og:image:height" content="750">
 <meta property="og:image:width" content="1334">
 <meta name="twitter:title" content="A first look at multilevel regression; or Everybody’s got something to hide except me and my macaques">
@@ -149,45 +155,48 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <body class="floating nav-fixed">
 
 <div id="quarto-search-results"></div>
-  <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
     </a>
   </div>
+            <div id="quarto-search" class="" title="Search"></div>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">About this blog</a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About this blog</span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -216,7 +225,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
       <div>
       <div class="quarto-title-meta-heading">Author</div>
       <div class="quarto-title-meta-contents">
-               <p>Dan Simpson </p>
+               <p><a href="https://dansblog.netlify.app">Dan Simpson</a> </p>
             </div>
     </div>
       
@@ -226,13 +235,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
         <p class="date">September 6, 2022</p>
       </div>
     </div>
+    
       
     </div>
     
   
   </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
     <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">Table of contents</h2>
    
@@ -261,6 +271,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </ul>
 </nav>
 </nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
     </div>
@@ -270,12 +281,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 
 
+
 <p><a href="https://www.elizablissmoreau.com">Eliza</a> knows a little something about monkeys. This will become relevant in a moment.</p>
 <p>In about 2016, <a href="https://www.cell.com/current-biology/fulltext/S0960-9822(16)30460-2">Almeling <em>et al.</em></a> published a paper that suggested aged Barbary macaques maintained interest in members of their own species while losing interest in novel non-social stimuli (eg toys or puzzles with food inside).</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="fx1.jpeg" class="img-fluid figure-img"></p>
-<p></p><figcaption class="figure-caption">I’d never come across the concept of a Graphical Abstract before, but here is the one for this paper. Graphic design is my passion. <a href="https://www.cell.com/current-biology/fulltext/S0960-9822(16)30460-2">Source</a></figcaption><p></p>
+<figcaption>I’d never come across the concept of a Graphical Abstract before, but here is the one for this paper. Graphic design is my passion. <a href="https://www.cell.com/current-biology/fulltext/S0960-9822(16)30460-2">Source</a></figcaption>
 </figure>
 </div>
 <p>This is where Eliza—who knows a little something about monkeys—comes into frame: this did not gel with her experiences at all.</p>
@@ -352,7 +364,6 @@ $ age         &lt;dbl&gt; 29, 29, 29, 29, 28, 28, 30, 30, 27, 27, 27, 27, 27, 27
 <span id="cb3-3"><a href="#cb3-3"></a></span>
 <span id="cb3-4"><a href="#cb3-4"></a><span class="fu">tidy</span>(fit_lm) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
 {"columns":[{"label":["term"],"name":[1],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["std.error"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["statistic"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["p.value"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"(Intercept)","2":"-6.688440e+00","3":"5.38400465","4":"-1.242280e+00","5":"0.215345864"},{"1":"age","2":"4.234598e-01","3":"0.21287645","4":"1.989228e+00","5":"0.047811367"},{"1":"factor(day)2","2":"1.879672e-03","3":"0.39658478","4":"4.739646e-03","5":"0.996222261"},{"1":"factor(monkey)88","2":"1.000000e+00","3":"1.70008898","4":"5.882045e-01","5":"0.556948129"},{"1":"factor(monkey)636","2":"-3.062500e+00","3":"1.60442379","4":"-1.908785e+00","5":"0.057482707"},{"1":"factor(monkey)760","2":"-2.937500e+00","3":"1.81569582","4":"-1.617837e+00","5":"0.107011195"},{"1":"factor(monkey)1257","2":"3.750000e-01","3":"1.53243949","4":"2.447079e-01","5":"0.806891726"},{"1":"factor(monkey)1607","2":"3.750000e-01","3":"1.53243949","4":"2.447079e-01","5":"0.806891726"},{"1":"factor(monkey)1632","2":"-2.125000e+00","3":"1.53243949","4":"-1.386678e+00","5":"0.166826659"},{"1":"factor(monkey)1860","2":"8.125000e-01","3":"1.48757785","4":"5.461899e-01","5":"0.585442774"},{"1":"factor(monkey)1869","2":"2.812500e+00","3":"1.48757785","4":"1.890657e+00","5":"0.059874728"},{"1":"factor(monkey)2191","2":"1.312500e+00","3":"1.48757785","4":"8.823068e-01","5":"0.378493776"},{"1":"factor(monkey)2637","2":"-2.500000e-01","3":"1.47232024","4":"-1.698000e-01","5":"0.865310455"},{"1":"factor(monkey)2747","2":"3.750000e+00","3":"1.47232024","4":"2.547000e+00","5":"0.011490788"},{"1":"factor(monkey)2833","2":"2.500000e-01","3":"1.47232024","4":"1.698000e-01","5":"0.865310455"},{"1":"factor(monkey)2912","2":"2.250000e+00","3":"1.47232024","4":"1.528200e+00","5":"0.127779712"},{"1":"factor(monkey)3536","2":"-3.125000e-01","3":"1.48757785","4":"-2.100730e-01","5":"0.833788896"},{"1":"factor(monkey)3545","2":"-8.125000e-01","3":"1.48757785","4":"-5.461899e-01","5":"0.585442774"},{"1":"factor(monkey)3696","2":"-3.812500e+00","3":"1.48757785","4":"-2.562891e+00","5":"0.010991577"},{"1":"factor(monkey)4009","2":"1.125000e+00","3":"1.53243949","4":"7.341236e-01","5":"0.463590006"},{"1":"factor(monkey)4392","2":"1.250000e-01","3":"1.53243949","4":"8.156929e-02","5":"0.935057207"},{"1":"factor(monkey)4624","2":"-4.375000e-01","3":"1.60442379","4":"-2.726836e-01","5":"0.785330940"},{"1":"factor(monkey)4686","2":"1.062500e+00","3":"1.60442379","4":"6.622315e-01","5":"0.508458252"},{"1":"factor(monkey)4776","2":"3.562500e+00","3":"1.60442379","4":"2.220423e+00","5":"0.027324613"},{"1":"factor(monkey)4795","2":"1.562500e+00","3":"1.60442379","4":"9.738699e-01","5":"0.331101681"},{"1":"factor(monkey)4886","2":"5.625000e-01","3":"1.60442379","4":"3.505932e-01","5":"0.726201115"},{"1":"factor(monkey)4964","2":"3.062500e+00","3":"1.60442379","4":"1.908785e+00","5":"0.057482707"},{"1":"factor(monkey)5252","2":"4.500000e+00","3":"1.70008898","4":"2.646920e+00","5":"0.008660496"},{"1":"factor(monkey)5332","2":"-5.000000e-01","3":"1.70008898","4":"-2.941023e-01","5":"0.768933965"},{"1":"factor(monkey)5388","2":"3.000000e+00","3":"1.70008898","4":"1.764614e+00","5":"0.078900697"},{"1":"factor(monkey)5413","2":"5.500000e+00","3":"1.70008898","4":"3.235125e+00","5":"0.001386994"},{"1":"factor(monkey)5453","2":"2.000000e+00","3":"1.70008898","4":"1.176409e+00","5":"0.240596983"},{"1":"factor(monkey)5498","2":"-5.000000e-01","3":"1.70008898","4":"-2.941023e-01","5":"0.768933965"},{"1":"factor(monkey)5604","2":"-2.680485e-14","3":"1.70008898","4":"-1.576674e-14","5":"1.000000000"},{"1":"factor(monkey)5607","2":"5.000000e-01","3":"1.70008898","4":"2.941023e-01","5":"0.768933965"},{"1":"factor(monkey)5646","2":"-1.747008e-14","3":"1.70008898","4":"-1.027598e-14","5":"1.000000000"},{"1":"factor(monkey)5774","2":"2.000000e+00","3":"1.70008898","4":"1.176409e+00","5":"0.240596983"},{"1":"factor(monkey)5895","2":"2.937500e+00","3":"1.81569582","4":"1.617837e+00","5":"0.107011195"},{"1":"factor(monkey)5967","2":"-6.250000e-02","3":"1.81569582","4":"-3.442207e-02","5":"0.972569200"},{"1":"factor(monkey)5990","2":"1.937500e+00","3":"1.81569582","4":"1.067084e+00","5":"0.287006110"},{"1":"factor(monkey)6008","2":"-6.250000e-02","3":"1.81569582","4":"-3.442207e-02","5":"0.972569200"},{"1":"factor(monkey)6098","2":"1.937500e+00","3":"1.81569582","4":"1.067084e+00","5":"0.287006110"},{"1":"factor(monkey)6159","2":"3.437500e+00","3":"1.81569582","4":"1.893214e+00","5":"0.059532471"},{"1":"factor(monkey)6258","2":"2.937500e+00","3":"1.81569582","4":"1.617837e+00","5":"0.107011195"},{"1":"factor(monkey)6264","2":"2.937500e+00","3":"1.81569582","4":"1.617837e+00","5":"0.107011195"},{"1":"factor(monkey)6287","2":"4.375000e-01","3":"1.81569582","4":"2.409545e-01","5":"0.809796132"},{"1":"factor(monkey)6505","2":"2.375000e+00","3":"1.94769661","4":"1.219389e+00","5":"0.223893579"},{"1":"factor(monkey)6512","2":"3.875000e+00","3":"1.94769661","4":"1.989530e+00","5":"0.047777867"},{"1":"factor(monkey)6516","2":"3.375000e+00","3":"1.94769661","4":"1.732816e+00","5":"0.084412906"},{"1":"factor(monkey)6807","2":"2.375000e+00","3":"1.94769661","4":"1.219389e+00","5":"0.223893579"},{"1":"factor(monkey)6877","2":"1.375000e+00","3":"1.94769661","4":"7.059621e-01","5":"0.480896409"},{"1":"factor(monkey)6930","2":"8.750000e-01","3":"1.94769661","4":"4.492486e-01","5":"0.653657739"},{"1":"factor(monkey)7261","2":"8.125000e-01","3":"2.09299182","4":"3.882003e-01","5":"0.698211947"},{"1":"factor(monkey)7289","2":"5.812500e+00","3":"2.09299182","4":"2.777125e+00","5":"0.005917223"},{"1":"factor(monkey)7307","2":"5.312500e+00","3":"2.09299182","4":"2.538233e+00","5":"0.011774807"},{"1":"factor(monkey)7321","2":"3.312500e+00","3":"2.09299182","4":"1.582663e+00","5":"0.114815239"},{"1":"factor(monkey)7333","2":"4.312500e+00","3":"2.09299182","4":"2.060448e+00","5":"0.040433840"},{"1":"factor(monkey)7451","2":"2.312500e+00","3":"2.09299182","4":"1.104878e+00","5":"0.270319009"},{"1":"factor(monkey)7588","2":"-6.250000e-02","3":"1.81569582","4":"-3.442207e-02","5":"0.972569200"},{"1":"factor(monkey)7598","2":"3.750000e-01","3":"1.94769661","4":"1.925351e-01","5":"0.847485879"},{"1":"factor(monkey)7600","2":"-1.625000e+00","3":"1.94769661","4":"-8.343189e-01","5":"0.404930992"},{"1":"factor(monkey)7623","2":"2.812500e+00","3":"2.09299182","4":"1.343770e+00","5":"0.180291735"},{"1":"factor(monkey)7707","2":"1.312500e+00","3":"2.09299182","4":"6.270928e-01","5":"0.531194536"},{"1":"factor(monkey)7721","2":"1.812500e+00","3":"2.09299182","4":"8.659852e-01","5":"0.387363127"},{"1":"factor(monkey)7828","2":"1.812500e+00","3":"2.09299182","4":"8.659852e-01","5":"0.387363127"},{"1":"factor(monkey)7942","2":"4.375000e+00","3":"1.94769661","4":"2.246243e+00","5":"0.025598621"},{"1":"factor(monkey)7992","2":"5.250000e+00","3":"2.24900632","4":"2.334364e+00","5":"0.020402519"},{"1":"factor(monkey)8053","2":"4.750000e+00","3":"2.24900632","4":"2.112044e+00","5":"0.035716332"},{"1":"factor(monkey)8094","2":"2.750000e+00","3":"2.24900632","4":"1.222762e+00","5":"0.222618881"},{"1":"factor(monkey)8103","2":"2.250000e+00","3":"2.24900632","4":"1.000442e+00","5":"0.318104340"},{"1":"factor(monkey)8179","2":"4.250000e+00","3":"2.24900632","4":"1.889723e+00","5":"0.060000176"},{"1":"factor(monkey)8183","2":"-2.500000e-01","3":"2.24900632","4":"-1.111602e-01","5":"0.911582214"},{"1":"factor(monkey)8338","2":"1.750000e+00","3":"2.24900632","4":"7.781214e-01","5":"0.437263858"},{"1":"factor(monkey)8340","2":"4.750000e+00","3":"2.24900632","4":"2.112044e+00","5":"0.035716332"},{"1":"factor(monkey)8343","2":"4.250000e+00","3":"2.24900632","4":"1.889723e+00","5":"0.060000176"},{"1":"factor(monkey)8371","2":"5.750000e+00","3":"2.24900632","4":"2.556685e+00","5":"0.011184196"},{"1":"factor(monkey)8544","2":"2.750000e+00","3":"2.24900632","4":"1.222762e+00","5":"0.222618881"},{"1":"factor(monkey)8611","2":"3.250000e+00","3":"2.24900632","4":"1.445083e+00","5":"0.149739064"},{"1":"factor(monkey)8729","2":"3.312500e+00","3":"2.09299182","4":"1.582663e+00","5":"0.114815239"},{"1":"factor(monkey)8834","2":"2.187500e+00","3":"2.41366237","4":"9.062991e-01","5":"0.365686559"},{"1":"factor(monkey)8873","2":"6.187500e+00","3":"2.41366237","4":"2.563532e+00","5":"0.010971865"},{"1":"factor(monkey)8956","2":"4.687500e+00","3":"2.41366237","4":"1.942069e+00","5":"0.053298767"},{"1":"factor(monkey)8963","2":"4.187500e+00","3":"2.41366237","4":"1.734915e+00","5":"0.084039563"},{"1":"factor(monkey)9009","2":"2.687500e+00","3":"2.41366237","4":"1.113453e+00","5":"0.266627767"},{"1":"factor(monkey)9014","2":"3.187500e+00","3":"2.41366237","4":"1.320607e+00","5":"0.187890272"},{"1":"factor(monkey)9023","2":"2.187500e+00","3":"2.41366237","4":"9.062991e-01","5":"0.365686559"},{"1":"factor(monkey)9117","2":"1.187500e+00","3":"2.41366237","4":"4.919909e-01","5":"0.623175457"},{"1":"factor(monkey)9344","2":"4.687500e+00","3":"2.41366237","4":"1.942069e+00","5":"0.053298767"},{"1":"factor(monkey)9355","2":"6.187500e+00","3":"2.41366237","4":"2.563532e+00","5":"0.010971865"},{"1":"factor(monkey)9411","2":"3.187500e+00","3":"2.41366237","4":"1.320607e+00","5":"0.187890272"},{"1":"factor(monkey)9416","2":"6.187500e+00","3":"2.41366237","4":"2.563532e+00","5":"0.010971865"},{"1":"factor(monkey)9542","2":"8.125000e-01","3":"1.48757785","4":"5.461899e-01","5":"0.585442774"},{"1":"factor(monkey)9598","2":"7.625000e+00","3":"2.58530938","4":"2.949357e+00","5":"0.003499076"},{"1":"factor(monkey)9609","2":"2.125000e+00","3":"2.58530938","4":"8.219519e-01","5":"0.411920078"},{"1":"factor(monkey)9615","2":"2.625000e+00","3":"2.58530938","4":"1.015352e+00","5":"0.310960381"},{"1":"factor(monkey)9662","2":"4.625000e+00","3":"2.58530938","4":"1.788954e+00","5":"0.074883259"},{"1":"factor(monkey)9680","2":"6.250000e-01","3":"2.58530938","4":"2.417506e-01","5":"0.809179879"},{"1":"factor(monkey)9683","2":"5.125000e+00","3":"2.58530938","4":"1.982355e+00","5":"0.048580117"},{"1":"factor(monkey)9771","2":"6.250000e-01","3":"2.58530938","4":"2.417506e-01","5":"0.809179879"},{"1":"factor(monkey)9847","2":"3.125000e+00","3":"2.58530938","4":"1.208753e+00","5":"0.227947352"},{"1":"factor(monkey)9926","2":"6.625000e+00","3":"2.58530938","4":"2.562556e+00","5":"0.011001901"},{"1":"factor(monkey)9940","2":"3.625000e+00","3":"2.58530938","4":"1.402153e+00","5":"0.162161553"},{"1":"factor(monkey)9986","2":"3.625000e+00","3":"2.58530938","4":"1.402153e+00","5":"0.162161553"},{"1":"factor(monkey)10069","2":"-6.250000e-02","3":"1.81569582","4":"-3.442207e-02","5":"0.972569200"},{"1":"factor(monkey)10084","2":"2.437500e+00","3":"1.81569582","4":"1.342461e+00","5":"0.180715137"},{"1":"factor(monkey)10290","2":"4.625000e+00","3":"2.58530938","4":"1.788954e+00","5":"0.074883259"},{"1":"factor(monkey)10399","2":"-3.750000e-01","3":"1.53243949","4":"-2.447079e-01","5":"0.806891726"},{"1":"factor(monkey)10646","2":"6.062500e+00","3":"2.76264459","4":"2.194455e+00","5":"0.029161550"},{"1":"factor(monkey)10790","2":"6.562500e+00","3":"2.76264459","4":"2.375441e+00","5":"0.018314388"},{"1":"factor(monkey)10826","2":"3.062500e+00","3":"2.76264459","4":"1.108539e+00","5":"0.268738626"},{"1":"factor(monkey)10850","2":"3.562500e+00","3":"2.76264459","4":"1.289525e+00","5":"0.198456854"},{"1":"factor(monkey)10866","2":"2.562500e+00","3":"2.76264459","4":"9.275533e-01","5":"0.354571211"},{"1":"factor(monkey)11252","2":"8.562500e+00","3":"2.76264459","4":"3.099385e+00","5":"0.002170583"},{"1":"factor(monkey)11440","2":"5.500000e+00","3":"2.94464048","4":"1.867800e+00","5":"0.063008689"},{"1":"factor(monkey)11446","2":"8.000000e+00","3":"2.94464048","4":"2.716800e+00","5":"0.007071614"},{"1":"factor(monkey)11475","2":"3.000000e+00","3":"2.94464048","4":"1.018800e+00","5":"0.309323781"},{"1":"factor(monkey)11483","2":"5.500000e+00","3":"2.94464048","4":"1.867800e+00","5":"0.063008689"},{"1":"factor(monkey)11484","2":"6.500000e+00","3":"2.94464048","4":"2.207400e+00","5":"0.028232894"},{"1":"factor(monkey)11542","2":"3.500000e+00","3":"2.94464048","4":"1.188600e+00","5":"0.235771839"},{"1":"factor(monkey)11717","2":"4.000000e+00","3":"2.94464048","4":"1.358400e+00","5":"0.175612222"},{"1":"factor(monkey)11754","2":"4.000000e+00","3":"2.94464048","4":"1.358400e+00","5":"0.175612222"},{"1":"factor(monkey)11781","2":"6.000000e+00","3":"2.94464048","4":"2.037600e+00","5":"0.042686931"},{"1":"factor(monkey)11799","2":"7.000000e+00","3":"2.94464048","4":"2.377200e+00","5":"0.018229337"},{"1":"factor(monkey)11895","2":"2.500000e+00","3":"2.94464048","4":"8.490001e-01","5":"0.396727282"},{"1":"factor(monkey)11916","2":"5.000000e+00","3":"2.94464048","4":"1.698000e+00","5":"0.090803840"},{"1":"factor(monkey)12017","2":"5.500000e+00","3":"2.94464048","4":"1.867800e+00","5":"0.063008689"},{"1":"factor(monkey)12164","2":"5.437500e+00","3":"3.13048431","4":"1.736952e+00","5":"0.083678713"},{"1":"factor(monkey)12298","2":"8.937500e+00","3":"3.13048431","4":"2.854990e+00","5":"0.004680388"},{"1":"factor(monkey)12355","2":"7.937500e+00","3":"3.13048431","4":"2.535550e+00","5":"0.011862943"},{"1":"factor(monkey)12368","2":"3.437500e+00","3":"3.13048431","4":"1.098073e+00","5":"0.273273063"},{"1":"factor(monkey)12381","2":"4.937500e+00","3":"3.13048431","4":"1.577232e+00","5":"0.116059306"},{"1":"factor(monkey)12505","2":"6.437500e+00","3":"3.13048431","4":"2.056391e+00","5":"0.040826302"},{"1":"factor(monkey)12520","2":"4.937500e+00","3":"3.13048431","4":"1.577232e+00","5":"0.116059306"},{"1":"factor(monkey)12532","2":"6.437500e+00","3":"3.13048431","4":"2.056391e+00","5":"0.040826302"},{"1":"factor(monkey)12630","2":"5.437500e+00","3":"3.13048431","4":"1.736952e+00","5":"0.083678713"},{"1":"factor(monkey)12631","2":"7.437500e+00","3":"3.13048431","4":"2.375830e+00","5":"0.018295539"},{"1":"factor(monkey)12749","2":"6.937500e+00","3":"3.13048431","4":"2.216111e+00","5":"0.027622537"},{"1":"factor(monkey)12906","2":"2.437500e+00","3":"3.13048431","4":"7.786335e-01","5":"0.436962634"},{"1":"factor(monkey)12947","2":"5.375000e+00","3":"3.31952984","4":"1.619205e+00","5":"0.106716412"},{"1":"factor(monkey)12958","2":"7.375000e+00","3":"3.31952984","4":"2.221700e+00","5":"0.027236943"},{"1":"factor(monkey)13121","2":"4.875000e+00","3":"3.31952984","4":"1.468581e+00","5":"0.143255789"},{"1":"factor(monkey)13129","2":"5.375000e+00","3":"3.31952984","4":"1.619205e+00","5":"0.106716412"},{"1":"factor(monkey)13131","2":"4.875000e+00","3":"3.31952984","4":"1.468581e+00","5":"0.143255789"},{"1":"factor(monkey)13260","2":"5.875000e+00","3":"3.31952984","4":"1.769829e+00","5":"0.078025353"},{"1":"factor(monkey)13279","2":"5.375000e+00","3":"3.31952984","4":"1.619205e+00","5":"0.106716412"},{"1":"factor(monkey)13312","2":"4.375000e+00","3":"3.31952984","4":"1.317958e+00","5":"0.188774375"},{"1":"factor(monkey)13442","2":"3.375000e+00","3":"3.31952984","4":"1.016710e+00","5":"0.310315126"},{"1":"factor(monkey)13473","2":"6.375000e+00","3":"3.31952984","4":"1.920453e+00","5":"0.055985798"},{"1":"factor(monkey)13578","2":"4.875000e+00","3":"3.31952984","4":"1.468581e+00","5":"0.143255789"},{"1":"factor(monkey)13590","2":"6.875000e+00","3":"3.31952984","4":"2.071076e+00","5":"0.039420756"},{"1":"factor(monkey)13790","2":"5.812500e+00","3":"3.51125999","4":"1.655389e+00","5":"0.099152667"},{"1":"factor(monkey)13825","2":"4.812500e+00","3":"3.51125999","4":"1.370591e+00","5":"0.171783107"},{"1":"factor(monkey)13883","2":"6.312500e+00","3":"3.51125999","4":"1.797788e+00","5":"0.073467506"},{"1":"factor(monkey)13922","2":"7.812500e+00","3":"3.51125999","4":"2.224985e+00","5":"0.027012536"},{"1":"factor(monkey)14043","2":"7.312500e+00","3":"3.51125999","4":"2.082586e+00","5":"0.038348277"},{"1":"factor(monkey)14066","2":"4.812500e+00","3":"3.51125999","4":"1.370591e+00","5":"0.171783107"},{"1":"factor(monkey)14077","2":"6.812500e+00","3":"3.51125999","4":"1.940187e+00","5":"0.053528408"},{"1":"factor(monkey)14137","2":"4.312500e+00","3":"3.51125999","4":"1.228192e+00","5":"0.220578143"},{"1":"factor(monkey)14165","2":"6.312500e+00","3":"3.51125999","4":"1.797788e+00","5":"0.073467506"},{"1":"factor(monkey)14177","2":"4.812500e+00","3":"3.51125999","4":"1.370591e+00","5":"0.171783107"},{"1":"factor(monkey)14307","2":"6.812500e+00","3":"3.51125999","4":"1.940187e+00","5":"0.053528408"},{"1":"factor(monkey)14323","2":"8.312500e+00","3":"3.51125999","4":"2.367384e+00","5":"0.018708484"},{"1":"factor(monkey)14351","2":"7.312500e+00","3":"3.51125999","4":"2.082586e+00","5":"0.038348277"},{"1":"factor(monkey)14651","2":"8.250000e+00","3":"3.70525802","4":"2.226566e+00","5":"0.026905107"},{"1":"factor(monkey)14666","2":"5.250000e+00","3":"3.70525802","4":"1.416905e+00","5":"0.157807347"},{"1":"factor(monkey)14699","2":"8.750000e+00","3":"3.70525802","4":"2.361509e+00","5":"0.019000512"},{"1":"factor(monkey)14823","2":"1.025000e+01","3":"3.70525802","4":"2.766339e+00","5":"0.006110166"},{"1":"factor(monkey)14826","2":"3.750000e+00","3":"3.70525802","4":"1.012075e+00","5":"0.312521306"},{"1":"factor(monkey)14902","2":"7.250000e+00","3":"3.70525802","4":"1.956679e+00","5":"0.051544843"},{"1":"factor(monkey)14919","2":"7.250000e+00","3":"3.70525802","4":"1.956679e+00","5":"0.051544843"},{"1":"factor(monkey)14985","2":"7.750000e+00","3":"3.70525802","4":"2.091622e+00","5":"0.037523810"},{"1":"factor(monkey)15041","2":"7.250000e+00","3":"3.70525802","4":"1.956679e+00","5":"0.051544843"},{"1":"factor(monkey)15088","2":"4.750000e+00","3":"3.70525802","4":"1.281962e+00","5":"0.201092964"},{"1":"factor(monkey)15120","2":"4.750000e+00","3":"3.70525802","4":"1.281962e+00","5":"0.201092964"},{"1":"factor(monkey)15218","2":"5.750000e+00","3":"3.70525802","4":"1.551849e+00","5":"0.122016071"},{"1":"factor(monkey)15530","2":"7.687500e+00","3":"3.90118562","4":"1.970555e+00","5":"0.049924231"},{"1":"factor(monkey)15642","2":"7.187500e+00","3":"3.90118562","4":"1.842389e+00","5":"0.066651841"},{"1":"factor(monkey)15732","2":"6.687500e+00","3":"3.90118562","4":"1.714222e+00","5":"0.087778891"},{"1":"factor(monkey)15820","2":"5.687500e+00","3":"3.90118562","4":"1.457890e+00","5":"0.146178124"},{"1":"factor(monkey)15909","2":"4.687500e+00","3":"3.90118562","4":"1.201558e+00","5":"0.230719242"},{"1":"factor(monkey)15926","2":"7.187500e+00","3":"3.90118562","4":"1.842389e+00","5":"0.066651841"},{"1":"factor(monkey)16002","2":"9.187500e+00","3":"3.90118562","4":"2.355053e+00","5":"0.019326031"},{"1":"factor(monkey)16090","2":"7.687500e+00","3":"3.90118562","4":"1.970555e+00","5":"0.049924231"},{"1":"factor(monkey)16097","2":"5.187500e+00","3":"3.90118562","4":"1.329724e+00","5":"0.184871653"},{"1":"factor(monkey)16169","2":"9.187500e+00","3":"3.90118562","4":"2.355053e+00","5":"0.019326031"},{"1":"factor(monkey)16236","2":"5.187500e+00","3":"3.90118562","4":"1.329724e+00","5":"0.184871653"},{"1":"factor(monkey)16258","2":"6.187500e+00","3":"3.90118562","4":"1.586056e+00","5":"0.114043194"},{"1":"factor(monkey)16447","2":"1.162500e+01","3":"4.09876609","4":"2.836219e+00","5":"0.004954837"},{"1":"factor(monkey)16553","2":"7.625000e+00","3":"4.09876609","4":"1.860316e+00","5":"0.064064047"},{"1":"factor(monkey)16556","2":"8.625000e+00","3":"4.09876609","4":"2.104292e+00","5":"0.036393453"},{"1":"factor(monkey)16598","2":"5.625000e+00","3":"4.09876609","4":"1.372364e+00","5":"0.171231281"},{"1":"factor(monkey)16670","2":"5.625000e+00","3":"4.09876609","4":"1.372364e+00","5":"0.171231281"},{"1":"factor(monkey)16736","2":"9.125000e+00","3":"4.09876609","4":"2.226280e+00","5":"0.026924503"},{"1":"factor(monkey)16807","2":"5.125000e+00","3":"4.09876609","4":"1.250376e+00","5":"0.212379846"},{"1":"factor(monkey)16972","2":"9.125000e+00","3":"4.09876609","4":"2.226280e+00","5":"0.026924503"},{"1":"factor(monkey)17037","2":"8.125000e+00","3":"4.09876609","4":"1.982304e+00","5":"0.048585829"},{"1":"factor(monkey)17047","2":"1.012500e+01","3":"4.09876609","4":"2.470256e+00","5":"0.014197944"},{"1":"factor(monkey)17069","2":"7.625000e+00","3":"4.09876609","4":"1.860316e+00","5":"0.064064047"},{"1":"factor(monkey)17103","2":"7.125000e+00","3":"4.09876609","4":"1.738328e+00","5":"0.083435526"},{"1":"factor(monkey)17285","2":"7.625000e+00","3":"4.09876609","4":"1.860316e+00","5":"0.064064047"},{"1":"factor(monkey)17516","2":"7.062500e+00","3":"4.29777147","4":"1.643294e+00","5":"0.101631615"},{"1":"factor(monkey)17718","2":"5.562500e+00","3":"4.29777147","4":"1.294275e+00","5":"0.196814278"},{"1":"factor(monkey)17738","2":"7.562500e+00","3":"4.29777147","4":"1.759633e+00","5":"0.079744124"},{"1":"factor(monkey)17794","2":"5.062500e+00","3":"4.29777147","4":"1.177936e+00","5":"0.239988783"},{"1":"factor(monkey)17825","2":"7.062500e+00","3":"4.29777147","4":"1.643294e+00","5":"0.101631615"},{"1":"factor(monkey)17927","2":"5.062500e+00","3":"4.29777147","4":"1.177936e+00","5":"0.239988783"},{"1":"factor(monkey)18038","2":"7.562500e+00","3":"4.29777147","4":"1.759633e+00","5":"0.079744124"},{"1":"factor(monkey)18067","2":"5.562500e+00","3":"4.29777147","4":"1.294275e+00","5":"0.196814278"},{"1":"factor(monkey)18069","2":"1.056250e+01","3":"4.29777147","4":"2.457669e+00","5":"0.014692320"},{"1":"factor(monkey)18106","2":"8.562500e+00","3":"4.29777147","4":"1.992312e+00","5":"0.047469830"},{"1":"factor(monkey)18153","2":"9.062500e+00","3":"4.29777147","4":"2.108651e+00","5":"0.036011350"},{"1":"factor(monkey)18230","2":"9.000000e+00","3":"4.49801264","4":"2.000884e+00","5":"0.046531245"},{"1":"factor(monkey)18232","2":"1.000000e+01","3":"4.49801264","4":"2.223204e+00","5":"0.027133995"},{"1":"factor(monkey)18364","2":"1.000000e+01","3":"4.49801264","4":"2.223204e+00","5":"0.027133995"},{"1":"factor(monkey)18407","2":"1.150000e+01","3":"4.49801264","4":"2.556685e+00","5":"0.011184196"},{"1":"factor(monkey)18450","2":"9.000000e+00","3":"4.49801264","4":"2.000884e+00","5":"0.046531245"},{"1":"factor(monkey)18489","2":"5.571141e+00","3":"4.65807995","4":"1.196017e+00","5":"0.232870369"},{"1":"factor(monkey)18520","2":"1.100000e+01","3":"4.49801264","4":"2.445524e+00","5":"0.015183749"},{"1":"factor(monkey)18569","2":"8.500000e+00","3":"4.49801264","4":"1.889723e+00","5":"0.060000176"},{"1":"factor(monkey)18652","2":"1.100000e+01","3":"4.49801264","4":"2.445524e+00","5":"0.015183749"},{"1":"factor(monkey)18653","2":"9.000000e+00","3":"4.49801264","4":"2.000884e+00","5":"0.046531245"},{"1":"factor(monkey)18873","2":"9.000000e+00","3":"4.49801264","4":"2.000884e+00","5":"0.046531245"},{"1":"factor(monkey)18947","2":"1.100000e+01","3":"4.49801264","4":"2.445524e+00","5":"0.015183749"},{"1":"factor(monkey)19178","2":"5.937500e+00","3":"4.69933163","4":"1.263478e+00","5":"0.207643559"},{"1":"factor(monkey)19220","2":"9.937500e+00","3":"4.69933163","4":"2.114662e+00","5":"0.035490064"},{"1":"factor(monkey)19239","2":"8.937500e+00","3":"4.69933163","4":"1.901866e+00","5":"0.058386063"},{"1":"factor(monkey)22020","2":"3.312500e+00","3":"2.09299182","4":"1.582663e+00","5":"0.114815239"},{"1":"factor(monkey)22021","2":"2.812500e+00","3":"2.09299182","4":"1.343770e+00","5":"0.180291735"},{"1":"factor(monkey)22023","2":"6.250000e-02","3":"1.60442379","4":"3.895480e-02","5":"0.968958814"},{"1":"factor(monkey)22024","2":"7.500000e-01","3":"2.24900632","4":"3.334806e-01","5":"0.739062688"},{"1":"factor(monkey)22025","2":"-1.437500e+00","3":"1.60442379","4":"-8.959603e-01","5":"0.371171733"},{"1":"factor(monkey)22047","2":"1.875000e+00","3":"1.94769661","4":"9.626756e-01","5":"0.336679273"},{"1":"factor(monkey)22048","2":"3.750000e-01","3":"1.94769661","4":"1.925351e-01","5":"0.847485879"},{"1":"factor(monkey)22049","2":"2.875000e+00","3":"1.94769661","4":"1.476103e+00","5":"0.141227161"},{"1":"factor(monkey)22050","2":"-1.000000e+00","3":"1.70008898","4":"-5.882045e-01","5":"0.556948129"},{"1":"factor(monkey)22052","2":"1.562500e+00","3":"1.60442379","4":"9.738699e-01","5":"0.331101681"},{"1":"factor(monkey)22053","2":"2.625000e+00","3":"1.53243949","4":"1.712955e+00","5":"0.088012235"},{"1":"factor(monkey)22054","2":"1.875000e+00","3":"1.94769661","4":"9.626756e-01","5":"0.336679273"},{"1":"factor(monkey)22055","2":"3.625000e+00","3":"1.53243949","4":"2.365509e+00","5":"0.018801226"},{"1":"factor(monkey)22056","2":"2.937500e+00","3":"1.81569582","4":"1.617837e+00","5":"0.107011195"},{"1":"factor(monkey)22057","2":"2.000000e+00","3":"1.70008898","4":"1.176409e+00","5":"0.240596983"},{"1":"factor(monkey)22058","2":"2.500000e-01","3":"1.47232024","4":"1.698000e-01","5":"0.865310455"},{"1":"factor(monkey)22060","2":"-1.250000e-01","3":"1.94769661","4":"-6.417837e-02","5":"0.948881619"},{"1":"factor(monkey)22062","2":"2.500000e+00","3":"1.70008898","4":"1.470511e+00","5":"0.142733141"},{"1":"factor(monkey)22064","2":"NA","3":"NA","4":"NA","5":"NA"},{"1":"age:factor(day)2","2":"2.808043e-02","3":"0.02493246","4":"1.126260e+00","5":"0.261180467"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
@@ -407,14 +418,22 @@ F-statistic: 2.219 on 3 and 481 DF,  p-value: 0.0851</code></pre>
 <span id="cb6-5"><a href="#cb6-5"></a>  <span class="fu">geom_smooth</span>(<span class="at">method =</span> <span class="st">"lm"</span>, <span class="at">se =</span> <span class="cn">FALSE</span>) <span class="sc">+</span></span>
 <span id="cb6-6"><a href="#cb6-6"></a>  <span class="fu">theme_classic</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1"></a><span class="fu">augment</span>(fit_lm_pool) <span class="sc">|&gt;</span> <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">sample =</span> .std.resid)) <span class="sc">+</span> </span>
 <span id="cb7-2"><a href="#cb7-2"></a>  <span class="fu">stat_qq</span>() <span class="sc">+</span></span>
 <span id="cb7-3"><a href="#cb7-3"></a>  <span class="fu">geom_abline</span>(<span class="at">slope =</span> <span class="dv">1</span>, <span class="at">intercept =</span> <span class="dv">0</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span> </span>
 <span id="cb7-4"><a href="#cb7-4"></a>  <span class="fu">theme_classic</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>There are certainly some patterns in those residuals (and some suggestion that the error need a heavier tail for this model to make sense).</p>
@@ -505,7 +524,6 @@ $ active_bins_scaled &lt;dbl&gt; 0.50, 0.50, 1.00, 0.50, -0.50, -0.25, -0.25, 0.
 <span id="cb11-2"><a href="#cb11-2"></a><span class="fu">library</span>(brms)</span>
 <span id="cb11-3"><a href="#cb11-3"></a><span class="fu">get_prior</span>(formula, activity_2mins_scaled)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
 {"columns":[{"label":["prior"],"name":[1],"type":["chr"],"align":["left"]},{"label":["class"],"name":[2],"type":["chr"],"align":["left"]},{"label":["coef"],"name":[3],"type":["chr"],"align":["left"]},{"label":["group"],"name":[4],"type":["chr"],"align":["left"]},{"label":["resp"],"name":[5],"type":["chr"],"align":["left"]},{"label":["dpar"],"name":[6],"type":["chr"],"align":["left"]},{"label":["nlpar"],"name":[7],"type":["chr"],"align":["left"]},{"label":["lb"],"name":[8],"type":["chr"],"align":["left"]},{"label":["ub"],"name":[9],"type":["chr"],"align":["left"]},{"label":["source"],"name":[10],"type":["chr"],"align":["left"]}],"data":[{"1":"","2":"b","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"","2":"b","3":"age_centred","4":"","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"","2":"b","3":"age_centred:day2","4":"","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"","2":"b","3":"day2","4":"","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"student_t(3, 0, 2.5)","2":"Intercept","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"student_t(3, 0, 2.5)","2":"sd","3":"","4":"","5":"","6":"","7":"","8":"0","9":"","10":"default"},{"1":"","2":"sd","3":"","4":"monkey","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"","2":"sd","3":"Intercept","4":"monkey","5":"","6":"","7":"","8":"","9":"","10":"default"},{"1":"student_t(3, 0, 2.5)","2":"sigma","3":"","4":"","5":"","6":"","7":"","8":"0","9":"","10":"default"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
@@ -524,7 +542,6 @@ $ active_bins_scaled &lt;dbl&gt; 0.50, 0.50, 1.00, 0.50, -0.50, -0.25, -0.25, 0.
 <span id="cb12-6"><a href="#cb12-6"></a>  <span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">0</span>,<span class="dv">1</span>), <span class="at">class =</span> <span class="st">"Intercept"</span>)</span>
 <span id="cb12-7"><a href="#cb12-7"></a>priors</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
 {"columns":[{"label":["prior"],"name":[1],"type":["chr"],"align":["left"]},{"label":["class"],"name":[2],"type":["chr"],"align":["left"]},{"label":["coef"],"name":[3],"type":["chr"],"align":["left"]},{"label":["group"],"name":[4],"type":["chr"],"align":["left"]},{"label":["resp"],"name":[5],"type":["chr"],"align":["left"]},{"label":["dpar"],"name":[6],"type":["chr"],"align":["left"]},{"label":["nlpar"],"name":[7],"type":["chr"],"align":["left"]},{"label":["lb"],"name":[8],"type":["chr"],"align":["left"]},{"label":["ub"],"name":[9],"type":["chr"],"align":["left"]},{"label":["source"],"name":[10],"type":["chr"],"align":["left"]}],"data":[{"1":"normal(0, 0.2)","2":"b","3":"age_centred","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"},{"1":"normal(0, 0.2)","2":"b","3":"age_centred:day2","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"},{"1":"normal(0, 1)","2":"b","3":"day2","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"},{"1":"normal(0, 1)","2":"sigma","3":"","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"},{"1":"exponential(1)","2":"sd","3":"","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"},{"1":"normal(0, 1)","2":"Intercept","3":"","4":"","5":"","6":"","7":"","8":"NA","9":"NA","10":"user"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
@@ -573,7 +590,11 @@ Total execution time: 0.9 seconds.</code></pre>
 <span id="cb16-8"><a href="#cb16-8"></a>  <span class="fu">xlim</span>(<span class="fu">c</span>(<span class="sc">-</span><span class="dv">20</span>,<span class="dv">20</span>)) <span class="sc">+</span> </span>
 <span id="cb16-9"><a href="#cb16-9"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>The vertical lines are (approximately) the minimum and maximum of the data. This<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> suggests that the implied priors are definitely wider than our observed data, but they are not several orders of magnitude too wide. This is a good situation to be in: it gives enough room in the priors that we might be wrong with our specification while also not allowing for truly wild values of the parameters (and implied predictive distribution). One could even go so far as to say that the prior is weakly informative.</p>
@@ -607,7 +628,11 @@ Total execution time: 0.8 seconds.</code></pre>
 <span id="cb19-6"><a href="#cb19-6"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="dv">1</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb19-7"><a href="#cb19-7"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>This is considerably wider.</p>
@@ -784,7 +809,11 @@ posterior_nopool -53.3       9.0  </code></pre>
 <span id="cb37-13"><a href="#cb37-13"></a>  <span class="fu">theme_bw</span>() </span>
 <span id="cb37-14"><a href="#cb37-14"></a>violin_plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>That appears to be a reasonably good fit, although it’s possible that the prediction intervals are a bit wide. We can also look at the plot of the posterior residuals vs the fitted values. Here the fitted values are the mean of the posterior predictive distribution.</p>
@@ -799,7 +828,11 @@ posterior_nopool -53.3       9.0  </code></pre>
 <span id="cb38-7"><a href="#cb38-7"></a>  <span class="fu">theme_bw</span>()</span>
 <span id="cb38-8"><a href="#cb38-8"></a>age_plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>There doesn’t seem to be any obvious evidence of non-linearity in the residuals, which suggests the linear model for age was sufficient.</p>
@@ -814,7 +847,11 @@ r_{ij} = y_{ij} - \mu_j
 <span id="cb39-4"><a href="#cb39-4"></a>  <span class="fu">theme_classic</span>()</span>
 <span id="cb39-5"><a href="#cb39-5"></a>distribution_plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>That’s not too bad. A bit of a deviation from normality in the tails but nothing that would make me weep. It could well be an artifact of how I defined and normalised the residuals.</p>
@@ -843,7 +880,11 @@ See help('pareto-k-diagnostic') for details.</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb42"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1"></a><span class="fu">plot</span>(loo_posterior)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>This suggests that observations 393, 394 are potentially high leverage and we should check them more carefully. I won’t be doing that today.</p>
@@ -859,7 +900,11 @@ See help('pareto-k-diagnostic') for details.</code></pre>
 <span id="cb43-8"><a href="#cb43-8"></a>  <span class="fu">ylim</span>(<span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>,<span class="dv">1</span>))</span>
 <span id="cb43-9"><a href="#cb43-9"></a>problem_plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>Hmmmm. That’s not <em>excellent</em>. The stripes are related to the 8 distinct values the response can take, but there is definitely a trend in the residuals. In particular, we are under-predicting small values and over-predicting large values. <em>There is something here and we will look into it</em>!</p>
@@ -929,7 +974,11 @@ Total execution time: 1.8 seconds.</code></pre>
 <span id="cb46-15"><a href="#cb46-15"></a>  </span>
 <span id="cb46-16"><a href="#cb46-16"></a><span class="fu">plot_grid</span>(violin_plot, violin_fake, <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Real"</span>, <span class="st">"Fake"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>That’s very similar to our data plot.</p>
@@ -944,7 +993,11 @@ Total execution time: 1.8 seconds.</code></pre>
 <span id="cb47-7"><a href="#cb47-7"></a>  <span class="fu">theme_bw</span>()</span>
 <span id="cb47-8"><a href="#cb47-8"></a><span class="fu">plot_grid</span>(age_plot, age_fake, <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Real"</span>, <span class="st">"Fake"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>Fabulous!</p>
@@ -958,7 +1011,11 @@ Total execution time: 1.8 seconds.</code></pre>
 <span id="cb48-6"><a href="#cb48-6"></a></span>
 <span id="cb48-7"><a href="#cb48-7"></a><span class="fu">plot_grid</span>(distribution_plot, distribution_fake, <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Real"</span>, <span class="st">"Fake"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>Excellent!</p>
@@ -992,7 +1049,11 @@ See help('pareto-k-diagnostic') for details.</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb53"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb53-1"><a href="#cb53-1"></a><span class="fu">plot</span>(loo_fake)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>And look: we get some extreme values. (Depending on the run we get more or less). This suggests that while it would be useful to look at the data points flagged by the k-hat statistic, it may just be sampling variation.;</p>
@@ -1012,7 +1073,11 @@ See help('pareto-k-diagnostic') for details.</code></pre>
 <span id="cb54-8"><a href="#cb54-8"></a>  <span class="fu">ylim</span>(<span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>,<span class="dv">1</span>))</span>
 <span id="cb54-9"><a href="#cb54-9"></a><span class="fu">plot_grid</span>(problem_plot, problem_fake, <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Real"</span>, <span class="st">"Fake"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="everybodys-got-something-to-hide-except-me-and-my-monkey_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>And what do you know! They look the same. (Well, minus the discretisation artefacts.)</p>
@@ -1101,17 +1166,16 @@ r_{ij} = y_j - \alpha \bar{y_j} - (1-\alpha)\mu
 <li id="fn39"><p>I mean, some of us knew this. Personally, I only remembered after I saw it and swore a bit.<a href="#fnref39" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn40"><p>In particular, they have an interesting discussion on assessing the distributional assumption for <span class="math inline">\(\mu_j\)</span>.<a href="#fnref40" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
-  author = {Dan Simpson},
-  editor = {},
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
+  author = {Simpson, Dan},
   title = {A First Look at Multilevel Regression; or {Everybody’s} Got
     Something to Hide Except Me and My Macaques},
   date = {2022-09-06},
   url = {https://dansblog.netlify.app/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey.html},
   langid = {en}
 }
-</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
-Dan Simpson. 2022. <span>“A First Look at Multilevel Regression; or
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="listitem">
+Simpson, Dan. 2022. <span>“A First Look at Multilevel Regression; or
 Everybody’s Got Something to Hide Except Me and My Macaques.”</span>
 September 6, 2022. <a href="https://dansblog.netlify.app/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey.html">https://dansblog.netlify.app/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey.html</a>.
 </div></div></section></div></main> <!-- /main -->
@@ -1142,9 +1206,23 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     icon: icon
   };
   anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
   const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
     }
   });
   clipboard.on('success', function(e) {
@@ -1156,17 +1234,51 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     button.classList.add('code-copy-button-checked');
     var currentTitle = button.getAttribute("title");
     button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
     setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
       button.setAttribute("title", currentTitle);
       button.classList.remove('code-copy-button-checked');
     }, 1000);
     // clear code selection
     e.clearSelection();
   });
-  function tippyHover(el, contentFn) {
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
     const config = {
       allowHTML: true,
-      content: contentFn,
       maxWidth: 500,
       delay: 100,
       arrow: false,
@@ -1176,8 +1288,17 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       interactive: true,
       interactiveBorder: 10,
       theme: 'quarto',
-      placement: 'bottom-start'
+      placement: 'bottom-start',
     };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
     window.tippy(el, config); 
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
@@ -1189,31 +1310,286 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       try { href = new URL(href).hash; } catch {}
       const id = href.replace(/^#\/?/, "");
       const note = window.document.getElementById(id);
-      return note.innerHTML;
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
     });
   }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
   var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
   for (var i=0; i<bibliorefs.length; i++) {
     const ref = bibliorefs[i];
-    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
-    tippyHover(ref, function() {
-      var popup = window.document.createElement('div');
-      cites.forEach(function(cite) {
-        var citeDiv = window.document.createElement('div');
-        citeDiv.classList.add('hanging-indent');
-        citeDiv.classList.add('csl-entry');
-        var biblioDiv = window.document.getElementById('ref-' + cite);
-        if (biblioDiv) {
-          citeDiv.innerHTML = biblioDiv.innerHTML;
-        }
-        popup.appendChild(citeDiv);
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
       });
-      return popup.innerHTML;
-    });
+    }
   }
 });
 </script>
 </div> <!-- /content -->
+
 
 
 

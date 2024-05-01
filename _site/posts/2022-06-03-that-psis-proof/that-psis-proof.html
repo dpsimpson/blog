@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.15">
+<meta name="generator" content="quarto-1.4.553">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -20,11 +20,12 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -49,43 +50,13 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
@@ -111,7 +82,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -120,18 +97,48 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="../../styles.css">
 <meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Tail stabilization of importance sampling etimators: A bit of theory">
 <meta property="og:description" content="Look. I had to do it so I wrote it out in detail. This is some of the convergence theory for truncated and winzorised importance sampling estimators">
 <meta property="og:image" content="https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/judy.JPG">
-<meta property="og:site-name" content="Un garçon pas comme les autres (Bayes)">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta name="twitter:title" content="Sparse Matrices 4: Design is my passion">
 <meta name="twitter:description" content="Look. I had to do it so I wrote it out in detail. This is some of the convergence theory for truncated and winzorised importance sampling estimators">
 <meta name="twitter:image" content="https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/judy.JPG">
@@ -142,45 +149,48 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <body class="floating nav-fixed">
 
 <div id="quarto-search-results"></div>
-  <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
     </a>
   </div>
+            <div id="quarto-search" class="" title="Search"></div>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">About this blog</a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About this blog</span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://twitter.com/dan_p_simpson"><i class="bi bi-twitter" role="img" aria-label="twitter">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/dpsimpson"><i class="bi bi-github" role="img" aria-label="github">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="https://dansblog.netlify.app"><i class="bi bi-person-circle" role="img" aria-label="website">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- </a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -211,7 +221,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
       <div>
       <div class="quarto-title-meta-heading">Author</div>
       <div class="quarto-title-meta-contents">
-               <p>Dan Simpson </p>
+               <p><a href="https://dansblog.netlify.app">Dan Simpson</a> </p>
             </div>
     </div>
       
@@ -221,13 +231,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
         <p class="date">June 15, 2022</p>
       </div>
     </div>
+    
       
     </div>
     
   
   </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
     <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">Table of contents</h2>
    
@@ -247,11 +258,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </ul>
 </nav>
 </nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
     </div>
 <!-- main -->
 <main class="content quarto-banner-title-block" id="quarto-document-content">
+
 
 
 
@@ -299,7 +312,7 @@ R_T(y) \rightarrow \begin{cases} 1- \left(1 + \frac{ky}{\sigma}\right)^{-1/k}, \
 \]</span> for some <span class="math inline">\(\sigma &gt; 0\)</span> and <span class="math inline">\(k \in \mathbb{R}\)</span>. The shape<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> parameter <span class="math inline">\(k\)</span> is very important for us, as it tells us how many moments the distribution has. In particular, if a distribution <span class="math inline">\(X\)</span> has shape parameter <span class="math inline">\(k\)</span>, then <span class="math display">\[
 \mathbb{E}|X|^\alpha &lt; \infty, \quad \forall \alpha &lt; \frac{1}{k}.
 \]</span> We will focus exclusively on the case where <span class="math inline">\(k &lt; 1\)</span>. When <span class="math inline">\(k &lt; 1/2\)</span>, the distribution has finite variance.</p>
-<p>If <span class="math inline">\(1- R(r) = cr^{-1/k}(1+ o(1))\)</span>, then the conditional exceedence function is <span class="math display">\[\begin{align*}
+<p>If <span class="math inline">\(1- R(r) = cr^{-1/k}(1+  o(1))\)</span>, then the conditional exceedence function is <span class="math display">\[\begin{align*}
 R_T(y) &amp;=  \frac{cT^{-1/k}(1+  o(1)) - c(T+y)^{-1/k}(1+  o(1))}{cT^{-1/k}(1+  o(1)))} \\
 &amp;= \left[1 - \left(1 + \frac{y}{T}\right)^{-1/k}\right](1 + o(1)),
 \end{align*}\]</span> which suggests that as <span class="math inline">\(T\rightarrow \infty\)</span>, <span class="math inline">\(R_T\)</span> converges to a generalised Pareto distribution with shape parameter <span class="math inline">\(k\)</span> and scale parameter <span class="math inline">\(\mathcal{O}(T)\)</span>.</p>
@@ -367,7 +380,7 @@ I^S_\text{WIS} = \frac{1}{S}\sum_{s = 1}^{S-M} h_{s:S}r_{s:S} + \frac{r_{S-M+1:S
 <p>Now the more sensible among you will say <em><a href="https://www.youtube.com/watch?v=R-HryG35A2E">Daniel, No!</a> That’s a ratio! That’s going to be hard to bound</em>. And, of course, you are right. But here’s the thing: if <span class="math inline">\(M\)</span> is small relative to <span class="math inline">\(S\)</span>, it is <em>tremendously</em> unlikely that <span class="math inline">\(r_{S-M+1:S}\)</span> is anywhere near zero. This is intuitively true, but also mathematically true.</p>
 <p>To attack this expectation, we are going to look at a slightly different quantity that has the good grace of being non-negative.</p>
 <div id="lem-lem1" class="theorem lemma">
-<p><span class="theorem-title"><strong>Lemma 1 </strong></span>Let <span class="math inline">\(X_s\)</span>, <span class="math inline">\(s= 1, \ldots S\)</span> be an iid sample from <span class="math inline">\(F_X\)</span>, let <span class="math inline">\(0\leq k\leq S\)</span> be an integer. Then <span class="math display">\[
+<p><span class="theorem-title"><strong>Lemma 1</strong></span> Let <span class="math inline">\(X_s\)</span>, <span class="math inline">\(s= 1, \ldots S\)</span> be an iid sample from <span class="math inline">\(F_X\)</span>, let <span class="math inline">\(0\leq k\leq S\)</span> be an integer. Then <span class="math display">\[
 \frac{p}{F_X(x_{k:S})} -p \stackrel{d}{=} \frac{p(S-k+1)}{k} \mathcal{F},
 \]</span> and <span class="math display">\[
 \frac{1-p}{1- F_x/(x_{k:S})} - (1-p) \stackrel{d}{=} \frac{k(1-p)}{S-k+1}\mathcal{F}^{-1}
@@ -421,7 +434,11 @@ I^S_\text{WIS} = \frac{1}{S}\sum_{s = 1}^{S-M} h_{s:S}r_{s:S} + \frac{r_{S-M+1:S
 <span id="cb1-24"><a href="#cb1-24"></a>  <span class="fu">stat_ecdf</span>(<span class="fu">aes</span>(<span class="at">x =</span> theoretical), <span class="at">colour =</span> <span class="st">"red"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb1-25"><a href="#cb1-25"></a>  <span class="fu">ggtitle</span>(<span class="fu">expression</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">frac</span>(<span class="dv">1</span><span class="sc">-</span>M<span class="sc">/</span>S , <span class="fu">R</span>(r[S<span class="sc">-</span>M<span class="sc">+</span><span class="dv">1</span><span class="sc">:</span>S]))))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="that-psis-proof_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="that-psis-proof_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1"></a><span class="fu">tibble</span>(<span class="at">theoretical =</span> p <span class="sc">-</span> (<span class="dv">1</span><span class="sc">-</span>p) <span class="sc">*</span> k<span class="sc">/</span>(fs <span class="sc">*</span> (S <span class="sc">-</span> k <span class="sc">+</span> <span class="dv">1</span>)),</span>
 <span id="cb2-2"><a href="#cb2-2"></a>       <span class="at">xks =</span> <span class="fu">map_dbl</span>(<span class="dv">1</span><span class="sc">:</span>N, \(x) <span class="fu">samp</span>(S, k, p)[<span class="dv">2</span>])) <span class="sc">%&gt;%</span></span>
@@ -429,7 +446,11 @@ I^S_\text{WIS} = \frac{1}{S}\sum_{s = 1}^{S-M} h_{s:S}r_{s:S} + \frac{r_{S-M+1:S
 <span id="cb2-4"><a href="#cb2-4"></a>  <span class="fu">stat_ecdf</span>(<span class="fu">aes</span>(<span class="at">x =</span> theoretical), <span class="at">colour =</span> <span class="st">"red"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
 <span id="cb2-5"><a href="#cb2-5"></a>  <span class="fu">ggtitle</span>(<span class="fu">expression</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">frac</span>(M<span class="sc">/</span>S , <span class="dv">1</span><span class="sc">-</span><span class="fu">R</span>(r[S<span class="sc">-</span>M<span class="sc">+</span><span class="dv">1</span><span class="sc">:</span>S]))))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img src="that-psis-proof_files/figure-html/unnamed-chunk-1-2.png" class="img-fluid" width="672"></p>
+<div>
+<figure class="figure">
+<p><img src="that-psis-proof_files/figure-html/unnamed-chunk-1-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 </div>
 <p>Fabulous. It follow then that <span class="math display">\[
@@ -451,10 +472,10 @@ I^S_\text{WIS} = \frac{1}{S}\sum_{s = 1}^{S-M} h_{s:S}r_{s:S} + \frac{r_{S-M+1:S
 \]</span> and so we get vanishing bias as long as <span class="math inline">\(M\rightarrow \infty\)</span> and <span class="math inline">\(M/S \rightarrow 0\)</span>.</p>
 <p>Once again, I make no claims of tightness<a href="#fn17" class="footnote-ref" id="fnref17" role="doc-noteref"><sup>17</sup></a>. Just because it’s a bit sloppy at this point doesn’t mean the job isn’t done.</p>
 <div id="thm-thm1" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 1 </strong></span>Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
+<p><span class="theorem-title"><strong>Theorem 1</strong></span> Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
 <ol type="1">
 <li><p><span class="math inline">\(R\)</span> is absolutely continuous</p></li>
-<li><p><span class="math inline">\(M \rightarrow \infty\)</span> and <span class="math inline">\(S^{-1}M \rightarrow 0\)</span></p></li>
+<li><p><span class="math inline">\(M  \rightarrow \infty\)</span> and <span class="math inline">\(S^{-1}M \rightarrow 0\)</span></p></li>
 <li><p><span class="math inline">\(h \in L^1(p)\)</span></p></li>
 </ol>
 <p>Then Winsorized importance sampling converges in <span class="math inline">\(L^1\)</span> and is asymptotically unbiased.</p>
@@ -526,7 +547,7 @@ Mathematica expression for <span class="math inline">\(\mathbb{E}|1-\mathcal{F}|
 \]</span> then <span class="math display">\[
 R'(r) = c w(cr - d)(1 + \mathcal{O}(r^{-\alpha})),
 \]</span> where <span class="math inline">\(c,d\)</span> are constants and <span class="math inline">\(w\)</span> is the density of a generalised Pareto distribution.</p>
-<p>Anyway, under those two assumptions, we can swap out the density of <span class="math inline">\((R-T)\mid R&gt;T\)</span> with its asymptotic approximation and get that, conditional on <span class="math inline">\(T= r_{S-M+1:S}\)</span>, <span class="math display">\[
+<p>Anyway, under those two assumptions, we can swap out the density of <span class="math inline">\((R-T)\mid R&gt;T\)</span> with its asymptotic approximation and get that, conditional on <span class="math inline">\(T=  r_{S-M+1:S}\)</span>, <span class="math display">\[
 \mathbb{E}(H(R-T) \mid R&gt;T) = (k-1)^{-1}T.
 \]</span></p>
 <p>Hence, the second term in the bias goes to zero if <span class="math display">\[
@@ -564,12 +585,12 @@ R(r_{S-M+1:S}) \sim \text{Beta}(S-M+1, M).
 \]</span></p>
 <p>Putting all of this together we have proved the following Corollary.</p>
 <div id="cor-cor1" class="theorem corollary">
-<p><span class="theorem-title"><strong>Corollary 1 </strong></span>Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
+<p><span class="theorem-title"><strong>Corollary 1</strong></span> Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
 <ol type="1">
 <li><p><span class="math inline">\(R\)</span> is absolutely continuous and satisfies the von Mises condition<a href="#fn28" class="footnote-ref" id="fnref28" role="doc-noteref"><sup>28</sup></a> <span class="math display">\[
 \frac{rR'(r)}{1-R(r)} = \frac{1}{k}(1 +\mathcal{O}(r^{-1})).
 \]</span></p></li>
-<li><p><span class="math inline">\(M = o(S)\)</span></p></li>
+<li><p><span class="math inline">\(M  = o(S)\)</span></p></li>
 <li><p><span class="math inline">\(h\)</span> is bounded<a href="#fn29" class="footnote-ref" id="fnref29" role="doc-noteref"><sup>29</sup></a></p></li>
 </ol>
 <p>Winsorized importance sampling converges in <span class="math inline">\(L^1\)</span> with rate of, at most, <span class="math inline">\(\mathcal{O}(MS^{-1} + S^{-1/2})\)</span>, which is balanced when <span class="math inline">\(M = \mathcal{O}(S^{1/2})\)</span>. Hence, WIS is<a href="#fn30" class="footnote-ref" id="fnref30" role="doc-noteref"><sup>30</sup></a> <span class="math inline">\(\sqrt{n}\)</span>-consistent.</p>
@@ -605,7 +626,7 @@ R^{-1}\left(1-\frac{M}{S+1}\right) &amp;= c^{-k}\left(\frac{M}{S+1}\right)^{-k}(
 <p>The argument that we used here is a modification of the argument in the TIS paper. This lead to a great deal of panic: did I just make my life extremely difficult? Could I have modified the TIS proof to show the bias goes to zero? To be honest, someone might be able to, but I can’t.</p>
 <p>So anyway, we’ve proved the following theorem.</p>
 <div id="thm-thm2" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 2 </strong></span>Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
+<p><span class="theorem-title"><strong>Theorem 2</strong></span> Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
 <ol type="1">
 <li><p><span class="math inline">\(R\)</span> is absolutely continuous</p></li>
 <li><p><span class="math inline">\(M \rightarrow \infty\)</span> and <span class="math inline">\(M^{-1}S \rightarrow 0\)</span></p></li>
@@ -636,17 +657,17 @@ w_m = r_{S-M+1}  + k^{-1}\sigma\left[\left(1-\frac{j-1/2}{M}\right)^{-k} -1\righ
 <p>Recalling that when <span class="math inline">\(R(r) = 1- cr^{-1/k}(1+ o(1))\)</span>, we had <span class="math inline">\(\sigma = \mathcal{O}(r_{S-M+1:S})\)</span>, this term is at most <span class="math inline">\(\mathcal{O}(1 + M^{-k})\)</span>. This will not trouble either of our convergence proofs.</p>
 <p>This leads to the following modification of our previous results.</p>
 <div id="thm-thm3" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 3 </strong></span>Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
+<p><span class="theorem-title"><strong>Theorem 3</strong></span> Let <span class="math inline">\(\theta_s\)</span>, <span class="math inline">\(s = 1,\ldots, S\)</span> be an iid sample from <span class="math inline">\(G\)</span> and let <span class="math inline">\(r_s = r(\theta_s) \sim R\)</span>. Assume that</p>
 <ol type="1">
 <li><p><span class="math inline">\(R\)</span> is absolutely continuous.</p></li>
-<li><p><span class="math inline">\(M = \mathcal{O}(S^{1/2})\)</span></p></li>
+<li><p><span class="math inline">\(M  = \mathcal{O}(S^{1/2})\)</span></p></li>
 <li><p><span class="math inline">\(h \in L^2(p)\)</span></p></li>
 <li><p><span class="math inline">\(k\)</span> and <span class="math inline">\(\sigma\)</span> are known with <span class="math inline">\(\sigma = \mathcal{O}(r_{S-M+1:S})\)</span>.</p></li>
 </ol>
 <p>Pareto smoothed importance sampling converges in <span class="math inline">\(L^1\)</span> and its variance goes to zero and it is consistent and asymptotically unbiased.</p>
 </div>
 <div id="cor-cor2" class="theorem corollary">
-<p><span class="theorem-title"><strong>Corollary 2 </strong></span>Assume further that</p>
+<p><span class="theorem-title"><strong>Corollary 2</strong></span> Assume further that</p>
 <ol type="1">
 <li><p>R satisfies the von Mises condition<a href="#fn33" class="footnote-ref" id="fnref33" role="doc-noteref"><sup>33</sup></a> <span class="math display">\[
 \frac{rR'(r)}{1-R(r)} = \frac{1}{k}(1 +\mathcal{O}(r^{-1})).
@@ -712,17 +733,16 @@ I^S_\text{SN-IS} = \frac{\sum_{s=1}^S\max\{\min\{h(\theta_i) r(\theta_i),T_{S-M+
 <li id="fn36"><p>I mean, the tools are elementary. It’s just a lot of detailed estimates and Berry-Esseen as far as the eye can see.<a href="#fnref36" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 <li id="fn37"><p>and more general things<a href="#fnref37" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
-</section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div quarto-reuse="quarto-reuse" class="quarto-appendix-contents"><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">https://creativecommons.org/licenses/by-nc/4.0/</a></div></section><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
-  author = {Dan Simpson},
-  editor = {},
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2022,
+  author = {Simpson, Dan},
   title = {Tail Stabilization of Importance Sampling Etimators: {A} Bit
     of Theory},
   date = {2022-06-15},
   url = {https://dansblog.netlify.app/2022-06-03-that-psis-proof},
   langid = {en}
 }
-</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="doc-biblioentry">
-Dan Simpson. 2022. <span>“Tail Stabilization of Importance Sampling
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2022" class="csl-entry quarto-appendix-citeas" role="listitem">
+Simpson, Dan. 2022. <span>“Tail Stabilization of Importance Sampling
 Etimators: A Bit of Theory.”</span> June 15, 2022. <a href="https://dansblog.netlify.app/2022-06-03-that-psis-proof">https://dansblog.netlify.app/2022-06-03-that-psis-proof</a>.
 </div></div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -752,9 +772,23 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     icon: icon
   };
   anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
   const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
     }
   });
   clipboard.on('success', function(e) {
@@ -766,17 +800,51 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     button.classList.add('code-copy-button-checked');
     var currentTitle = button.getAttribute("title");
     button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
     setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
       button.setAttribute("title", currentTitle);
       button.classList.remove('code-copy-button-checked');
     }, 1000);
     // clear code selection
     e.clearSelection();
   });
-  function tippyHover(el, contentFn) {
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
     const config = {
       allowHTML: true,
-      content: contentFn,
       maxWidth: 500,
       delay: 100,
       arrow: false,
@@ -786,8 +854,17 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       interactive: true,
       interactiveBorder: 10,
       theme: 'quarto',
-      placement: 'bottom-start'
+      placement: 'bottom-start',
     };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
     window.tippy(el, config); 
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
@@ -799,31 +876,286 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       try { href = new URL(href).hash; } catch {}
       const id = href.replace(/^#\/?/, "");
       const note = window.document.getElementById(id);
-      return note.innerHTML;
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
     });
   }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
   var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
   for (var i=0; i<bibliorefs.length; i++) {
     const ref = bibliorefs[i];
-    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
-    tippyHover(ref, function() {
-      var popup = window.document.createElement('div');
-      cites.forEach(function(cite) {
-        var citeDiv = window.document.createElement('div');
-        citeDiv.classList.add('hanging-indent');
-        citeDiv.classList.add('csl-entry');
-        var biblioDiv = window.document.getElementById('ref-' + cite);
-        if (biblioDiv) {
-          citeDiv.innerHTML = biblioDiv.innerHTML;
-        }
-        popup.appendChild(citeDiv);
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
       });
-      return popup.innerHTML;
-    });
+    }
   }
 });
 </script>
 </div> <!-- /content -->
+
 
 
 

@@ -28,7 +28,9 @@ website:
 
 format:
   html:
-    theme: ember.scss
+    theme:
+      - ember.scss
+      - custom.scss
     css: styles.css
-    include-after-body: plausible.html
+#    include-after-body: plausible.html
     df-print: paged
