@@ -1,0 +1,2117 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.4.553">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Dan Simpson">
+<meta name="dcterms.date" content="2024-05-08">
+<meta name="description" content="Exploiting linearity and sparisty to speed up JAX Hessians and slowly ruin my life.">
+
+<title>Un garçon pas comme les autres (Bayes) - An unexpected detour into partially symbolic, sparsity-expoiting autodiff; or Lord won’t you buy me a Laplace approximation</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../../styles.css">
+<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - An unexpected detour into partially symbolic, sparsity-expoiting autodiff; or Lord won’t you buy me a Laplace approximation">
+<meta property="og:description" content="Exploiting linearity and sparisty to speed up JAX Hessians and slowly ruin my life.">
+<meta property="og:image" content="https://dansblog.netlify.app/posts/2024-05-08-laplace/hat.jpg">
+<meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
+<meta name="twitter:title" content="Lord won’t you buy me a Laplace approximation">
+<meta name="twitter:description" content="Exploiting linearity and sparisty to speed up JAX Hessians and slowly ruin my life.">
+<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2024-05-08-laplace/hat.jpg">
+<meta name="twitter:creator" content="@dan_p_simpson">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+
+<body class="floating nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Un garçon pas comme les autres (Bayes)</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About this blog</span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://twitter.com/dan_p_simpson"> <i class="bi bi-twitter" role="img" aria-label="twitter">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/dpsimpson"> <i class="bi bi-github" role="img" aria-label="github">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://dansblog.netlify.app"> <i class="bi bi-person-circle" role="img" aria-label="website">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default toc-left page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">An unexpected detour into partially symbolic, sparsity-expoiting autodiff; or Lord won’t you buy me a Laplace approximation</h1>
+                  <div>
+        <div class="description">
+          <p>Exploiting linearity and sparisty to speed up JAX Hessians and slowly ruin my life.</p>
+        </div>
+      </div>
+                          <div class="quarto-categories">
+                <div class="quarto-category">JAX</div>
+                <div class="quarto-category">Laplace approximation</div>
+                <div class="quarto-category">Sparse matrices</div>
+                <div class="quarto-category">Autodiff</div>
+              </div>
+                  </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p><a href="https://dansblog.netlify.app">Dan Simpson</a> </p>
+            </div>
+    </div>
+      
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">May 8, 2024</p>
+      </div>
+    </div>
+    
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#the-laplace-approximation" id="toc-the-laplace-approximation" class="nav-link active" data-scroll-target="#the-laplace-approximation">The Laplace approximation</a>
+  <ul class="collapse">
+  <li><a href="#computing-the-laplace-approximation-in-jax" id="toc-computing-the-laplace-approximation-in-jax" class="nav-link" data-scroll-target="#computing-the-laplace-approximation-in-jax">Computing the Laplace approximation in JAX</a></li>
+  <li><a href="#speeding-up-the-computation" id="toc-speeding-up-the-computation" class="nav-link" data-scroll-target="#speeding-up-the-computation">Speeding up the computation</a></li>
+  </ul></li>
+  <li><a href="#can-we-automate-this-parsing-jax-expressions" id="toc-can-we-automate-this-parsing-jax-expressions" class="nav-link" data-scroll-target="#can-we-automate-this-parsing-jax-expressions">Can we automate this? Parsing JAX expressions</a>
+  <ul class="collapse">
+  <li><a href="#getting-to-know-jaxprs" id="toc-getting-to-know-jaxprs" class="nav-link" data-scroll-target="#getting-to-know-jaxprs">Getting to know jaxprs</a></li>
+  <li><a href="#splitting-the-expression-graph-into-linear-and-non-linear-subgraphs" id="toc-splitting-the-expression-graph-into-linear-and-non-linear-subgraphs" class="nav-link" data-scroll-target="#splitting-the-expression-graph-into-linear-and-non-linear-subgraphs">Splitting the expression graph into linear and non-linear subgraphs</a></li>
+  <li><a href="#step-right-up-to-play-the-game-of-the-year-is-it-linear" id="toc-step-right-up-to-play-the-game-of-the-year-is-it-linear" class="nav-link" data-scroll-target="#step-right-up-to-play-the-game-of-the-year-is-it-linear">Step right up to play the game of the year: Is it linear?</a></li>
+  <li><a href="#tracing-through-the-jaxprs" id="toc-tracing-through-the-jaxprs" class="nav-link" data-scroll-target="#tracing-through-the-jaxprs">Tracing through the jaxprs</a></li>
+  <li><a href="#partitioning-the-graph" id="toc-partitioning-the-graph" class="nav-link" data-scroll-target="#partitioning-the-graph">Partitioning the graph</a></li>
+  <li><a href="#putting-it-together" id="toc-putting-it-together" class="nav-link" data-scroll-target="#putting-it-together">Putting it together</a></li>
+  <li><a href="#making-sub-functions" id="toc-making-sub-functions" class="nav-link" data-scroll-target="#making-sub-functions">Making sub-functions</a></li>
+  </ul></li>
+  <li><a href="#making-the-hessian" id="toc-making-the-hessian" class="nav-link" data-scroll-target="#making-the-hessian">Making the Hessian</a>
+  <ul class="collapse">
+  <li><a href="#but-is-it-faster" id="toc-but-is-it-faster" class="nav-link" data-scroll-target="#but-is-it-faster">But is it faster?</a></li>
+  <li><a href="#but-you-forgot-the-diagonal-trick" id="toc-but-you-forgot-the-diagonal-trick" class="nav-link" data-scroll-target="#but-you-forgot-the-diagonal-trick">But you forgot the diagonal trick</a></li>
+  </ul></li>
+  <li><a href="#some-concluding-thoughts" id="toc-some-concluding-thoughts" class="nav-link" data-scroll-target="#some-concluding-thoughts">Some concluding thoughts</a>
+  <ul class="collapse">
+  <li><a href="#the-power-of-compiler-optimizations" id="toc-the-power-of-compiler-optimizations" class="nav-link" data-scroll-target="#the-power-of-compiler-optimizations">The power of compiler optimizations</a></li>
+  <li><a href="#sparsity-detection-and-sparse-autodiff" id="toc-sparsity-detection-and-sparse-autodiff" class="nav-link" data-scroll-target="#sparsity-detection-and-sparse-autodiff">Sparsity detection and sparse autodiff</a></li>
+  <li><a href="#could-we-do-more" id="toc-could-we-do-more" class="nav-link" data-scroll-target="#could-we-do-more">Could we do more?</a></li>
+  <li><a href="#but-is-jax-the-right-framework-for-this" id="toc-but-is-jax-the-right-framework-for-this" class="nav-link" data-scroll-target="#but-is-jax-the-right-framework-for-this">But is JAX the right framework for this?</a></li>
+  </ul></li>
+  </ul>
+</nav>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+
+<p>I am, once again, in a bit of a mood. And the only thing that will fix my mood is a good martini and a Laplace approximation. And I’m all out of martinis.</p>
+<p>To be honest I started writing this post in February 2023, but then got distracted by visas and jobs and all that jazz. But I felt the desire to finish it, so here we are. I wonder how much I will want to re-write<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
+<p>The post started as a pedagogical introduction to Laplace approximations (for reasons I don’t fully remember), but it rapidly went off the rails. So strap yourself in<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a> for a tour through the basics of sparse autodiff and a tour through manipulating the <code>jaxpr</code> intermediate representation in order to make one very simple logistic regression produce autodiff code that is almost as fast as a manually programmed gradient.</p>
+<section id="the-laplace-approximation" class="level2">
+<h2 class="anchored" data-anchor-id="the-laplace-approximation">The Laplace approximation</h2>
+<p>One of the simplest approximations to a distribution is the Laplace approximation. It be defined as the Gaussian distribution that matches that the mode and the curvature and the curvature at the mode of the target distribution. It lives its best life when the density is of the form <span class="math display">\[
+p(x) \propto \exp(-nf_n(x)),
+\]</span> where <span class="math inline">\(f_n\)</span> is a sequence of functions<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a>. Let’s imagine that we want to approximate the normalized density <span class="math inline">\(p(x)\)</span> near the mode <span class="math inline">\(x^*\)</span>. We can do this by taking the second order Taylor expansion of <span class="math inline">\(f_n\)</span> around <span class="math inline">\(x=x_0\)</span>, which is <span class="math display">\[
+f_n = f_n(x^*) + (x-x^*)^TH(x^*)(x-x^*)  + \mathcal{O}((x-x^*)^3),
+\]</span> where<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a> <span class="math display">\[
+[H(x^*)]_{ij} = \frac{\partial^2 f_n}{\partial x_i \partial x_j}
+\]</span> is the Hessian matrix.</p>
+<p>If we replace <span class="math inline">\(f_n\)</span> by it’s quadratic approximation we get <span class="math display">\[
+p(x) \approx  C\exp(-n(x- x^*)^TH(x^*)(x-x^*)),
+\]</span> where <span class="math inline">\(C\)</span> is a constant.</p>
+<p>After normalizing the approximation to make sure that we get a proper density, we get the Laplace approximation <span class="math display">\[
+p(x) \approx N(x^*, n^{-1}H(x^*)^{-1}).
+\]</span></p>
+<p>The Laplace approximation can be justified rigorously and has a well-studied error and it’s known to work quite well when <span class="math inline">\(p(x)\)</span> is a) unimodal<a href="#fn5" class="footnote-ref" id="fnref5" role="doc-noteref"><sup>5</sup></a> and b) isn’t tooooo non-Gaussian.</p>
+<p>In practice, people have found that Laplace approximations do a reasonable<a href="#fn6" class="footnote-ref" id="fnref6" role="doc-noteref"><sup>6</sup></a> job quantifying uncertainty <a href="https://arxiv.org/abs/2106.14806">even in complex neural network models</a> and it is at the heart of any number of classical estimators in statistics.</p>
+<p>From an implementation perspective, the Laplace approximation is pretty simple. It’s just a two step process:</p>
+<div class="algorithm">
+<ol type="1">
+<li><p>Find the mode <span class="math inline">\(x^* = \arg \max_x f_n(x)\)</span> using your favorite optimizer</p></li>
+<li><p>Compute the Hessian <span class="math inline">\(H(x^*)\)</span>.</p></li>
+</ol>
+</div>
+<p>In a Bayesian context, we typically take <span class="math display">\[
+f_n(x) = \frac{1}{n} \sum_{i=1}^n \log p(y_i \mid x) + \frac{1}{n} \log p(x),
+\]</span> which will lead to a Gaussian approximation to the posterior distribution. But this post really isn’t about Bayes. It’s about Laplace approximations.</p>
+<section id="computing-the-laplace-approximation-in-jax" class="level3">
+<h3 class="anchored" data-anchor-id="computing-the-laplace-approximation-in-jax">Computing the Laplace approximation in JAX</h3>
+<p>This is a two step process and, to be honest, all of the steps are pretty standard. So (hopefully) this will not be too tricky to implement. For simplicity, I’m not going to bother with the dividing and multiplying by <span class="math inline">\(n\)</span>, although for very large data it could be quite</p>
+<div id="b8706506" class="cell" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1"></a><span class="im">import</span> jax.numpy <span class="im">as</span> jnp</span>
+<span id="cb1-2"><a href="#cb1-2"></a><span class="im">from</span> jax.scipy.optimize <span class="im">import</span> minimize</span>
+<span id="cb1-3"><a href="#cb1-3"></a><span class="im">from</span> jax.scipy.special <span class="im">import</span> expit</span>
+<span id="cb1-4"><a href="#cb1-4"></a><span class="im">from</span> jax <span class="im">import</span> jacfwd, grad</span>
+<span id="cb1-5"><a href="#cb1-5"></a><span class="im">from</span> jax <span class="im">import</span> Array</span>
+<span id="cb1-6"><a href="#cb1-6"></a><span class="im">from</span> typing <span class="im">import</span> Callable, Tuple, List, Set, Dict</span>
+<span id="cb1-7"><a href="#cb1-7"></a></span>
+<span id="cb1-8"><a href="#cb1-8"></a><span class="kw">def</span> laplace(f: Callable, x0: Array) <span class="op">-&gt;</span> Array:</span>
+<span id="cb1-9"><a href="#cb1-9"></a>    nx <span class="op">=</span> x0.shape[<span class="dv">0</span>]</span>
+<span id="cb1-10"><a href="#cb1-10"></a>    mode, <span class="op">*</span>details <span class="op">=</span> minimize(<span class="kw">lambda</span> x: <span class="op">-</span>f(x), x0, method <span class="op">=</span> <span class="st">"BFGS"</span>)</span>
+<span id="cb1-11"><a href="#cb1-11"></a>    H <span class="op">=</span>  <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> jacfwd(grad(f))(mode)</span>
+<span id="cb1-12"><a href="#cb1-12"></a>    <span class="cf">return</span> mode, H</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>There are a few things worth noting here. There’s not really much in this code, except to note that <code>jax.scipy.optimize.minimize</code> finds the minimum of <span class="math inline">\(f\)</span>, so I had to pass through the negative of the function. This change also propagates to the computation of the Hessian, which is computed as the Jacobian of the gradient of f.&nbsp;</p>
+<p>Depending on what needs to be done with the Laplace approximation, it might be more appropriate to output the log-density rather than just the mode and the Hessian, but for the moment we will keep this signature.</p>
+<p>Let’s try it out. First of all, I’m going to generate some random data from a logistic regression model. This is going to use <a href="https://jax.readthedocs.io/en/latest/jax-101/05-random-numbers.html">Jax’s slightly odd random number system where you need to manually update the state of the pseudo-random number generator</a>. This is beautifully repeatable<a href="#fn7" class="footnote-ref" id="fnref7" role="doc-noteref"><sup>7</sup></a> unlike, say, R or standard numpy, where you’ve got to pay <em>a lot</em> of attention to the state of the random number generator to avoid oddities.</p>
+<div id="55630b08" class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1"></a><span class="im">from</span> jax <span class="im">import</span> random <span class="im">as</span> jrandom</span>
+<span id="cb2-2"><a href="#cb2-2"></a></span>
+<span id="cb2-3"><a href="#cb2-3"></a><span class="kw">def</span> make_data(key, n: <span class="bu">int</span>, p: <span class="bu">int</span>) <span class="op">-&gt;</span> Tuple[Array, Array]:</span>
+<span id="cb2-4"><a href="#cb2-4"></a>  key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb2-5"><a href="#cb2-5"></a>  X <span class="op">=</span> jrandom.normal(sub, shape <span class="op">=</span> (n,p)) <span class="op">/</span>jnp.sqrt(p)</span>
+<span id="cb2-6"><a href="#cb2-6"></a></span>
+<span id="cb2-7"><a href="#cb2-7"></a>  key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb2-8"><a href="#cb2-8"></a>  beta <span class="op">=</span> <span class="fl">0.5</span> <span class="op">*</span> jrandom.normal(sub, shape <span class="op">=</span> (p,))</span>
+<span id="cb2-9"><a href="#cb2-9"></a>  key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb2-10"><a href="#cb2-10"></a>  beta0 <span class="op">=</span> jrandom.normal(sub)</span>
+<span id="cb2-11"><a href="#cb2-11"></a></span>
+<span id="cb2-12"><a href="#cb2-12"></a></span>
+<span id="cb2-13"><a href="#cb2-13"></a>  key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb2-14"><a href="#cb2-14"></a>  y <span class="op">=</span> jrandom.bernoulli(sub, expit(beta0 <span class="op">+</span> X <span class="op">@</span> beta))</span>
+<span id="cb2-15"><a href="#cb2-15"></a></span>
+<span id="cb2-16"><a href="#cb2-16"></a>  <span class="cf">return</span> (y, X)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>An interesting side-note here is that I’ve generated the design matrix <span class="math inline">\(X\)</span> to have standard Gaussian columns. This is <em>not</em> a benign choice as <span class="math inline">\(n\)</span> gets big. With <em>very</em> high probability, the columns of <span class="math inline">\(X\)</span> will be almost<a href="#fn8" class="footnote-ref" id="fnref8" role="doc-noteref"><sup>8</sup></a> orthonormal, which means that this is the best possible case for logistic regression. Generally speaking, design matrices from real<a href="#fn9" class="footnote-ref" id="fnref9" role="doc-noteref"><sup>9</sup></a> data have a great deal of co-linearity in them and so algorithms that perform well on random design matrices may perform less well on real data.</p>
+<p>Ok, so let’s fit the model! I’m just going to use <span class="math inline">\(N(0,1)\)</span> priors on all of the <span class="math inline">\(\beta\)</span>s.</p>
+<div id="d2663675" class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1"></a><span class="im">from</span> functools <span class="im">import</span> partial</span>
+<span id="cb3-2"><a href="#cb3-2"></a>n <span class="op">=</span> <span class="dv">100</span></span>
+<span id="cb3-3"><a href="#cb3-3"></a>p <span class="op">=</span> <span class="dv">5</span></span>
+<span id="cb3-4"><a href="#cb3-4"></a></span>
+<span id="cb3-5"><a href="#cb3-5"></a>key <span class="op">=</span> jrandom.PRNGKey(<span class="dv">30127</span>)</span>
+<span id="cb3-6"><a href="#cb3-6"></a>y, X <span class="op">=</span> make_data(key, n, p)</span>
+<span id="cb3-7"><a href="#cb3-7"></a></span>
+<span id="cb3-8"><a href="#cb3-8"></a><span class="kw">def</span> log_posterior(beta: Array, X: Array, y: Array) <span class="op">-&gt;</span> Array:</span>
+<span id="cb3-9"><a href="#cb3-9"></a>    <span class="cf">assert</span> beta.shape[<span class="dv">0</span>] <span class="op">==</span> X.shape[<span class="dv">1</span>] <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb3-10"><a href="#cb3-10"></a></span>
+<span id="cb3-11"><a href="#cb3-11"></a>    prob <span class="op">=</span> expit(beta[<span class="dv">0</span>] <span class="op">+</span> X <span class="op">@</span> beta[<span class="dv">1</span>:])</span>
+<span id="cb3-12"><a href="#cb3-12"></a>    </span>
+<span id="cb3-13"><a href="#cb3-13"></a>    <span class="cf">return</span> (</span>
+<span id="cb3-14"><a href="#cb3-14"></a>      jnp.<span class="bu">sum</span>(y <span class="op">*</span> jnp.log(prob) <span class="op">+</span> </span>
+<span id="cb3-15"><a href="#cb3-15"></a>      (<span class="dv">1</span><span class="op">-</span>y) <span class="op">*</span> jnp.log1p(<span class="op">-</span>prob)) <span class="op">-</span> </span>
+<span id="cb3-16"><a href="#cb3-16"></a>      <span class="fl">0.5</span> <span class="op">*</span> jnp.dot(beta, beta)</span>
+<span id="cb3-17"><a href="#cb3-17"></a>    )</span>
+<span id="cb3-18"><a href="#cb3-18"></a></span>
+<span id="cb3-19"><a href="#cb3-19"></a></span>
+<span id="cb3-20"><a href="#cb3-20"></a>post_mean, H <span class="op">=</span> laplace(</span>
+<span id="cb3-21"><a href="#cb3-21"></a>  partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y),</span>
+<span id="cb3-22"><a href="#cb3-22"></a>  x0 <span class="op">=</span>jnp.zeros(X.shape[<span class="dv">1</span>] <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb3-23"><a href="#cb3-23"></a>)</span>
+<span id="cb3-24"><a href="#cb3-24"></a></span>
+<span id="cb3-25"><a href="#cb3-25"></a>post_cov <span class="op">=</span> jnp.linalg.inv(H)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Let’s see how this performs relative to MCMC. To do that, I’m going to build and equivalent PyMC model.</p>
+<div id="e3114d7a" class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb4-2"><a href="#cb4-2"></a><span class="im">import</span> pymc <span class="im">as</span> pm</span>
+<span id="cb4-3"><a href="#cb4-3"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb4-4"><a href="#cb4-4"></a></span>
+<span id="cb4-5"><a href="#cb4-5"></a><span class="cf">with</span> pm.Model() <span class="im">as</span> logistic_reg:</span>
+<span id="cb4-6"><a href="#cb4-6"></a>  beta <span class="op">=</span> pm.Normal(<span class="st">'beta'</span>, <span class="dv">0</span>, <span class="dv">1</span>, shape <span class="op">=</span> (p<span class="op">+</span><span class="dv">1</span>,))</span>
+<span id="cb4-7"><a href="#cb4-7"></a>  linpred <span class="op">=</span> beta[<span class="dv">0</span>] <span class="op">+</span> pm.math.dot(np.array(X), beta[<span class="dv">1</span>:])</span>
+<span id="cb4-8"><a href="#cb4-8"></a>  </span>
+<span id="cb4-9"><a href="#cb4-9"></a>  pm.Bernoulli(</span>
+<span id="cb4-10"><a href="#cb4-10"></a>    <span class="st">"y"</span>, </span>
+<span id="cb4-11"><a href="#cb4-11"></a>    p <span class="op">=</span> pm.math.invlogit(linpred),</span>
+<span id="cb4-12"><a href="#cb4-12"></a>    observed <span class="op">=</span> np.array(y)</span>
+<span id="cb4-13"><a href="#cb4-13"></a>  )</span>
+<span id="cb4-14"><a href="#cb4-14"></a>  posterior <span class="op">=</span> pm.sample(</span>
+<span id="cb4-15"><a href="#cb4-15"></a>    tune<span class="op">=</span><span class="dv">1000</span>, </span>
+<span id="cb4-16"><a href="#cb4-16"></a>    draws<span class="op">=</span><span class="dv">1000</span>, </span>
+<span id="cb4-17"><a href="#cb4-17"></a>    chains<span class="op">=</span><span class="dv">4</span>, </span>
+<span id="cb4-18"><a href="#cb4-18"></a>    cores <span class="op">=</span> <span class="dv">1</span>)</span>
+<span id="cb4-19"><a href="#cb4-19"></a></span>
+<span id="cb4-20"><a href="#cb4-20"></a><span class="co"># I would like to apologize for the following pandas code.</span></span>
+<span id="cb4-21"><a href="#cb4-21"></a>tmp <span class="op">=</span> pm.summary(posterior)</span>
+<span id="cb4-22"><a href="#cb4-22"></a>tmp <span class="op">=</span> tmp.assign(</span>
+<span id="cb4-23"><a href="#cb4-23"></a>  laplace_mean <span class="op">=</span> post_mean, </span>
+<span id="cb4-24"><a href="#cb4-24"></a>  laplace_sd <span class="op">=</span> np.sqrt(np.diag(post_cov)), </span>
+<span id="cb4-25"><a href="#cb4-25"></a>  Variable <span class="op">=</span> tmp.index</span>
+<span id="cb4-26"><a href="#cb4-26"></a>)[[<span class="st">"Variable"</span>, <span class="st">"mean"</span>, <span class="st">"laplace_mean"</span>, <span class="st">"sd"</span>, <span class="st">"laplace_sd"</span>]]</span>
+<span id="cb4-27"><a href="#cb4-27"></a></span>
+<span id="cb4-28"><a href="#cb4-28"></a><span class="cf">with</span> pd.option_context(<span class="st">'display.precision'</span>, <span class="dv">3</span>):</span>
+<span id="cb4-29"><a href="#cb4-29"></a>    <span class="bu">print</span>(tmp)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Auto-assigning NUTS sampler...
+Initializing NUTS using jitter+adapt_diag...
+Sequential sampling (4 chains in 1 job)
+NUTS: [beta]
+Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 5 seconds.</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+    <div>
+      <progress value="2000" class="" max="2000" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      100.00% [2000/2000 00:01&lt;00:00 Sampling chain 0, 0 divergences]
+    </div>
+    
+</div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+    <div>
+      <progress value="2000" class="" max="2000" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      100.00% [2000/2000 00:01&lt;00:00 Sampling chain 1, 0 divergences]
+    </div>
+    
+</div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+    <div>
+      <progress value="2000" class="" max="2000" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      100.00% [2000/2000 00:01&lt;00:00 Sampling chain 2, 0 divergences]
+    </div>
+    
+</div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+    <div>
+      <progress value="2000" class="" max="2000" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      100.00% [2000/2000 00:01&lt;00:00 Sampling chain 3, 0 divergences]
+    </div>
+    
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>        Variable   mean  laplace_mean     sd  laplace_sd
+beta[0]  beta[0]  0.241         0.234  0.230       0.229
+beta[1]  beta[1] -0.955        -0.914  0.440       0.428
+beta[2]  beta[2] -1.707        -1.616  0.488       0.470
+beta[3]  beta[3] -0.968        -0.926  0.411       0.416
+beta[4]  beta[4] -0.731        -0.716  0.460       0.457
+beta[5]  beta[5]  0.649         0.609  0.485       0.475</code></pre>
+</div>
+</div>
+<p>Well that’s just dandy! Everything is pretty<a href="#fn10" class="footnote-ref" id="fnref10" role="doc-noteref"><sup>10</sup></a> close. With 1000 observations it’s identical to within 3 decimal places.</p>
+</section>
+<section id="speeding-up-the-computation" class="level3">
+<h3 class="anchored" data-anchor-id="speeding-up-the-computation">Speeding up the computation</h3>
+<p>So that is all well and dandy. Let’s see how long it takes. I am interested in big models, so for this demonstration, I’m going to take <span class="math inline">\(p = 5000\)</span>. That said, I’m not enormously interested in seeing how this scales in <span class="math inline">\(n\)</span> (linearly), so I’m going to keep that at the fairly unrealistic value of <span class="math inline">\(n=1000\)</span>.</p>
+<div id="b73fcc03" class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1"></a><span class="im">import</span> timeit</span>
+<span id="cb7-2"><a href="#cb7-2"></a><span class="kw">def</span> hess_test(key, n, p):</span>
+<span id="cb7-3"><a href="#cb7-3"></a>  y, X <span class="op">=</span> make_data(key, n , p)</span>
+<span id="cb7-4"><a href="#cb7-4"></a>  inpu <span class="op">=</span> jnp.ones(p<span class="op">+</span><span class="dv">1</span>)</span>
+<span id="cb7-5"><a href="#cb7-5"></a>  <span class="kw">def</span> hess():</span>
+<span id="cb7-6"><a href="#cb7-6"></a>    f <span class="op">=</span> partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y)</span>
+<span id="cb7-7"><a href="#cb7-7"></a>    <span class="cf">return</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> jacfwd(grad(f))(inpu)</span>
+<span id="cb7-8"><a href="#cb7-8"></a>  <span class="cf">return</span> hess</span>
+<span id="cb7-9"><a href="#cb7-9"></a></span>
+<span id="cb7-10"><a href="#cb7-10"></a>n <span class="op">=</span> <span class="dv">1000</span></span>
+<span id="cb7-11"><a href="#cb7-11"></a>p <span class="op">=</span> <span class="dv">5000</span></span>
+<span id="cb7-12"><a href="#cb7-12"></a>key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb7-13"><a href="#cb7-13"></a>hess <span class="op">=</span> hess_test(sub, n , p)</span>
+<span id="cb7-14"><a href="#cb7-14"></a>times <span class="op">=</span> timeit.repeat(hess, number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb7-15"><a href="#cb7-15"></a><span class="bu">print</span>(<span class="ss">f"Autodiff: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Autodiff: The average time with p = 5000 is  3.785(+/- 0.513)</code></pre>
+</div>
+</div>
+<p>That doesn’t seem too bad, but the thing is that I know quite a lot about logistic regression. It is, after all, logistic regression. In particular, I know that the Hessian has the form <span class="math display">\[
+H = X^T D(\beta) X,
+\]</span> where <span class="math inline">\(D(\beta)\)</span> is a <em>diagonal</em> <span class="math inline">\(n \times n\)</span> matrix that has a known form.</p>
+<p>This means that the appropriate comparison is between the speed of the autodiff Hessian and how long it takes to compute <span class="math inline">\(X^TDX\)</span> for some diagonal matrix X.</p>
+<p>Now you might be worried here that I didn’t explicitly save <span class="math inline">\(X\)</span> and <span class="math inline">\(y\)</span>, so the comparison might not be fair. But my friends, I have good news! All of that awkward <code>key, sub = jrandom.split(key)</code> malarkey has the singular advantage that if I pass the same key into <code>make_data</code> that I used for <code>hess_test</code>, I will get <em>the exact same generated data</em>! So let’s do that. For <span class="math inline">\(D\)</span> I’m just going to pick a random matrix. This will give a <em>minimum</em> achievable time for computing the Hessian (as it doesn’t do the extra derivatives to compute <span class="math inline">\(D\)</span> properly).</p>
+<p>If you look at that code and say <em>but Daniel you used the wrong multiplication operator</em>, you can convince yourself that <code>X * d[:, None]</code> gives the same result as <code>jnp.diag(d) @ X</code>. But it will be faster. And it uses such beautiful<a href="#fn11" class="footnote-ref" id="fnref11" role="doc-noteref"><sup>11</sup></a> broadcasting rules.</p>
+<div id="0c6e2da9" class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1"></a>y, X <span class="op">=</span> make_data(key, n , p)</span>
+<span id="cb9-2"><a href="#cb9-2"></a>key, sub <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb9-3"><a href="#cb9-3"></a>d <span class="op">=</span> jrandom.normal(sub, shape <span class="op">=</span> (n,))</span>
+<span id="cb9-4"><a href="#cb9-4"></a>mm <span class="op">=</span> <span class="kw">lambda</span>: X.T <span class="op">@</span> (X <span class="op">*</span> d[:, <span class="va">None</span>])</span>
+<span id="cb9-5"><a href="#cb9-5"></a>times <span class="op">=</span> timeit.repeat(mm, number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb9-6"><a href="#cb9-6"></a><span class="bu">print</span>(<span class="ss">f"Symbolic (minimum possible): The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Symbolic (minimum possible): The average time with p = 5000 is  0.775(+/- 0.022)</code></pre>
+</div>
+</div>
+<p>Oh dear. The symbolic derivative<a href="#fn12" class="footnote-ref" id="fnref12" role="doc-noteref"><sup>12</sup></a> is <em>a lot</em> faster.</p>
+<p>Speeding this up is going to take a little work. The first thing we can try is to explicitly factor out the linear transformation. Instead of passing in the function <span class="math inline">\(f\)</span>, we could pass in <span class="math inline">\(g\)</span> such that <span class="math display">\[
+f(x) = g(Ax),
+\]</span> for some matrix <span class="math inline">\(A\)</span>. In our case <span class="math inline">\(g\)</span> would have a diagonal Hessian. Let’s convince ourselves of that with a small example. As well as dropping the intercept, I’ve also dropped the prior term.</p>
+<div id="e2399eb7" class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1"></a>g <span class="op">=</span> <span class="kw">lambda</span> prob: jnp.<span class="bu">sum</span>(y <span class="op">*</span> jnp.log(prob) <span class="op">+</span> (<span class="dv">1</span><span class="op">-</span>y) <span class="op">*</span> jnp.log1p(<span class="op">-</span>prob))</span>
+<span id="cb11-2"><a href="#cb11-2"></a>key, sub2 <span class="op">=</span> jrandom.split(key)</span>
+<span id="cb11-3"><a href="#cb11-3"></a>y, X <span class="op">=</span> make_data(sub2, <span class="dv">5</span>, <span class="dv">3</span>)</span>
+<span id="cb11-4"><a href="#cb11-4"></a>b <span class="op">=</span> X <span class="op">@</span> jnp.ones(<span class="dv">3</span>)</span>
+<span id="cb11-5"><a href="#cb11-5"></a>D <span class="op">=</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> jacfwd(grad(g))(b)</span>
+<span id="cb11-6"><a href="#cb11-6"></a><span class="bu">print</span>(np.<span class="bu">round</span>(D, <span class="dv">1</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[[0.7 0.  0.  0.  0. ]
+ [0.  3.7 0.  0.  0. ]
+ [0.  0.  7.8 0.  0. ]
+ [0.  0.  0.  4.9 0. ]
+ [0.  0.  0.  0.  0.3]]</code></pre>
+</div>
+</div>
+<p>Wonderfully diagonal!</p>
+<div id="d96efda0" class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1"></a><span class="kw">def</span> hess2(g, A, x):</span>
+<span id="cb13-2"><a href="#cb13-2"></a>  <span class="co"># </span></span>
+<span id="cb13-3"><a href="#cb13-3"></a>  b <span class="op">=</span> A <span class="op">@</span> x</span>
+<span id="cb13-4"><a href="#cb13-4"></a>  D <span class="op">=</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> jacfwd(grad(g))(b)</span>
+<span id="cb13-5"><a href="#cb13-5"></a>  H <span class="op">=</span> A.T <span class="op">@</span> (A <span class="op">*</span> jnp.diag(D)[:, <span class="va">None</span>])</span>
+<span id="cb13-6"><a href="#cb13-6"></a>  <span class="cf">return</span> H</span>
+<span id="cb13-7"><a href="#cb13-7"></a></span>
+<span id="cb13-8"><a href="#cb13-8"></a>y, X <span class="op">=</span> make_data(sub, n, p)</span>
+<span id="cb13-9"><a href="#cb13-9"></a>g <span class="op">=</span> <span class="kw">lambda</span> prob: jnp.<span class="bu">sum</span>(y <span class="op">*</span> jnp.log(prob) <span class="op">+</span> (<span class="dv">1</span><span class="op">-</span>y) <span class="op">*</span> jnp.log1p(<span class="op">-</span>prob))</span>
+<span id="cb13-10"><a href="#cb13-10"></a>x0 <span class="op">=</span> jnp.ones(p)</span>
+<span id="cb13-11"><a href="#cb13-11"></a>h2 <span class="op">=</span> <span class="kw">lambda</span>: hess2(g, X, x0)</span>
+<span id="cb13-12"><a href="#cb13-12"></a>times <span class="op">=</span> timeit.repeat(h2, number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb13-13"><a href="#cb13-13"></a><span class="bu">print</span>(<span class="ss">f"Separated Hessian: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Separated Hessian: The average time with p = 5000 is  1.002(+/- 0.182)</code></pre>
+</div>
+</div>
+<p>Well that’s definitely better.</p>
+<p>Now, we might be able to do even better than that if we notice that if we <em>know</em> that <span class="math inline">\(D\)</span> is diagonal, then we don’t need to compute the entire Hessian, we can simply compute the Hessian-vector product <span class="math display">\[
+\operatorname{diag}(H) = H 1 \qquad \text{iff }H\text{ is diagonal},
+\]</span> where <span class="math inline">\(1\)</span> is the vector of ones. Just as we computed the Hessian by computing the Jacobian of the gradient, it turns out that we can compute a Hessian-vector product by computing a Jacobian-vector product <code>jvp</code> of the gradient. The syntax in JAX is, honestly, a little bit gross here<a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a>, but if you want to read up about how it works <a href="https://jax.readthedocs.io/en/latest/notebooks/autodiff_cookbook.html#hessian-vector-products-using-both-forward-and-reverse-mode">the docs are really nice</a><a href="#fn14" class="footnote-ref" id="fnref14" role="doc-noteref"><sup>14</sup></a>.</p>
+<p>This observation is going to be useful because <code>jacfwd</code> computes the Jacobian by computing <span class="math inline">\(n\)</span> Jacobian-vector products. So this observation is saving us <em>a lot</em> of work.</p>
+<div id="67cbbb0b" class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1"></a><span class="im">from</span> jax <span class="im">import</span> jvp</span>
+<span id="cb15-2"><a href="#cb15-2"></a><span class="kw">def</span> hess3(g, A, x):</span>
+<span id="cb15-3"><a href="#cb15-3"></a>  <span class="co"># </span></span>
+<span id="cb15-4"><a href="#cb15-4"></a>  b <span class="op">=</span> A <span class="op">@</span> x</span>
+<span id="cb15-5"><a href="#cb15-5"></a>  D <span class="op">=</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> jvp(grad(g), (b,), (jnp.ones(n),))[<span class="dv">1</span>]</span>
+<span id="cb15-6"><a href="#cb15-6"></a>  H <span class="op">=</span> A.T <span class="op">@</span> (A <span class="op">*</span> D[:, <span class="va">None</span>])</span>
+<span id="cb15-7"><a href="#cb15-7"></a>  <span class="cf">return</span> H</span>
+<span id="cb15-8"><a href="#cb15-8"></a></span>
+<span id="cb15-9"><a href="#cb15-9"></a>h3 <span class="op">=</span> <span class="kw">lambda</span>: hess3(g, X, x0)</span>
+<span id="cb15-10"><a href="#cb15-10"></a>times <span class="op">=</span> timeit.repeat(h3, number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb15-11"><a href="#cb15-11"></a><span class="bu">print</span>(<span class="ss">f"Compressed Hessian: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Compressed Hessian: The average time with p = 5000 is  0.904(+/- 0.129)</code></pre>
+</div>
+</div>
+<p>This is very nearly as fast as the lower bound for the symbolic Hessian. There must be a way to use this.</p>
+</section>
+</section>
+<section id="can-we-automate-this-parsing-jax-expressions" class="level2">
+<h2 class="anchored" data-anchor-id="can-we-automate-this-parsing-jax-expressions">Can we automate this? Parsing JAX expressions</h2>
+<p>So that was all lovely and shiny. But the problem is that it was very labor intensive. I had to recognize both that you could write <span class="math inline">\(f(x) = g(Ax)\)</span> <em>and</em> that <span class="math inline">\(g\)</span> would have a diagonal Hessian. That is, frankly, hard to do in general.</p>
+<p>If I was building a system like <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a> or <a href="https://paul-buerkner.github.io/brms/"><code>brms</code></a> or <a href="https://www.r-inla.org/">INLA</a><a href="#fn15" class="footnote-ref" id="fnref15" role="doc-noteref"><sup>15</sup></a>, where the model classes are relatively constrained, it’s possible to automate both of these steps by analyzing the formula. But all I get is a function. So I need to work out how I can automatically parse the code for <span class="math inline">\(f\)</span> to find <span class="math inline">\(g\)</span> and <span class="math inline">\(A\)</span> (if they exist) and to determine if <span class="math inline">\(g\)</span> would have a sparse Hessian.</p>
+<p>We can’t do this easily with a standard Python program, but we can do it with JAX because it traces through the code and provides an <em>intermediate representation</em> (IR)of the code. This is, incidentally, the first step that any code compiler uses. The beauty of an IR is that it abstracts away all of the specific user choices and provides a clean, logical representation of the program that can then be executed or, in our case, manipulated. These manipulations are, for example, key to how JAX computes gradients, how it JIT-compiles code, and how it does <code>vmap</code> and <code>pmap</code> operations.</p>
+<p>But we can do more types of manipulations. In particular, we can take the IR and transform it into another IR that produces the same output in a more efficient way. Anyone who’s familiar with compiled programming languages should know that this happens under that hood. They also probably know that compiler writers are small gods and I’m definitely not going to approach anywhere near that level of complexity in a blog post.</p>
+<p>So what are our tasks. First of all we need to trace our way through the JAX code. We can do this by using the intermediate representation that JAX uses when transforming functions: the <code>jaxpr</code>s.</p>
+<section id="getting-to-know-jaxprs" class="level3">
+<h3 class="anchored" data-anchor-id="getting-to-know-jaxprs">Getting to know jaxprs</h3>
+<p>A <code>jaxpr</code> is a transformation of the python code for evaluating a JAX function into a human-readable language that maps types primitives through the code. We can view it using the <code>jax.make_jaxpr</code> function.</p>
+<p>Let’s look at the log-posterior function after partial evaluation to make it a single-input function.</p>
+<div id="e5a4dc57" class="cell" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1"></a><span class="im">from</span> jax <span class="im">import</span> make_jaxpr</span>
+<span id="cb17-2"><a href="#cb17-2"></a></span>
+<span id="cb17-3"><a href="#cb17-3"></a>lp <span class="op">=</span> partial(log_posterior, X<span class="op">=</span>X, y<span class="op">=</span>y)</span>
+<span id="cb17-4"><a href="#cb17-4"></a><span class="bu">print</span>(make_jaxpr(lp)(jnp.ones(p<span class="op">+</span><span class="dv">1</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>{ lambda a:f32[1000,5000] b:bool[1000]; c:f32[5001]. let
+    d:f32[1] = dynamic_slice[slice_sizes=(1,)] c 0
+    e:f32[] = squeeze[dimensions=(0,)] d
+    f:f32[5000] = dynamic_slice[slice_sizes=(5000,)] c 1
+    g:f32[1000] = dot_general[dimension_numbers=(([1], [0]), ([], []))] a f
+    h:f32[1000] = add e g
+    i:f32[1000] = logistic h
+    j:f32[1000] = log i
+    k:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] b
+    l:f32[1000] = mul k j
+    m:i32[1000] = convert_element_type[new_dtype=int32 weak_type=True] b
+    n:i32[1000] = sub 1 m
+    o:f32[1000] = neg i
+    p:f32[1000] = log1p o
+    q:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] n
+    r:f32[1000] = mul q p
+    s:f32[1000] = add l r
+    t:f32[] = reduce_sum[axes=(0,)] s
+    u:f32[] = dot_general[dimension_numbers=(([0], [0]), ([], []))] c c
+    v:f32[] = mul 0.5 u
+    w:f32[] = sub t v
+  in (w,) }</code></pre>
+</div>
+</div>
+<p>This can be a bit tricky to read the first time you see it, but it’s waaaay easier that X86-Assembly or the LLVM-IR. Basically it says that to compute <code>lp(jnp.ones(p+1))</code> you need to run through this program. The first line gives the inputs (with types and shapes). Then after the <code>let</code> statement, there are a the commands that need to be executed in order. A single execution looks like</p>
+<pre><code>d:f32[1] = dynamic_slice[slice_sizes=(1,)] c 0</code></pre>
+<p>This can be read as <em>take a slice of vector <code>c</code> starting at <code>0</code> of shape <code>(1,)</code> and store it in <code>d</code>, which is a 1-dimensional 32bit float array</em>. (The line after turns it into a scalar.)</p>
+<p>All of the other lines can be read similarly. A good trick, if you don’t recognize the primitive<a href="#fn16" class="footnote-ref" id="fnref16" role="doc-noteref"><sup>16</sup></a>, is to <a href="https://jax.readthedocs.io/en/latest/jax.lax.html">look it up</a> in the <code>jax.lax</code> sub-module.</p>
+<p>Even a cursory read of this suggests that we could probably save a couple of tedious operations by passing in an integer <code>y</code>, rather than a Boolean <code>y</code>, but hey. That really shouldn’t cost much.</p>
+<p>While the <code>jaxpr</code> is lovely, it’s a whole lot easier to reason about if you see it graphically. We can plot the <em>expression graph</em> using<a href="#fn17" class="footnote-ref" id="fnref17" role="doc-noteref"><sup>17</sup></a> the <code>haiku</code><a href="#fn18" class="footnote-ref" id="fnref18" role="doc-noteref"><sup>18</sup></a> package from DeepMind.</p>
+<div id="51dc05b9" class="cell" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1"></a><span class="im">from</span> haiku.experimental <span class="im">import</span> to_dot</span>
+<span id="cb20-2"><a href="#cb20-2"></a><span class="im">import</span> graphviz</span>
+<span id="cb20-3"><a href="#cb20-3"></a><span class="im">import</span> re</span>
+<span id="cb20-4"><a href="#cb20-4"></a>f <span class="op">=</span> partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y)</span>
+<span id="cb20-5"><a href="#cb20-5"></a>dot <span class="op">=</span> to_dot(f)(jnp.ones(p<span class="op">+</span><span class="dv">1</span>))</span>
+<span id="cb20-6"><a href="#cb20-6"></a><span class="co">#Strip out an obnoxious autogen title</span></span>
+<span id="cb20-7"><a href="#cb20-7"></a>dot <span class="op">=</span> re.sub(<span class="st">"&lt;&lt;.*&gt;&gt;;"</span>,<span class="st">"</span><span class="ch">\"</span><span class="st"> </span><span class="ch">\"</span><span class="st">"</span>, dot, count <span class="op">=</span> <span class="dv">1</span>, flags<span class="op">=</span>re.DOTALL)</span>
+<span id="cb20-8"><a href="#cb20-8"></a>graphviz.Source(dot)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<div>
+<figure class="figure">
+<p><img src="laplace_files/figure-html/cell-12-output-1.svg" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>To understand this graph, the orange-y boxes represent the input for <code>lp</code>. In this case it’s an array of floating point digits with <span class="math inline">\(p+1 = 5001\)</span>. The purple boxes are constants that are used in the function. Some of these are signed integers (s32), there’s a matrix (f32[1000, 5000]), and there is even a literal (0.5). The blue box is the output. That leaves the yellow boxes, which have all of the operations, with inward arrows indicating the inputs and outward arrows indicating the outputs.</p>
+</section>
+<section id="splitting-the-expression-graph-into-linear-and-non-linear-subgraphs" class="level3">
+<h3 class="anchored" data-anchor-id="splitting-the-expression-graph-into-linear-and-non-linear-subgraphs">Splitting the expression graph into linear and non-linear subgraphs</h3>
+<p>Looking at the graph, we can split it into three sub-graphs. The first sub-graph can be found by tracing an input value through the graph until it hits either a non-linear operation or the end of the graph. The sub-graph is created by making the penultimate node in that sequence an output node. This sub-graph represents a linear transformations.</p>
+<div id="68812d32" class="cell" data-execution_count="12">
+<div class="cell-output cell-output-display" data-execution_count="12">
+<div>
+<figure class="figure">
+<p><img src="laplace_files/figure-html/cell-13-output-1.svg" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Once we have reached the end of the linear portion, we can link the output from this operation to the input of the non-linear sub-graph.</p>
+<div id="559bc19a" class="cell" data-execution_count="13">
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div>
+<figure class="figure">
+<p><img src="laplace_files/figure-html/cell-14-output-1.svg" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Finally, we have one more trace of <span class="math inline">\(\beta\)</span> through the graph that is non-linear. We could couple this into the non-linear graph at the cost of having to reason about a bivariate Hessian (which will become complex).</p>
+<div id="b595a3fe" class="cell" data-execution_count="14">
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div>
+<figure class="figure">
+<p><img src="laplace_files/figure-html/cell-15-output-1.svg" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The two non-linear portions of the graph are merged through a trivial linear combination.</p>
+<div id="a9b25248" class="cell" data-execution_count="15">
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div>
+<figure class="figure">
+<p><img src="laplace_files/figure-html/cell-16-output-1.svg" class="img-fluid figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="step-right-up-to-play-the-game-of-the-year-is-it-linear" class="level3">
+<h3 class="anchored" data-anchor-id="step-right-up-to-play-the-game-of-the-year-is-it-linear">Step right up to play the game of the year: Is it linear?</h3>
+<p>So we need to trace through these jaxprs and keep a record of which of the sub-graphs they are in (and we do not know how many sub-graphs there will be!). We also need to note if an operation is linear or not. This is not something that is automatically provided. We need to store this information ourselves.</p>
+<p>The only way I can think to do this is to make a set of all of the JAX operations that I know to be linear. Many of them are just index or type stuff. Unfortunately, there is a more complex class of operation, which are only <em>sometimes</em> linear.</p>
+<p>The first example we see of this is</p>
+<pre><code>g:f32[1000] = dot_general[
+      dimension_numbers=(((1,), (0,)), ((), ()))
+      precision=None
+      preferred_element_type=None
+    ] a f</code></pre>
+<p>This line represents the general tensor dot product between <code>a</code> and <code>f</code>. In this case, <code>a</code> is constant input (the matrix <span class="math inline">\(X\)</span>) while <code>f</code> is a linear transformation of the input (<code>beta[1:]</code>), so the resulting step is linear. However, there is a second <code>dot_general</code> in the code, which occurs at</p>
+<pre><code>u:f32[] = dot_general[
+      dimension_numbers=(((0,), (0,)), ((), ()))
+      precision=None
+      preferred_element_type=None
+    ] c c</code></pre>
+<p>In this case, <code>c</code> is a linear transformation of the input (it’s just <code>beta</code>), but <code>dot(c,c)</code> is a quadratic function. Hence in this case, <code>dot_general</code> is not linear.</p>
+<p>We are going to need to work out how to handle this case. In the folded code is a partial<a href="#fn19" class="footnote-ref" id="fnref19" role="doc-noteref"><sup>19</sup></a> list of the <code>jax.lax</code> primitives that are linear or occasionally linear. All in all there are 69 linear or no-op primitives and 7 sometimes linear primitives.</p>
+<div id="45ac6e11" class="cell" data-execution_count="16">
+<details class="code-fold">
+<summary>jax.lax linear and sometimes linear primitives</summary>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1"></a>jax_linear <span class="op">=</span> {</span>
+<span id="cb23-2"><a href="#cb23-2"></a>  <span class="st">'add'</span>,</span>
+<span id="cb23-3"><a href="#cb23-3"></a>  <span class="st">'bitcast_convert_type'</span>,</span>
+<span id="cb23-4"><a href="#cb23-4"></a>  <span class="st">'broadcast'</span>,</span>
+<span id="cb23-5"><a href="#cb23-5"></a>  <span class="st">'broadcast_in_dim'</span>,</span>
+<span id="cb23-6"><a href="#cb23-6"></a>  <span class="st">'broadcast_shapes'</span>,</span>
+<span id="cb23-7"><a href="#cb23-7"></a>  <span class="st">'broadcast_to_rank'</span>,</span>
+<span id="cb23-8"><a href="#cb23-8"></a>  <span class="st">'clz'</span>,</span>
+<span id="cb23-9"><a href="#cb23-9"></a>  <span class="st">'collapse'</span>,</span>
+<span id="cb23-10"><a href="#cb23-10"></a>  <span class="st">'complex'</span>,</span>
+<span id="cb23-11"><a href="#cb23-11"></a>  <span class="st">'concatenate'</span>,</span>
+<span id="cb23-12"><a href="#cb23-12"></a>  <span class="st">'conj'</span>,</span>
+<span id="cb23-13"><a href="#cb23-13"></a>  <span class="st">'convert_element_type'</span>,</span>
+<span id="cb23-14"><a href="#cb23-14"></a>  <span class="st">'dtype'</span>,</span>
+<span id="cb23-15"><a href="#cb23-15"></a>  <span class="st">'dtypes'</span>,</span>
+<span id="cb23-16"><a href="#cb23-16"></a>  <span class="st">'dynamic_slice'</span>,</span>
+<span id="cb23-17"><a href="#cb23-17"></a>  <span class="st">'expand_dims'</span>,</span>
+<span id="cb23-18"><a href="#cb23-18"></a>  <span class="st">'full'</span>,</span>
+<span id="cb23-19"><a href="#cb23-19"></a>  <span class="st">'full_like'</span>,</span>
+<span id="cb23-20"><a href="#cb23-20"></a>  <span class="st">'imag'</span>,</span>
+<span id="cb23-21"><a href="#cb23-21"></a>  <span class="st">'neg'</span>,</span>
+<span id="cb23-22"><a href="#cb23-22"></a>  <span class="st">'pad'</span>,</span>
+<span id="cb23-23"><a href="#cb23-23"></a>  <span class="st">'padtype_to_pads'</span>,</span>
+<span id="cb23-24"><a href="#cb23-24"></a>  <span class="st">'real'</span>,</span>
+<span id="cb23-25"><a href="#cb23-25"></a>  <span class="st">'reduce'</span>,</span>
+<span id="cb23-26"><a href="#cb23-26"></a>  <span class="st">'reshape'</span>,</span>
+<span id="cb23-27"><a href="#cb23-27"></a>  <span class="st">'rev'</span>,</span>
+<span id="cb23-28"><a href="#cb23-28"></a>  <span class="st">'rng_bit_generator'</span>,</span>
+<span id="cb23-29"><a href="#cb23-29"></a>  <span class="st">'rng_uniform'</span>,</span>
+<span id="cb23-30"><a href="#cb23-30"></a>  <span class="st">'select'</span>,</span>
+<span id="cb23-31"><a href="#cb23-31"></a>  <span class="st">'select_n'</span>,</span>
+<span id="cb23-32"><a href="#cb23-32"></a>  <span class="st">'squeeze'</span>,</span>
+<span id="cb23-33"><a href="#cb23-33"></a>  <span class="st">'sub'</span>,</span>
+<span id="cb23-34"><a href="#cb23-34"></a>  <span class="st">'transpose'</span>,</span>
+<span id="cb23-35"><a href="#cb23-35"></a>  <span class="st">'zeros_like_array'</span>,</span>
+<span id="cb23-36"><a href="#cb23-36"></a>  <span class="st">'GatherDimensionNumbers'</span>,</span>
+<span id="cb23-37"><a href="#cb23-37"></a>  <span class="st">'GatherScatterMode'</span>,</span>
+<span id="cb23-38"><a href="#cb23-38"></a>  <span class="st">'ScatterDimensionNumbers'</span>,</span>
+<span id="cb23-39"><a href="#cb23-39"></a>  <span class="st">'dynamic_index_in_dim'</span>,</span>
+<span id="cb23-40"><a href="#cb23-40"></a>  <span class="st">'dynamic_slice'</span>,</span>
+<span id="cb23-41"><a href="#cb23-41"></a>  <span class="st">'dynamic_slice_in_dim'</span>,</span>
+<span id="cb23-42"><a href="#cb23-42"></a>  <span class="st">'dynamic_update_index_in_dim'</span>,</span>
+<span id="cb23-43"><a href="#cb23-43"></a>  <span class="st">'dynamic_update_slice'</span>,</span>
+<span id="cb23-44"><a href="#cb23-44"></a>  <span class="st">'dynamic_update_slice_in_dim'</span>,</span>
+<span id="cb23-45"><a href="#cb23-45"></a>  <span class="st">'gather'</span>,</span>
+<span id="cb23-46"><a href="#cb23-46"></a>  <span class="st">'index_in_dim'</span>,</span>
+<span id="cb23-47"><a href="#cb23-47"></a>  <span class="st">'index_take'</span>,</span>
+<span id="cb23-48"><a href="#cb23-48"></a>  <span class="st">'reduce_sum'</span>,</span>
+<span id="cb23-49"><a href="#cb23-49"></a>  <span class="st">'scatter'</span>,</span>
+<span id="cb23-50"><a href="#cb23-50"></a>  <span class="st">'scatter_add'</span>,</span>
+<span id="cb23-51"><a href="#cb23-51"></a>  <span class="st">'slice'</span>,</span>
+<span id="cb23-52"><a href="#cb23-52"></a>  <span class="st">'slice_in_dim'</span>,</span>
+<span id="cb23-53"><a href="#cb23-53"></a>  <span class="st">'conv'</span>,</span>
+<span id="cb23-54"><a href="#cb23-54"></a>  <span class="st">'conv_dimension_numbers'</span>,</span>
+<span id="cb23-55"><a href="#cb23-55"></a>  <span class="st">'conv_general_dilated'</span>,</span>
+<span id="cb23-56"><a href="#cb23-56"></a>  <span class="st">'conv_general_permutations'</span>,</span>
+<span id="cb23-57"><a href="#cb23-57"></a>  <span class="st">'conv_general_shape_tuple'</span>,</span>
+<span id="cb23-58"><a href="#cb23-58"></a>  <span class="st">'conv_shape_tuple'</span>,</span>
+<span id="cb23-59"><a href="#cb23-59"></a>  <span class="st">'conv_transpose'</span>,</span>
+<span id="cb23-60"><a href="#cb23-60"></a>  <span class="st">'conv_transpose_shape_tuple'</span>,</span>
+<span id="cb23-61"><a href="#cb23-61"></a>  <span class="st">'conv_with_general_padding'</span>,</span>
+<span id="cb23-62"><a href="#cb23-62"></a>  <span class="st">'cumsum'</span>,</span>
+<span id="cb23-63"><a href="#cb23-63"></a>  <span class="st">'fft'</span>,</span>
+<span id="cb23-64"><a href="#cb23-64"></a>  <span class="st">'all_gather'</span>,</span>
+<span id="cb23-65"><a href="#cb23-65"></a>  <span class="st">'all_to_all'</span>,</span>
+<span id="cb23-66"><a href="#cb23-66"></a>  <span class="st">'axis_index'</span>,</span>
+<span id="cb23-67"><a href="#cb23-67"></a>  <span class="st">'ppermute'</span>,</span>
+<span id="cb23-68"><a href="#cb23-68"></a>  <span class="st">'pshuffle'</span>,</span>
+<span id="cb23-69"><a href="#cb23-69"></a>  <span class="st">'psum'</span>,</span>
+<span id="cb23-70"><a href="#cb23-70"></a>  <span class="st">'psum_scatter'</span>,</span>
+<span id="cb23-71"><a href="#cb23-71"></a>  <span class="st">'pswapaxes'</span>,</span>
+<span id="cb23-72"><a href="#cb23-72"></a>  <span class="st">'xeinsum'</span></span>
+<span id="cb23-73"><a href="#cb23-73"></a>}</span>
+<span id="cb23-74"><a href="#cb23-74"></a></span>
+<span id="cb23-75"><a href="#cb23-75"></a>jax_sometimes_linear <span class="op">=</span> { </span>
+<span id="cb23-76"><a href="#cb23-76"></a>  <span class="st">'batch_matmul'</span>,</span>
+<span id="cb23-77"><a href="#cb23-77"></a>  <span class="st">'dot'</span>,</span>
+<span id="cb23-78"><a href="#cb23-78"></a>  <span class="st">'dot_general'</span>,</span>
+<span id="cb23-79"><a href="#cb23-79"></a>  <span class="st">'mul'</span></span>
+<span id="cb23-80"><a href="#cb23-80"></a> }</span>
+<span id="cb23-81"><a href="#cb23-81"></a>jax_first_linear <span class="op">=</span> {</span>
+<span id="cb23-82"><a href="#cb23-82"></a>  <span class="st">'div'</span></span>
+<span id="cb23-83"><a href="#cb23-83"></a> }</span>
+<span id="cb23-84"><a href="#cb23-84"></a>jax_last_linear <span class="op">=</span> {</span>
+<span id="cb23-85"><a href="#cb23-85"></a>  <span class="st">'custom_linear_solve'</span>,</span>
+<span id="cb23-86"><a href="#cb23-86"></a>  <span class="st">'triangular_solve'</span>,</span>
+<span id="cb23-87"><a href="#cb23-87"></a>  <span class="st">'tridiagonal_solve'</span></span>
+<span id="cb23-88"><a href="#cb23-88"></a> }</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>All of the <em>sometimes linear</em> operations are linear as long as only one of their arguments depends on the function inputs. For both <code>div</code> and the various linear solves, the position of the input-dependent argument is restricted to one of the two positions.</p>
+<div class="callout callout-style-simple callout-note">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-body-container">
+<p>A more JAX-native way to deal with this is to think of how the <code>transpose</code> operation works. Essentially, it has the same dimension as the function argument, but evaluates to <code>None</code> when the operation isn’t linear in that variable. But I had already done all of this before I got there and at some point truly you’ve gotta stop making your blog post more complicated.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="tracing-through-the-jaxprs" class="level3">
+<h3 class="anchored" data-anchor-id="tracing-through-the-jaxprs">Tracing through the jaxprs</h3>
+<p>In order to split our graph into appropriate sub-graphs we need to trace through the <code>jaxpr</code> and keep track of every variable and if it depends on linear or non-linear parts.</p>
+<p>For simplicity, consider the following expression graph for computing <code>lambda x, y: 0.5*(x+y)</code>.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="execution_graph.png" class="img-fluid figure-img"></p>
+<figcaption>An expression graph for computing <code>lambda x, y: 0.5*(x+y)</code>. The blue rectangles are input variables, the rectangle square is a literal constants, and the green oval is the output node. (Yes I know the haiku colours are different. Sue me.)</figcaption>
+</figure>
+</div>
+<p>This figure corresponds roughly to the jaxpr</p>
+<div id="fd46152f" class="cell" data-execution_count="17">
+<div class="cell-output cell-output-stdout">
+<pre><code>{ lambda ; a:f32[] b:f32[]. let c:f32[] = add a b; d:f32[] = mul 0.5 c in (d,) }</code></pre>
+</div>
+</div>
+<p>For each node, the graph tells us</p>
+<ul>
+<li>its unique identifier (internally<a href="#fn20" class="footnote-ref" id="fnref20" role="doc-noteref"><sup>20</sup></a> JAX uses integers)</li>
+<li>which equation generated the value</li>
+<li>which nodes are its parents in the graph (the input(s) to the equation)</li>
+<li>whether or not this node depends on the inputs. This is useful for ignoring non-linearities that just apply to the constants bound to the jaxpr.</li>
+</ul>
+<p>We can record this information in a dataclass.</p>
+<div id="e7d62eb8" class="cell" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1"></a><span class="im">import</span> dataclasses <span class="im">as</span> dc</span>
+<span id="cb25-2"><a href="#cb25-2"></a><span class="at">@dc.dataclass</span></span>
+<span id="cb25-3"><a href="#cb25-3"></a><span class="kw">class</span> Node:</span>
+<span id="cb25-4"><a href="#cb25-4"></a>  number: <span class="bu">int</span> <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb25-5"><a href="#cb25-5"></a>  eqn: <span class="bu">int</span> <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb25-6"><a href="#cb25-6"></a>  parents: List[<span class="bu">int</span>] <span class="op">=</span> dc.field(default_factory<span class="op">=</span><span class="bu">list</span>)</span>
+<span id="cb25-7"><a href="#cb25-7"></a>  depends_on_input: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now we can build up our graph with all of the side information we need. The format of a <code>jaxpr</code> places the constant inputs in the first node, followed by the non-constant inputs (which I’m calling the input variables). For simplicity, I am assuming that there is only one input variable.</p>
+<div class="callout callout-style-simple callout-note">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-body-container">
+<p>You’re going to look at this code and say <em>girl why are you using a dictionary, this is clearly a list</em>. And you would be correct except for one little thing: I can’t guarantee that the <code>count</code> variables begin at <code>0</code>. They usually do. But one time they didn’t. What is <em>probably</em> true is that we could subtract off the first count from <code>constvars</code> or <code>invars</code> and we would have an ordinary list with the <code>count</code> variable corresponding to the input. But I’m not spelunking in the source code to ensure that <code>Literal</code> <code>Var</code>s can’t be reused etc. And anyway, this is not a performance-critical data structure.</p>
+<p>I’m also relying heavily on dictionaries remembering key entry order, as the nodes are topographically sorted.</p>
+</div>
+</div>
+</div>
+<div id="7404bdeb" class="cell" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1"></a><span class="im">import</span> jax.core <span class="im">as</span> jcore</span>
+<span id="cb26-2"><a href="#cb26-2"></a><span class="im">from</span> jax <span class="im">import</span> make_jaxpr</span>
+<span id="cb26-3"><a href="#cb26-3"></a></span>
+<span id="cb26-4"><a href="#cb26-4"></a>jpr <span class="op">=</span> make_jaxpr(lp)(jnp.ones(p<span class="op">+</span><span class="dv">1</span>))</span>
+<span id="cb26-5"><a href="#cb26-5"></a></span>
+<span id="cb26-6"><a href="#cb26-6"></a>node_list <span class="op">=</span> {</span>
+<span id="cb26-7"><a href="#cb26-7"></a>  const.count: Node(</span>
+<span id="cb26-8"><a href="#cb26-8"></a>    number<span class="op">=</span>const.count, </span>
+<span id="cb26-9"><a href="#cb26-9"></a>    depends_on_input<span class="op">=</span><span class="va">False</span></span>
+<span id="cb26-10"><a href="#cb26-10"></a>  ) <span class="cf">for</span> const <span class="kw">in</span> jpr.jaxpr.constvars</span>
+<span id="cb26-11"><a href="#cb26-11"></a>}</span>
+<span id="cb26-12"><a href="#cb26-12"></a></span>
+<span id="cb26-13"><a href="#cb26-13"></a>node_list <span class="op">|=</span> {</span>
+<span id="cb26-14"><a href="#cb26-14"></a>  inval.count: Node(number<span class="op">=</span>inval.count) </span>
+<span id="cb26-15"><a href="#cb26-15"></a>  <span class="cf">for</span> inval <span class="kw">in</span> jpr.jaxpr.invars</span>
+<span id="cb26-16"><a href="#cb26-16"></a>}</span>
+<span id="cb26-17"><a href="#cb26-17"></a></span>
+<span id="cb26-18"><a href="#cb26-18"></a><span class="co">## For later, we need to know the node numbers that correspond</span></span>
+<span id="cb26-19"><a href="#cb26-19"></a><span class="co">## to the constants and inputs</span></span>
+<span id="cb26-20"><a href="#cb26-20"></a></span>
+<span id="cb26-21"><a href="#cb26-21"></a>consts_and_inputs <span class="op">=</span> {node.number <span class="cf">for</span> node <span class="kw">in</span> node_list.values()}</span>
+<span id="cb26-22"><a href="#cb26-22"></a></span>
+<span id="cb26-23"><a href="#cb26-23"></a>node_list <span class="op">|=</span> {</span>
+<span id="cb26-24"><a href="#cb26-24"></a>  node.count: Node(</span>
+<span id="cb26-25"><a href="#cb26-25"></a>    number<span class="op">=</span>node.count,</span>
+<span id="cb26-26"><a href="#cb26-26"></a>    eqn<span class="op">=</span>j,</span>
+<span id="cb26-27"><a href="#cb26-27"></a>    parents<span class="op">=</span>[</span>
+<span id="cb26-28"><a href="#cb26-28"></a>      invar.count <span class="cf">for</span> invar <span class="kw">in</span> eqn.invars <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(invar, jcore.Literal)</span>
+<span id="cb26-29"><a href="#cb26-29"></a>    ],</span>
+<span id="cb26-30"><a href="#cb26-30"></a>  )</span>
+<span id="cb26-31"><a href="#cb26-31"></a>  <span class="cf">for</span> j, eqn <span class="kw">in</span> <span class="bu">enumerate</span>(jpr.jaxpr.eqns)</span>
+<span id="cb26-32"><a href="#cb26-32"></a>  <span class="cf">for</span> node <span class="kw">in</span> eqn.outvars</span>
+<span id="cb26-33"><a href="#cb26-33"></a>}</span>
+<span id="cb26-34"><a href="#cb26-34"></a></span>
+<span id="cb26-35"><a href="#cb26-35"></a><span class="cf">for</span> node <span class="kw">in</span> node_list.values():</span>
+<span id="cb26-36"><a href="#cb26-36"></a>  <span class="cf">if</span> <span class="bu">len</span>(node.parents) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb26-37"><a href="#cb26-37"></a>    node.depends_on_input <span class="op">=</span>  <span class="bu">any</span>(</span>
+<span id="cb26-38"><a href="#cb26-38"></a>      node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents</span>
+<span id="cb26-39"><a href="#cb26-39"></a>    )</span>
+<span id="cb26-40"><a href="#cb26-40"></a></span>
+<span id="cb26-41"><a href="#cb26-41"></a>node_list</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>{0: Node(number=0, eqn=None, parents=[], depends_on_input=False),
+ 1: Node(number=1, eqn=None, parents=[], depends_on_input=False),
+ 2: Node(number=2, eqn=None, parents=[], depends_on_input=True),
+ 3: Node(number=3, eqn=0, parents=[2], depends_on_input=True),
+ 4: Node(number=4, eqn=1, parents=[3], depends_on_input=True),
+ 5: Node(number=5, eqn=2, parents=[2], depends_on_input=True),
+ 6: Node(number=6, eqn=3, parents=[0, 5], depends_on_input=True),
+ 7: Node(number=7, eqn=4, parents=[4, 6], depends_on_input=True),
+ 8: Node(number=8, eqn=5, parents=[7], depends_on_input=True),
+ 9: Node(number=9, eqn=6, parents=[8], depends_on_input=True),
+ 10: Node(number=10, eqn=7, parents=[1], depends_on_input=False),
+ 11: Node(number=11, eqn=8, parents=[10, 9], depends_on_input=True),
+ 12: Node(number=12, eqn=9, parents=[1], depends_on_input=False),
+ 13: Node(number=13, eqn=10, parents=[12], depends_on_input=False),
+ 14: Node(number=14, eqn=11, parents=[8], depends_on_input=True),
+ 15: Node(number=15, eqn=12, parents=[14], depends_on_input=True),
+ 16: Node(number=16, eqn=13, parents=[13], depends_on_input=False),
+ 17: Node(number=17, eqn=14, parents=[16, 15], depends_on_input=True),
+ 18: Node(number=18, eqn=15, parents=[11, 17], depends_on_input=True),
+ 19: Node(number=19, eqn=16, parents=[18], depends_on_input=True),
+ 20: Node(number=20, eqn=17, parents=[2, 2], depends_on_input=True),
+ 21: Node(number=21, eqn=18, parents=[20], depends_on_input=True),
+ 22: Node(number=22, eqn=19, parents=[19, 21], depends_on_input=True)}</code></pre>
+</div>
+</div>
+<p>Now let’s identify which equations are linear and which aren’t.</p>
+<div id="b42378d0" class="cell" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1"></a>linear_eqn <span class="op">=</span>[<span class="va">False</span>] <span class="op">*</span> <span class="bu">len</span>(jpr.jaxpr.eqns)</span>
+<span id="cb28-2"><a href="#cb28-2"></a></span>
+<span id="cb28-3"><a href="#cb28-3"></a><span class="cf">for</span> node <span class="kw">in</span> node_list.values():</span>
+<span id="cb28-4"><a href="#cb28-4"></a>  <span class="cf">if</span> node.eqn <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb28-5"><a href="#cb28-5"></a>    <span class="cf">continue</span></span>
+<span id="cb28-6"><a href="#cb28-6"></a></span>
+<span id="cb28-7"><a href="#cb28-7"></a>  prim <span class="op">=</span> jpr.jaxpr.eqns[node.eqn].primitive.name</span>
+<span id="cb28-8"><a href="#cb28-8"></a>  </span>
+<span id="cb28-9"><a href="#cb28-9"></a>  <span class="cf">if</span> prim <span class="kw">in</span> jax_linear:</span>
+<span id="cb28-10"><a href="#cb28-10"></a>    linear_eqn[node.eqn] <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb28-11"><a href="#cb28-11"></a>  <span class="cf">elif</span> prim <span class="kw">in</span> jax_sometimes_linear:</span>
+<span id="cb28-12"><a href="#cb28-12"></a>    <span class="co"># this is a check for being called once</span></span>
+<span id="cb28-13"><a href="#cb28-13"></a>    linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb28-14"><a href="#cb28-14"></a>      <span class="bu">sum</span>(</span>
+<span id="cb28-15"><a href="#cb28-15"></a>        node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents</span>
+<span id="cb28-16"><a href="#cb28-16"></a>      ) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb28-17"><a href="#cb28-17"></a>    )</span>
+<span id="cb28-18"><a href="#cb28-18"></a>  <span class="cf">elif</span> prim <span class="kw">in</span> jax_first_linear:</span>
+<span id="cb28-19"><a href="#cb28-19"></a>    linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb28-20"><a href="#cb28-20"></a>      node_list[node.parents[<span class="dv">0</span>]].depends_on_input </span>
+<span id="cb28-21"><a href="#cb28-21"></a>      <span class="kw">and</span> <span class="kw">not</span> <span class="bu">any</span>(node_list[pa].depends_on_input <span class="cf">for</span> pa <span class="kw">in</span> node.parents[<span class="dv">1</span>:])</span>
+<span id="cb28-22"><a href="#cb28-22"></a>    )</span>
+<span id="cb28-23"><a href="#cb28-23"></a>  <span class="cf">elif</span> prim <span class="kw">in</span> jax_last_linear:</span>
+<span id="cb28-24"><a href="#cb28-24"></a>    linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb28-25"><a href="#cb28-25"></a>      node_list[node.parents[<span class="op">-</span><span class="dv">1</span>]].depends_on_input </span>
+<span id="cb28-26"><a href="#cb28-26"></a>      <span class="kw">and</span> <span class="kw">not</span> <span class="bu">any</span>(node_list[pa].depends_on_input <span class="cf">for</span> pa <span class="kw">in</span> node.parents[:<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb28-27"><a href="#cb28-27"></a>    )</span>
+<span id="cb28-28"><a href="#cb28-28"></a>  <span class="cf">elif</span> <span class="bu">all</span>(<span class="kw">not</span> node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents):</span>
+<span id="cb28-29"><a href="#cb28-29"></a>    linear_eqn[node.eqn] <span class="op">=</span> <span class="va">True</span> <span class="co"># Constants are linear</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The only messy thing<a href="#fn21" class="footnote-ref" id="fnref21" role="doc-noteref"><sup>21</sup></a> in here is dealing with the sometimes linear primitives. If I was sure that every JAX primitive was guaranteed to have only two inputs, this could be simplified, but sadly I don’t know that.</p>
+</section>
+<section id="partitioning-the-graph" class="level3">
+<h3 class="anchored" data-anchor-id="partitioning-the-graph">Partitioning the graph</h3>
+<p>Now it’s time for the fun: partitioning the problem into sub-graphs. To do this, we need to think about what rules we want to encode.</p>
+<p>The <em>first rule</em> is that every input for an equation or sub-graph needs to be either a constant, the function input, or the output of some other sub-graph that has already been computed. This means that if we find an equation with an input that doesn’t satisfy these conditions, we need to split the sub-graph that it’s in into two sub-graphs.</p>
+<p>The <em>second rule</em> is the only exception to the first rule. A sub-graph can have inputs from non-linear sub-graphs if an only if it contains a sequence of <code>sum</code> or <code>sub</code> terms and it finishes with the terminal node. This covers the common case where the function we are taking the Hessian of is a linear combination of independent functions. For instance, <code>log_posterior(beta) = log_likelihood(beta) + log_prior(beta)</code>. In this case we can compute the Hessians for the non-linear sub-expressions and then combine them.</p>
+<p>The <em>third rule</em> is that every independent use of the function input is the opportunity to start a new tree. (It may merge with a known tree.)</p>
+<p>And that’s it. Should be simple enough to implement.</p>
+<p>I’m feeling like running this bad boy backwards, so let’s do that. One of the assumption we have made is that the function we are tracing has a single output and that is always in the last node and defined in the last equation. So first off, lets get our terminal combination expressions.</p>
+<div id="8a71784d" class="cell" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1"></a><span class="co">## Find the terminal combination expressions</span></span>
+<span id="cb29-2"><a href="#cb29-2"></a>terminal_expressions <span class="op">=</span> {<span class="st">"sum"</span>, <span class="st">"sub"</span>}</span>
+<span id="cb29-3"><a href="#cb29-3"></a>comb_eqns <span class="op">=</span> []</span>
+<span id="cb29-4"><a href="#cb29-4"></a><span class="cf">for</span> eqn <span class="kw">in</span> jpr.jaxpr.eqns[::<span class="op">-</span><span class="dv">1</span>]:</span>
+<span id="cb29-5"><a href="#cb29-5"></a>  <span class="cf">if</span> <span class="bu">any</span>(</span>
+<span id="cb29-6"><a href="#cb29-6"></a>    node_list[a.count].depends_on_input </span>
+<span id="cb29-7"><a href="#cb29-7"></a>    <span class="cf">for</span> a <span class="kw">in</span> eqn.invars </span>
+<span id="cb29-8"><a href="#cb29-8"></a>    <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(a, jcore.Literal)</span>
+<span id="cb29-9"><a href="#cb29-9"></a>  )  <span class="kw">and</span> (</span>
+<span id="cb29-10"><a href="#cb29-10"></a>    eqn.primitive.name <span class="kw">in</span> terminal_expressions</span>
+<span id="cb29-11"><a href="#cb29-11"></a>  ):</span>
+<span id="cb29-12"><a href="#cb29-12"></a>    comb_eqns.append(eqn)</span>
+<span id="cb29-13"><a href="#cb29-13"></a>  <span class="cf">else</span>:</span>
+<span id="cb29-14"><a href="#cb29-14"></a>    <span class="cf">break</span></span>
+<span id="cb29-15"><a href="#cb29-15"></a></span>
+<span id="cb29-16"><a href="#cb29-16"></a><span class="bu">print</span>(comb_eqns)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[a:f32[] = sub b c]</code></pre>
+</div>
+</div>
+<p>Now for each of the terminal combination expressions, we will trace their parent back until we run out of tree. While we are doing this, we can also keep track of runs of linear operations. We also have to visit each equation once, so we need to keep track of our visited equations. This is, whether we like it or not, a depth-first search. It’s always a bloody depth-first search, isn’t it.</p>
+<p>So what we are going to do is go through each of the combiner nodes and trace the graph down from it and note the path and it’s parent. If we run into a portion of the graph we have already traced, we will note that for later. These paths will either be merged or, if the ancestral path from that point is all linear, will be used as a linear sub-graph.</p>
+<div id="3b21f56e" class="cell" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1"></a><span class="kw">def</span> dfs(visited, graph, subgraph, to_check, node):</span>
+<span id="cb31-2"><a href="#cb31-2"></a>  <span class="cf">if</span> node <span class="kw">in</span> visited:</span>
+<span id="cb31-3"><a href="#cb31-3"></a>    to_check.add(node)</span>
+<span id="cb31-4"><a href="#cb31-4"></a>  <span class="cf">else</span>:</span>
+<span id="cb31-5"><a href="#cb31-5"></a>    visited.add(node)</span>
+<span id="cb31-6"><a href="#cb31-6"></a>    subgraph.add(graph[node].eqn)</span>
+<span id="cb31-7"><a href="#cb31-7"></a>    <span class="cf">for</span> neighbour <span class="kw">in</span> graph[node].parents:</span>
+<span id="cb31-8"><a href="#cb31-8"></a>      dfs(visited, graph, subgraph, to_check, neighbour)</span>
+<span id="cb31-9"><a href="#cb31-9"></a>  </span>
+<span id="cb31-10"><a href="#cb31-10"></a></span>
+<span id="cb31-11"><a href="#cb31-11"></a>visited <span class="op">=</span> consts_and_inputs</span>
+<span id="cb31-12"><a href="#cb31-12"></a>to_check <span class="op">=</span> <span class="bu">set</span>()</span>
+<span id="cb31-13"><a href="#cb31-13"></a>subgraphs <span class="op">=</span> []</span>
+<span id="cb31-14"><a href="#cb31-14"></a><span class="cf">for</span> ce <span class="kw">in</span> comb_eqns:</span>
+<span id="cb31-15"><a href="#cb31-15"></a>  <span class="cf">for</span> v <span class="kw">in</span> (a <span class="cf">for</span> a <span class="kw">in</span> ce.invars <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(a, jcore.Literal)):</span>
+<span id="cb31-16"><a href="#cb31-16"></a>    <span class="cf">if</span> v.count <span class="kw">not</span> <span class="kw">in</span> visited:</span>
+<span id="cb31-17"><a href="#cb31-17"></a>      subgraphs.append(<span class="bu">set</span>())</span>
+<span id="cb31-18"><a href="#cb31-18"></a>      dfs(visited, node_list, subgraphs[<span class="op">-</span><span class="dv">1</span>], to_check, v.count)</span>
+<span id="cb31-19"><a href="#cb31-19"></a></span>
+<span id="cb31-20"><a href="#cb31-20"></a>to_check <span class="op">=</span> to_check.difference(consts_and_inputs)</span>
+<span id="cb31-21"><a href="#cb31-21"></a><span class="bu">print</span>(<span class="ss">f"Subgraphs: </span><span class="sc">{</span>subgraphs<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb31-22"><a href="#cb31-22"></a><span class="bu">print</span>(<span class="ss">f"Danger nodes: </span><span class="sc">{</span>to_check<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Subgraphs: [{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, {17, 18}]
+Danger nodes: set()</code></pre>
+</div>
+</div>
+<p>The <code>to_check</code> nodes are only dangerous insofar as we need to make sure that if they are in one of the linear sub-graphs they are terminal nodes of a sub-graph. To that end, let’s make the linear sub-graphs.</p>
+<div id="ca7db0d5" class="cell" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1"></a>linear_subgraph <span class="op">=</span> []</span>
+<span id="cb33-2"><a href="#cb33-2"></a>nonlin_subgraph <span class="op">=</span> []</span>
+<span id="cb33-3"><a href="#cb33-3"></a>n_eqns <span class="op">=</span> <span class="bu">len</span>(jpr.jaxpr.eqns)</span>
+<span id="cb33-4"><a href="#cb33-4"></a><span class="cf">for</span> subgraph <span class="kw">in</span> subgraphs:</span>
+<span id="cb33-5"><a href="#cb33-5"></a>  <span class="bu">print</span>(subgraph)</span>
+<span id="cb33-6"><a href="#cb33-6"></a>  split <span class="op">=</span> <span class="bu">next</span>(</span>
+<span id="cb33-7"><a href="#cb33-7"></a>    (</span>
+<span id="cb33-8"><a href="#cb33-8"></a>      i <span class="cf">for</span> i, lin <span class="kw">in</span> <span class="bu">enumerate</span>(linear_eqn) </span>
+<span id="cb33-9"><a href="#cb33-9"></a>      <span class="cf">if</span> <span class="kw">not</span> lin <span class="kw">and</span> i <span class="kw">in</span> subgraph</span>
+<span id="cb33-10"><a href="#cb33-10"></a>    )</span>
+<span id="cb33-11"><a href="#cb33-11"></a>  )</span>
+<span id="cb33-12"><a href="#cb33-12"></a>  <span class="cf">if</span> <span class="bu">any</span>(chk <span class="kw">in</span> subgraph <span class="cf">for</span> chk <span class="kw">in</span> to_check):</span>
+<span id="cb33-13"><a href="#cb33-13"></a>    split <span class="op">=</span> <span class="bu">min</span>(</span>
+<span id="cb33-14"><a href="#cb33-14"></a>      split, </span>
+<span id="cb33-15"><a href="#cb33-15"></a>      <span class="bu">min</span>(chk <span class="cf">for</span> chk <span class="kw">in</span> to_check <span class="cf">if</span> chk <span class="kw">in</span> subgraph)</span>
+<span id="cb33-16"><a href="#cb33-16"></a>    )</span>
+<span id="cb33-17"><a href="#cb33-17"></a></span>
+<span id="cb33-18"><a href="#cb33-18"></a>  linear_subgraph.append(<span class="bu">list</span>(subgraph.intersection(<span class="bu">set</span>(<span class="bu">range</span>(split)))))</span>
+<span id="cb33-19"><a href="#cb33-19"></a>  nonlin_subgraph.append(<span class="bu">list</span>(subgraph.intersection(<span class="bu">set</span>(<span class="bu">range</span>(split, n_eqns)))))</span>
+<span id="cb33-20"><a href="#cb33-20"></a></span>
+<span id="cb33-21"><a href="#cb33-21"></a><span class="bu">print</span>(<span class="ss">f"Linear subgraphs: </span><span class="sc">{</span>linear_subgraph<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb33-22"><a href="#cb33-22"></a><span class="bu">print</span>(<span class="ss">f"Nonlinear subgraphs: </span><span class="sc">{</span>nonlin_subgraph<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+{17, 18}
+Linear subgraphs: [[0, 1, 2, 3, 4], []]
+Nonlinear subgraphs: [[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], [17, 18]]</code></pre>
+</div>
+</div>
+<p>The only interesting thing here is making sure that if there is a linear node in the graph that was visited twice, it is the terminal node of the linear graph. The better thing would be to actually split the linear graph, but I’m getting a little bit sick of this post and I don’t really want to deal with multiple linear sub-graphs. So I shan’t. But hopefully it’s relatively clear how you would do that.</p>
+<p>In this case it’s pretty clear that we are ok.</p>
+<div id="6ce83611" class="cell" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1"></a><span class="bu">any</span>(linear_eqn[node_list[j].eqn] <span class="cf">for</span> j <span class="kw">in</span> to_check)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>False</code></pre>
+</div>
+</div>
+</section>
+<section id="putting-it-together" class="level3">
+<h3 class="anchored" data-anchor-id="putting-it-together">Putting it together</h3>
+<p>Well that’s a nice script that does what I want. Now let’s put it together in a function. I’m going to give it the <em>very</em> unspecific name <code>transform_jaxpr</code> because sometimes you’ve gotta annoy your future self.</p>
+<div id="5595ebd0" class="cell" data-execution_count="25">
+<details class="code-fold">
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1"></a><span class="kw">def</span> transform_jaxpr(</span>
+<span id="cb37-2"><a href="#cb37-2"></a>  jaxpr: jcore.ClosedJaxpr</span>
+<span id="cb37-3"><a href="#cb37-3"></a>) <span class="op">-&gt;</span> Tuple[List[Set[<span class="bu">int</span>]], List[Set[<span class="bu">int</span>]], List[jcore.JaxprEqn]]:</span>
+<span id="cb37-4"><a href="#cb37-4"></a>  <span class="cf">assert</span> <span class="bu">len</span>(jpr.in_avals) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb37-5"><a href="#cb37-5"></a>  <span class="cf">assert</span> <span class="bu">len</span>(jpr.out_avals) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb37-6"><a href="#cb37-6"></a></span>
+<span id="cb37-7"><a href="#cb37-7"></a>  <span class="im">from</span> jax <span class="im">import</span> core <span class="im">as</span> jcore</span>
+<span id="cb37-8"><a href="#cb37-8"></a></span>
+<span id="cb37-9"><a href="#cb37-9"></a>  <span class="co">## 1. Extract the tree and its relevant behavior</span></span>
+<span id="cb37-10"><a href="#cb37-10"></a>  node_list <span class="op">=</span> {</span>
+<span id="cb37-11"><a href="#cb37-11"></a>    const.count: Node(</span>
+<span id="cb37-12"><a href="#cb37-12"></a>      number<span class="op">=</span>const.count, </span>
+<span id="cb37-13"><a href="#cb37-13"></a>      depends_on_input<span class="op">=</span><span class="va">False</span></span>
+<span id="cb37-14"><a href="#cb37-14"></a>    ) <span class="cf">for</span> const <span class="kw">in</span> jpr.jaxpr.constvars</span>
+<span id="cb37-15"><a href="#cb37-15"></a>  }</span>
+<span id="cb37-16"><a href="#cb37-16"></a></span>
+<span id="cb37-17"><a href="#cb37-17"></a>  node_list <span class="op">|=</span> {</span>
+<span id="cb37-18"><a href="#cb37-18"></a>    inval.count: Node(number<span class="op">=</span>inval.count) </span>
+<span id="cb37-19"><a href="#cb37-19"></a>    <span class="cf">for</span> inval <span class="kw">in</span> jpr.jaxpr.invars</span>
+<span id="cb37-20"><a href="#cb37-20"></a>  }</span>
+<span id="cb37-21"><a href="#cb37-21"></a></span>
+<span id="cb37-22"><a href="#cb37-22"></a>  <span class="co">## For later, we need to know the node numbers that correspond</span></span>
+<span id="cb37-23"><a href="#cb37-23"></a>  <span class="co">## to the constants and inputs</span></span>
+<span id="cb37-24"><a href="#cb37-24"></a></span>
+<span id="cb37-25"><a href="#cb37-25"></a>  consts_and_inputs <span class="op">=</span> {node.number <span class="cf">for</span> node <span class="kw">in</span> node_list.values()}</span>
+<span id="cb37-26"><a href="#cb37-26"></a></span>
+<span id="cb37-27"><a href="#cb37-27"></a>  node_list <span class="op">|=</span> {</span>
+<span id="cb37-28"><a href="#cb37-28"></a>    node.count: Node(</span>
+<span id="cb37-29"><a href="#cb37-29"></a>      number<span class="op">=</span>node.count,</span>
+<span id="cb37-30"><a href="#cb37-30"></a>      eqn<span class="op">=</span>j,</span>
+<span id="cb37-31"><a href="#cb37-31"></a>      parents<span class="op">=</span>[</span>
+<span id="cb37-32"><a href="#cb37-32"></a>        invar.count <span class="cf">for</span> invar <span class="kw">in</span> eqn.invars <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(invar, jcore.Literal)</span>
+<span id="cb37-33"><a href="#cb37-33"></a>      ],</span>
+<span id="cb37-34"><a href="#cb37-34"></a>    )</span>
+<span id="cb37-35"><a href="#cb37-35"></a>    <span class="cf">for</span> j, eqn <span class="kw">in</span> <span class="bu">enumerate</span>(jpr.jaxpr.eqns)</span>
+<span id="cb37-36"><a href="#cb37-36"></a>    <span class="cf">for</span> node <span class="kw">in</span> eqn.outvars</span>
+<span id="cb37-37"><a href="#cb37-37"></a>  }</span>
+<span id="cb37-38"><a href="#cb37-38"></a></span>
+<span id="cb37-39"><a href="#cb37-39"></a>  <span class="cf">for</span> node <span class="kw">in</span> node_list.values():</span>
+<span id="cb37-40"><a href="#cb37-40"></a>    <span class="cf">if</span> <span class="bu">len</span>(node.parents) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb37-41"><a href="#cb37-41"></a>      node.depends_on_input <span class="op">=</span>  <span class="bu">any</span>(</span>
+<span id="cb37-42"><a href="#cb37-42"></a>        node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents</span>
+<span id="cb37-43"><a href="#cb37-43"></a>      )</span>
+<span id="cb37-44"><a href="#cb37-44"></a></span>
+<span id="cb37-45"><a href="#cb37-45"></a>  <span class="co">## 2. Identify which equations are linear_eqn</span></span>
+<span id="cb37-46"><a href="#cb37-46"></a></span>
+<span id="cb37-47"><a href="#cb37-47"></a>  linear_eqn <span class="op">=</span>[<span class="va">False</span>] <span class="op">*</span> <span class="bu">len</span>(jpr.jaxpr.eqns)</span>
+<span id="cb37-48"><a href="#cb37-48"></a></span>
+<span id="cb37-49"><a href="#cb37-49"></a>  <span class="cf">for</span> node <span class="kw">in</span> node_list.values():</span>
+<span id="cb37-50"><a href="#cb37-50"></a>    <span class="cf">if</span> node.eqn <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb37-51"><a href="#cb37-51"></a>      <span class="cf">continue</span></span>
+<span id="cb37-52"><a href="#cb37-52"></a></span>
+<span id="cb37-53"><a href="#cb37-53"></a>    prim <span class="op">=</span> jpr.jaxpr.eqns[node.eqn].primitive.name</span>
+<span id="cb37-54"><a href="#cb37-54"></a>    </span>
+<span id="cb37-55"><a href="#cb37-55"></a>    <span class="cf">if</span> prim <span class="kw">in</span> jax_linear:</span>
+<span id="cb37-56"><a href="#cb37-56"></a>      linear_eqn[node.eqn] <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb37-57"><a href="#cb37-57"></a>    <span class="cf">elif</span> prim <span class="kw">in</span> jax_sometimes_linear:</span>
+<span id="cb37-58"><a href="#cb37-58"></a>      <span class="co"># this is a check for being called once</span></span>
+<span id="cb37-59"><a href="#cb37-59"></a>      linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb37-60"><a href="#cb37-60"></a>        <span class="bu">sum</span>(</span>
+<span id="cb37-61"><a href="#cb37-61"></a>          node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents</span>
+<span id="cb37-62"><a href="#cb37-62"></a>        ) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb37-63"><a href="#cb37-63"></a>      )</span>
+<span id="cb37-64"><a href="#cb37-64"></a>    <span class="cf">elif</span> prim <span class="kw">in</span> jax_first_linear:</span>
+<span id="cb37-65"><a href="#cb37-65"></a>      linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb37-66"><a href="#cb37-66"></a>        node_list[node.parents[<span class="dv">0</span>]].depends_on_input </span>
+<span id="cb37-67"><a href="#cb37-67"></a>        <span class="kw">and</span> <span class="kw">not</span> <span class="bu">any</span>(node_list[pa].depends_on_input <span class="cf">for</span> pa <span class="kw">in</span> node.parents[<span class="dv">1</span>:])</span>
+<span id="cb37-68"><a href="#cb37-68"></a>      )</span>
+<span id="cb37-69"><a href="#cb37-69"></a>    <span class="cf">elif</span> prim <span class="kw">in</span> jax_last_linear:</span>
+<span id="cb37-70"><a href="#cb37-70"></a>      linear_eqn[node.eqn] <span class="op">=</span> (</span>
+<span id="cb37-71"><a href="#cb37-71"></a>        node_list[node.parents[<span class="op">-</span><span class="dv">1</span>]].depends_on_input </span>
+<span id="cb37-72"><a href="#cb37-72"></a>        <span class="kw">and</span> <span class="kw">not</span> <span class="bu">any</span>(node_list[pa].depends_on_input <span class="cf">for</span> pa <span class="kw">in</span> node.parents[:<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb37-73"><a href="#cb37-73"></a>      )</span>
+<span id="cb37-74"><a href="#cb37-74"></a>    <span class="cf">elif</span> <span class="bu">all</span>(<span class="kw">not</span> node_list[i].depends_on_input <span class="cf">for</span> i <span class="kw">in</span> node.parents):</span>
+<span id="cb37-75"><a href="#cb37-75"></a>      linear_eqn[node.eqn] <span class="op">=</span> <span class="va">True</span> <span class="co"># Constants are linear</span></span>
+<span id="cb37-76"><a href="#cb37-76"></a></span>
+<span id="cb37-77"><a href="#cb37-77"></a>  <span class="co">##3. Find all the terminal expressions</span></span>
+<span id="cb37-78"><a href="#cb37-78"></a>  <span class="co">## Find the terminal combination expressions</span></span>
+<span id="cb37-79"><a href="#cb37-79"></a>  terminal_expressions <span class="op">=</span> {<span class="st">"sum"</span>, <span class="st">"sub"</span>}</span>
+<span id="cb37-80"><a href="#cb37-80"></a>  comb_eqns <span class="op">=</span> []</span>
+<span id="cb37-81"><a href="#cb37-81"></a>  <span class="cf">for</span> eqn <span class="kw">in</span> jpr.jaxpr.eqns[::<span class="op">-</span><span class="dv">1</span>]:</span>
+<span id="cb37-82"><a href="#cb37-82"></a>    <span class="cf">if</span> <span class="bu">any</span>(</span>
+<span id="cb37-83"><a href="#cb37-83"></a>      node_list[a.count].depends_on_input </span>
+<span id="cb37-84"><a href="#cb37-84"></a>      <span class="cf">for</span> a <span class="kw">in</span> eqn.invars </span>
+<span id="cb37-85"><a href="#cb37-85"></a>      <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(a, jcore.Literal)</span>
+<span id="cb37-86"><a href="#cb37-86"></a>    )  <span class="kw">and</span> (</span>
+<span id="cb37-87"><a href="#cb37-87"></a>      eqn.primitive.name <span class="kw">in</span> terminal_expressions</span>
+<span id="cb37-88"><a href="#cb37-88"></a>    ):</span>
+<span id="cb37-89"><a href="#cb37-89"></a>      comb_eqns.append(eqn)</span>
+<span id="cb37-90"><a href="#cb37-90"></a>    <span class="cf">else</span>:</span>
+<span id="cb37-91"><a href="#cb37-91"></a>      <span class="cf">break</span></span>
+<span id="cb37-92"><a href="#cb37-92"></a>  </span>
+<span id="cb37-93"><a href="#cb37-93"></a>  <span class="co">## 4. Identify the sub-graphs </span></span>
+<span id="cb37-94"><a href="#cb37-94"></a>  <span class="kw">def</span> dfs(visited, graph, subgraph, to_check, node):</span>
+<span id="cb37-95"><a href="#cb37-95"></a>    <span class="cf">if</span> node <span class="kw">in</span> visited:</span>
+<span id="cb37-96"><a href="#cb37-96"></a>      to_check.add(node)</span>
+<span id="cb37-97"><a href="#cb37-97"></a>    <span class="cf">else</span>:</span>
+<span id="cb37-98"><a href="#cb37-98"></a>      visited.add(node)</span>
+<span id="cb37-99"><a href="#cb37-99"></a>      subgraph.add(graph[node].eqn)</span>
+<span id="cb37-100"><a href="#cb37-100"></a>      <span class="cf">for</span> neighbour <span class="kw">in</span> graph[node].parents:</span>
+<span id="cb37-101"><a href="#cb37-101"></a>        dfs(visited, graph, subgraph, to_check, neighbour)</span>
+<span id="cb37-102"><a href="#cb37-102"></a>    </span>
+<span id="cb37-103"><a href="#cb37-103"></a></span>
+<span id="cb37-104"><a href="#cb37-104"></a>  visited <span class="op">=</span> consts_and_inputs</span>
+<span id="cb37-105"><a href="#cb37-105"></a>  to_check <span class="op">=</span> <span class="bu">set</span>()</span>
+<span id="cb37-106"><a href="#cb37-106"></a>  subgraphs <span class="op">=</span> []</span>
+<span id="cb37-107"><a href="#cb37-107"></a>  <span class="cf">for</span> ce <span class="kw">in</span> comb_eqns:</span>
+<span id="cb37-108"><a href="#cb37-108"></a>    <span class="cf">for</span> v <span class="kw">in</span> (a <span class="cf">for</span> a <span class="kw">in</span> ce.invars <span class="cf">if</span> <span class="kw">not</span> <span class="bu">isinstance</span>(a, jcore.Literal)):</span>
+<span id="cb37-109"><a href="#cb37-109"></a>      <span class="cf">if</span> v.count <span class="kw">not</span> <span class="kw">in</span> visited:</span>
+<span id="cb37-110"><a href="#cb37-110"></a>        subgraphs.append(<span class="bu">set</span>())</span>
+<span id="cb37-111"><a href="#cb37-111"></a>        dfs(visited, node_list, subgraphs[<span class="op">-</span><span class="dv">1</span>], to_check, v.count)</span>
+<span id="cb37-112"><a href="#cb37-112"></a></span>
+<span id="cb37-113"><a href="#cb37-113"></a>  to_check <span class="op">=</span> to_check.difference(consts_and_inputs)</span>
+<span id="cb37-114"><a href="#cb37-114"></a></span>
+<span id="cb37-115"><a href="#cb37-115"></a>  <span class="co">## 5. Find the linear sub-graphs</span></span>
+<span id="cb37-116"><a href="#cb37-116"></a>  linear_subgraph <span class="op">=</span> []</span>
+<span id="cb37-117"><a href="#cb37-117"></a>  nonlin_subgraph <span class="op">=</span> []</span>
+<span id="cb37-118"><a href="#cb37-118"></a>  n_eqns <span class="op">=</span> <span class="bu">len</span>(jaxpr.eqns)</span>
+<span id="cb37-119"><a href="#cb37-119"></a>  <span class="cf">for</span> subgraph <span class="kw">in</span> subgraphs:</span>
+<span id="cb37-120"><a href="#cb37-120"></a>    split <span class="op">=</span> <span class="bu">next</span>(</span>
+<span id="cb37-121"><a href="#cb37-121"></a>      (</span>
+<span id="cb37-122"><a href="#cb37-122"></a>        i <span class="cf">for</span> i, lin <span class="kw">in</span> <span class="bu">enumerate</span>(linear_eqn) </span>
+<span id="cb37-123"><a href="#cb37-123"></a>        <span class="cf">if</span> <span class="kw">not</span> lin <span class="kw">and</span> i <span class="kw">in</span> subgraph</span>
+<span id="cb37-124"><a href="#cb37-124"></a>      )</span>
+<span id="cb37-125"><a href="#cb37-125"></a>    )</span>
+<span id="cb37-126"><a href="#cb37-126"></a>    <span class="cf">if</span> <span class="bu">any</span>(chk <span class="kw">in</span> subgraph <span class="cf">for</span> chk <span class="kw">in</span> to_check):</span>
+<span id="cb37-127"><a href="#cb37-127"></a>      split <span class="op">=</span> <span class="bu">min</span>(</span>
+<span id="cb37-128"><a href="#cb37-128"></a>        split, </span>
+<span id="cb37-129"><a href="#cb37-129"></a>        <span class="bu">min</span>(chk <span class="cf">for</span> chk <span class="kw">in</span> to_check <span class="cf">if</span> chk <span class="kw">in</span> subgraph)</span>
+<span id="cb37-130"><a href="#cb37-130"></a>      )</span>
+<span id="cb37-131"><a href="#cb37-131"></a></span>
+<span id="cb37-132"><a href="#cb37-132"></a>    linear_subgraph.append(<span class="bu">list</span>(subgraph.intersection(<span class="bu">set</span>(<span class="bu">range</span>(split)))))</span>
+<span id="cb37-133"><a href="#cb37-133"></a>    nonlin_subgraph.append(<span class="bu">list</span>(subgraph.intersection(<span class="bu">set</span>(<span class="bu">range</span>(split, n_eqns)))))</span>
+<span id="cb37-134"><a href="#cb37-134"></a>  </span>
+<span id="cb37-135"><a href="#cb37-135"></a>  <span class="cf">return</span> (linear_subgraph, nonlin_subgraph, comb_eqns)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>For one final sense check, let’s compare these outputs to the original jaxpr.</p>
+<div id="96fa14bd" class="cell" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1"></a><span class="cf">for</span> j, lin <span class="kw">in</span> <span class="bu">enumerate</span>(linear_subgraph):</span>
+<span id="cb38-2"><a href="#cb38-2"></a>  <span class="bu">print</span>(<span class="ss">f"Linear: </span><span class="sc">{</span>j<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb38-3"><a href="#cb38-3"></a>  <span class="cf">for</span> i <span class="kw">in</span> lin:</span>
+<span id="cb38-4"><a href="#cb38-4"></a>    <span class="bu">print</span>(jpr.eqns[i])</span>
+<span id="cb38-5"><a href="#cb38-5"></a></span>
+<span id="cb38-6"><a href="#cb38-6"></a><span class="cf">for</span> j, nlin <span class="kw">in</span> <span class="bu">enumerate</span>(nonlin_subgraph):</span>
+<span id="cb38-7"><a href="#cb38-7"></a>  <span class="bu">print</span>(<span class="ss">f"Nonlinear: </span><span class="sc">{</span>j<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb38-8"><a href="#cb38-8"></a>  <span class="cf">for</span> i <span class="kw">in</span> nlin:</span>
+<span id="cb38-9"><a href="#cb38-9"></a>    <span class="bu">print</span>(jpr.eqns[i])</span>
+<span id="cb38-10"><a href="#cb38-10"></a></span>
+<span id="cb38-11"><a href="#cb38-11"></a><span class="bu">print</span>(<span class="st">"Combination equations"</span>)</span>
+<span id="cb38-12"><a href="#cb38-12"></a><span class="cf">for</span> eqn <span class="kw">in</span> comb_eqns:</span>
+<span id="cb38-13"><a href="#cb38-13"></a>  <span class="bu">print</span>(eqn)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Linear: 0
+a:f32[1] = dynamic_slice[slice_sizes=(1,)] b 0
+a:f32[] = squeeze[dimensions=(0,)] b
+a:f32[5000] = dynamic_slice[slice_sizes=(5000,)] b 1
+a:f32[1000] = dot_general[dimension_numbers=(([1], [0]), ([], []))] b c
+a:f32[1000] = add b c
+Linear: 1
+Nonlinear: 0
+a:f32[1000] = logistic b
+a:f32[1000] = log b
+a:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] b
+a:f32[1000] = mul b c
+a:i32[1000] = convert_element_type[new_dtype=int32 weak_type=True] b
+a:i32[1000] = sub 1 b
+a:f32[1000] = neg b
+a:f32[1000] = log1p b
+a:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] b
+a:f32[1000] = mul b c
+a:f32[1000] = add b c
+a:f32[] = reduce_sum[axes=(0,)] b
+Nonlinear: 1
+a:f32[] = dot_general[dimension_numbers=(([0], [0]), ([], []))] b b
+a:f32[] = mul 0.5 b
+Combination equations
+a:f32[] = sub b c</code></pre>
+</div>
+</div>
+<p>Comparing to the original jaxpr, we see it has the same information (the formatting is a bit unfortunate, as the original <code>__repr__</code> keeps track of the links between things, but what can you do?).</p>
+<div id="92b66d53" class="cell" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1"></a><span class="bu">print</span>(jpr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>{ lambda a:f32[1000,5000] b:bool[1000]; c:f32[5001]. let
+    d:f32[1] = dynamic_slice[slice_sizes=(1,)] c 0
+    e:f32[] = squeeze[dimensions=(0,)] d
+    f:f32[5000] = dynamic_slice[slice_sizes=(5000,)] c 1
+    g:f32[1000] = dot_general[dimension_numbers=(([1], [0]), ([], []))] a f
+    h:f32[1000] = add e g
+    i:f32[1000] = logistic h
+    j:f32[1000] = log i
+    k:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] b
+    l:f32[1000] = mul k j
+    m:i32[1000] = convert_element_type[new_dtype=int32 weak_type=True] b
+    n:i32[1000] = sub 1 m
+    o:f32[1000] = neg i
+    p:f32[1000] = log1p o
+    q:f32[1000] = convert_element_type[new_dtype=float32 weak_type=False] n
+    r:f32[1000] = mul q p
+    s:f32[1000] = add l r
+    t:f32[] = reduce_sum[axes=(0,)] s
+    u:f32[] = dot_general[dimension_numbers=(([0], [0]), ([], []))] c c
+    v:f32[] = mul 0.5 u
+    w:f32[] = sub t v
+  in (w,) }</code></pre>
+</div>
+</div>
+</section>
+<section id="making-sub-functions" class="level3">
+<h3 class="anchored" data-anchor-id="making-sub-functions">Making sub-functions</h3>
+<p>Now that we have the graph partitioned, let’s make our sub-functions. We do this by manipulating the <code>jaxpr</code> and then <em>closing</em> over the literals.</p>
+<p>There are a few ways we can do this. We could build completely new <a href="https://github.com/google/jax/blob/c3f5af7d46b803da346aa7644cbeea3cb73b4c10/jax/_src/core.py#L297"><code>JaxprEqn</code></a> objects from the existing Jaxpr. But honestly, that is just annoying, so instead I’m just going to modify the <a href="https://jax.readthedocs.io/en/latest/notebooks/Writing_custom_interpreters_in_Jax.html">basic, but incomplete, parser</a><a href="#fn22" class="footnote-ref" id="fnref22" role="doc-noteref"><sup>22</sup></a>.</p>
+<p>The only modification from the standard <code>eval_jaxpr</code> is that we are explicitly specifying the <code>invars</code> in order to overwrite the standard ones. This relies on the lexicographic ordering of the jaxpr expression graph.</p>
+<div id="5c489a70" class="cell" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1"></a><span class="im">from</span> typing <span class="im">import</span> Callable</span>
+<span id="cb42-2"><a href="#cb42-2"></a></span>
+<span id="cb42-3"><a href="#cb42-3"></a><span class="im">from</span> jax <span class="im">import</span> core <span class="im">as</span> jcore</span>
+<span id="cb42-4"><a href="#cb42-4"></a><span class="im">from</span> jax <span class="im">import</span> lax</span>
+<span id="cb42-5"><a href="#cb42-5"></a><span class="im">from</span> jax._src.util <span class="im">import</span> safe_map</span>
+<span id="cb42-6"><a href="#cb42-6"></a></span>
+<span id="cb42-7"><a href="#cb42-7"></a><span class="kw">def</span> eval_subjaxpr(</span>
+<span id="cb42-8"><a href="#cb42-8"></a>  <span class="op">*</span>args,</span>
+<span id="cb42-9"><a href="#cb42-9"></a>  jaxpr: jcore.Jaxpr, </span>
+<span id="cb42-10"><a href="#cb42-10"></a>  consts: List[jcore.Literal], </span>
+<span id="cb42-11"><a href="#cb42-11"></a>  subgraph: List[<span class="bu">int</span>], </span>
+<span id="cb42-12"><a href="#cb42-12"></a>  invars: List[jcore.Var]</span>
+<span id="cb42-13"><a href="#cb42-13"></a>):</span>
+<span id="cb42-14"><a href="#cb42-14"></a></span>
+<span id="cb42-15"><a href="#cb42-15"></a></span>
+<span id="cb42-16"><a href="#cb42-16"></a>  <span class="cf">assert</span> <span class="bu">len</span>(invars) <span class="op">==</span> <span class="bu">len</span>(args)</span>
+<span id="cb42-17"><a href="#cb42-17"></a>  </span>
+<span id="cb42-18"><a href="#cb42-18"></a>  <span class="co"># Mapping from variable -&gt; value</span></span>
+<span id="cb42-19"><a href="#cb42-19"></a>  env <span class="op">=</span> {}</span>
+<span id="cb42-20"><a href="#cb42-20"></a>  </span>
+<span id="cb42-21"><a href="#cb42-21"></a>  <span class="kw">def</span> read(var):</span>
+<span id="cb42-22"><a href="#cb42-22"></a>    <span class="co"># Literals are values baked into the Jaxpr</span></span>
+<span id="cb42-23"><a href="#cb42-23"></a>    <span class="cf">if</span> <span class="bu">type</span>(var) <span class="kw">is</span> jcore.Literal:</span>
+<span id="cb42-24"><a href="#cb42-24"></a>      <span class="cf">return</span> var.val</span>
+<span id="cb42-25"><a href="#cb42-25"></a></span>
+<span id="cb42-26"><a href="#cb42-26"></a>    <span class="cf">return</span> env[var]</span>
+<span id="cb42-27"><a href="#cb42-27"></a></span>
+<span id="cb42-28"><a href="#cb42-28"></a>  <span class="kw">def</span> write(var, val):</span>
+<span id="cb42-29"><a href="#cb42-29"></a>    env[var] <span class="op">=</span> val</span>
+<span id="cb42-30"><a href="#cb42-30"></a></span>
+<span id="cb42-31"><a href="#cb42-31"></a>  <span class="co"># We need to bind the input to the sub-function</span></span>
+<span id="cb42-32"><a href="#cb42-32"></a>  <span class="co"># to the environment.</span></span>
+<span id="cb42-33"><a href="#cb42-33"></a>  <span class="co"># We only need to write the consts that appear</span></span>
+<span id="cb42-34"><a href="#cb42-34"></a>  <span class="co"># in our sub-graph, but that's more bookkeeping</span></span>
+<span id="cb42-35"><a href="#cb42-35"></a>  safe_map(write, invars, args)</span>
+<span id="cb42-36"><a href="#cb42-36"></a>  safe_map(write, jaxpr.constvars, consts)</span>
+<span id="cb42-37"><a href="#cb42-37"></a></span>
+<span id="cb42-38"><a href="#cb42-38"></a>  <span class="co"># Loop through equations and evaluate primitives using `bind`</span></span>
+<span id="cb42-39"><a href="#cb42-39"></a>  outvars <span class="op">=</span> []</span>
+<span id="cb42-40"><a href="#cb42-40"></a>  <span class="cf">for</span> j <span class="kw">in</span> subgraph:</span>
+<span id="cb42-41"><a href="#cb42-41"></a>    eqn <span class="op">=</span> jaxpr.eqns[j]</span>
+<span id="cb42-42"><a href="#cb42-42"></a>    <span class="co"># Read inputs to equation from environment</span></span>
+<span id="cb42-43"><a href="#cb42-43"></a>    invals <span class="op">=</span> safe_map(read, eqn.invars)  </span>
+<span id="cb42-44"><a href="#cb42-44"></a>    <span class="co"># `bind` is how a primitive is called</span></span>
+<span id="cb42-45"><a href="#cb42-45"></a>    outvals <span class="op">=</span> eqn.primitive.bind(<span class="op">*</span>invals, <span class="op">**</span>eqn.params)</span>
+<span id="cb42-46"><a href="#cb42-46"></a>    <span class="co"># Primitives may return multiple outputs or not</span></span>
+<span id="cb42-47"><a href="#cb42-47"></a>    <span class="cf">if</span> <span class="kw">not</span> eqn.primitive.multiple_results: </span>
+<span id="cb42-48"><a href="#cb42-48"></a>      outvals <span class="op">=</span> [outvals]</span>
+<span id="cb42-49"><a href="#cb42-49"></a>    outvars <span class="op">+=</span> [eqn.outvars]</span>
+<span id="cb42-50"><a href="#cb42-50"></a>    safe_map(write, eqn.outvars, outvals) </span>
+<span id="cb42-51"><a href="#cb42-51"></a>  </span>
+<span id="cb42-52"><a href="#cb42-52"></a>  <span class="cf">return</span> safe_map(read, outvars[<span class="op">-</span><span class="dv">1</span>])[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The final thing we should do is combine our transformation with this evaluation module to convert a function into a sequence of callable sub-functions. I am making <em>liberal</em> uses of <code>lambda</code>s to close over variables that the user should never see (like the sub-graph!). Jesus loves closures and so do I.</p>
+<!-- There is some cost here. Because I am too lazy to work out the minimal set of 
+inputs for each sub-expression, I'm going to just make sure that all of the computed
+values are available to every function. This is obviously inefficient, but sometimes
+you just need to write blog-quality code.
+
+The other thing that comes out a bit tricky^[And relies _very_ heavily on the topological ordering of the equations!] here is that each returned here 
+has a different number of arguments. The first linear function takes `jpr.invars` as 
+its input. The second takes those _and_ the output of the first linear function.
+For each subsequent function, this list becomes longer. This is partly unavoidable,
+but with some more clever bookkeeping it wouldn't be too hard to produce minimal
+input sets. But once again: blog code. 
+
+But if you're going to write code that does weird shit like this, the least you can
+do is remember to catch it and throw a useful error down the line. -->
+<div id="1722fb5e" class="cell" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1"></a><span class="kw">def</span> decompose(fun: Callable, <span class="op">*</span>args) <span class="op">-&gt;</span> Tuple[List[Callable], List[Callable], List[jcore.Var]]:</span>
+<span id="cb43-2"><a href="#cb43-2"></a>  <span class="im">from</span> functools <span class="im">import</span> partial</span>
+<span id="cb43-3"><a href="#cb43-3"></a>  <span class="im">from</span> jax <span class="im">import</span> make_jaxpr</span>
+<span id="cb43-4"><a href="#cb43-4"></a></span>
+<span id="cb43-5"><a href="#cb43-5"></a>  jpr <span class="op">=</span> make_jaxpr(fun)(<span class="op">*</span>args)</span>
+<span id="cb43-6"><a href="#cb43-6"></a>  linear_subgraph, nonlin_subgraph, comb_eqns <span class="op">=</span> transform_jaxpr(jpr)</span>
+<span id="cb43-7"><a href="#cb43-7"></a></span>
+<span id="cb43-8"><a href="#cb43-8"></a>  <span class="cf">assert</span> <span class="bu">len</span>(linear_subgraph) <span class="op">==</span> <span class="bu">len</span>(nonlin_subgraph)</span>
+<span id="cb43-9"><a href="#cb43-9"></a>  <span class="cf">assert</span> <span class="bu">len</span>(jpr.jaxpr.invars) <span class="op">==</span> <span class="dv">1</span>, <span class="st">"Functions must only have one input"</span></span>
+<span id="cb43-10"><a href="#cb43-10"></a></span>
+<span id="cb43-11"><a href="#cb43-11"></a>  <span class="kw">def</span> get_invars(sub: List[<span class="bu">int</span>]) <span class="op">-&gt;</span> List[jcore.Var]:</span>
+<span id="cb43-12"><a href="#cb43-12"></a>    <span class="co"># There is an implicit assumption everywhere in this post </span></span>
+<span id="cb43-13"><a href="#cb43-13"></a>    <span class="co"># that each sub-function only has one non-constant input</span></span>
+<span id="cb43-14"><a href="#cb43-14"></a>    </span>
+<span id="cb43-15"><a href="#cb43-15"></a>    min_count <span class="op">=</span> jpr.jaxpr.eqns[sub[<span class="dv">0</span>]].outvars[<span class="dv">0</span>].count</span>
+<span id="cb43-16"><a href="#cb43-16"></a>    literal_ceil <span class="op">=</span> jpr.jaxpr.invars[<span class="dv">0</span>].count</span>
+<span id="cb43-17"><a href="#cb43-17"></a>    <span class="cf">for</span> j <span class="kw">in</span> sub:</span>
+<span id="cb43-18"><a href="#cb43-18"></a>      <span class="cf">for</span> v <span class="kw">in</span> jpr.jaxpr.eqns[j].invars:</span>
+<span id="cb43-19"><a href="#cb43-19"></a>        <span class="cf">if</span> (</span>
+<span id="cb43-20"><a href="#cb43-20"></a>          <span class="kw">not</span> <span class="bu">isinstance</span>(v, jcore.Literal) <span class="kw">and</span></span>
+<span id="cb43-21"><a href="#cb43-21"></a>          v.count <span class="op">&gt;=</span> literal_ceil <span class="kw">and</span> </span>
+<span id="cb43-22"><a href="#cb43-22"></a>          v.count <span class="op">&lt;</span> min_count</span>
+<span id="cb43-23"><a href="#cb43-23"></a>        ):</span>
+<span id="cb43-24"><a href="#cb43-24"></a>          <span class="cf">return</span> [v]</span>
+<span id="cb43-25"><a href="#cb43-25"></a>    <span class="cf">raise</span> <span class="pp">Exception</span>(<span class="st">"Somehow you can't find any invars"</span>)</span>
+<span id="cb43-26"><a href="#cb43-26"></a>    </span>
+<span id="cb43-27"><a href="#cb43-27"></a></span>
+<span id="cb43-28"><a href="#cb43-28"></a>  lin_funs <span class="op">=</span> []</span>
+<span id="cb43-29"><a href="#cb43-29"></a>  nlin_funs <span class="op">=</span> []</span>
+<span id="cb43-30"><a href="#cb43-30"></a>  nlin_inputs <span class="op">=</span> []</span>
+<span id="cb43-31"><a href="#cb43-31"></a>  lin_outputs <span class="op">=</span> []</span>
+<span id="cb43-32"><a href="#cb43-32"></a>  nlin_outputs <span class="op">=</span> []</span>
+<span id="cb43-33"><a href="#cb43-33"></a></span>
+<span id="cb43-34"><a href="#cb43-34"></a>  <span class="cf">for</span> lin <span class="kw">in</span> linear_subgraph:</span>
+<span id="cb43-35"><a href="#cb43-35"></a>    <span class="cf">if</span> <span class="bu">len</span>(lin) <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb43-36"><a href="#cb43-36"></a>      lin_funs <span class="op">+=</span> [<span class="va">None</span>]</span>
+<span id="cb43-37"><a href="#cb43-37"></a>      lin_outputs <span class="op">+=</span> [jpr.jaxpr.invars[<span class="dv">0</span>].count]</span>
+<span id="cb43-38"><a href="#cb43-38"></a>    <span class="cf">elif</span> jpr.jaxpr.eqns[lin[<span class="op">-</span><span class="dv">1</span>]].primitive.multiple_results:</span>
+<span id="cb43-39"><a href="#cb43-39"></a>      <span class="cf">raise</span> <span class="pp">Exception</span>(<span class="ss">f"This code doesn't deal with multiple outputs from subgraph </span><span class="sc">{</span>lin<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb43-40"><a href="#cb43-40"></a>    <span class="cf">else</span>:</span>
+<span id="cb43-41"><a href="#cb43-41"></a>      <span class="co"># find </span></span>
+<span id="cb43-42"><a href="#cb43-42"></a>      lin_outputs <span class="op">+=</span> [jpr.jaxpr.eqns[lin[<span class="op">-</span><span class="dv">1</span>]].outvars[<span class="dv">0</span>].count]</span>
+<span id="cb43-43"><a href="#cb43-43"></a>      lin_funs <span class="op">+=</span> [</span>
+<span id="cb43-44"><a href="#cb43-44"></a>        partial(eval_subjaxpr,</span>
+<span id="cb43-45"><a href="#cb43-45"></a>          jaxpr <span class="op">=</span> jpr.jaxpr, </span>
+<span id="cb43-46"><a href="#cb43-46"></a>          consts <span class="op">=</span> jpr.literals, </span>
+<span id="cb43-47"><a href="#cb43-47"></a>          subgraph <span class="op">=</span> lin, </span>
+<span id="cb43-48"><a href="#cb43-48"></a>          invars <span class="op">=</span> get_invars(lin)</span>
+<span id="cb43-49"><a href="#cb43-49"></a>        )</span>
+<span id="cb43-50"><a href="#cb43-50"></a>      ]</span>
+<span id="cb43-51"><a href="#cb43-51"></a>      </span>
+<span id="cb43-52"><a href="#cb43-52"></a>  <span class="cf">for</span> nlin <span class="kw">in</span> nonlin_subgraph:</span>
+<span id="cb43-53"><a href="#cb43-53"></a>    <span class="cf">if</span> <span class="bu">len</span>(nlin) <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb43-54"><a href="#cb43-54"></a>      nlin_funs <span class="op">+=</span> [<span class="va">None</span>]</span>
+<span id="cb43-55"><a href="#cb43-55"></a>      nlin_inputs <span class="op">+=</span> [<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb43-56"><a href="#cb43-56"></a>      nlin_outputs <span class="op">+=</span> [<span class="va">None</span>]</span>
+<span id="cb43-57"><a href="#cb43-57"></a>    <span class="cf">elif</span> jpr.jaxpr.eqns[nlin[<span class="op">-</span><span class="dv">1</span>]].primitive.multiple_results:</span>
+<span id="cb43-58"><a href="#cb43-58"></a>      <span class="cf">raise</span> <span class="pp">Exception</span>(<span class="ss">f"This code doesn't deal with multiple outputs from subgraph </span><span class="sc">{</span>nlin<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb43-59"><a href="#cb43-59"></a>    <span class="cf">else</span>:</span>
+<span id="cb43-60"><a href="#cb43-60"></a>      invar <span class="op">=</span> get_invars(nlin)</span>
+<span id="cb43-61"><a href="#cb43-61"></a>      nlin_inputs <span class="op">+=</span> [lin_outputs.index(invar.count) <span class="cf">if</span> invar.count <span class="kw">in</span> lin_outputs <span class="cf">else</span> <span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb43-62"><a href="#cb43-62"></a>      nlin_outputs <span class="op">+=</span> [jpr.jaxpr.eqns[nlin[<span class="op">-</span><span class="dv">1</span>]].outvars[<span class="dv">0</span>].count]</span>
+<span id="cb43-63"><a href="#cb43-63"></a>      nlin_funs <span class="op">+=</span> [</span>
+<span id="cb43-64"><a href="#cb43-64"></a>        partial(eval_subjaxpr,</span>
+<span id="cb43-65"><a href="#cb43-65"></a>          jaxpr <span class="op">=</span> jpr.jaxpr, </span>
+<span id="cb43-66"><a href="#cb43-66"></a>          consts <span class="op">=</span> jpr.literals, </span>
+<span id="cb43-67"><a href="#cb43-67"></a>          subgraph <span class="op">=</span> nlin, </span>
+<span id="cb43-68"><a href="#cb43-68"></a>          invars <span class="op">=</span> get_invars(nlin)</span>
+<span id="cb43-69"><a href="#cb43-69"></a>        )</span>
+<span id="cb43-70"><a href="#cb43-70"></a>      ]</span>
+<span id="cb43-71"><a href="#cb43-71"></a></span>
+<span id="cb43-72"><a href="#cb43-72"></a>  combine <span class="op">=</span> [<span class="fl">0.0</span>] <span class="op">*</span> <span class="bu">len</span>(linear_subgraph)</span>
+<span id="cb43-73"><a href="#cb43-73"></a>  <span class="co"># print(combine)</span></span>
+<span id="cb43-74"><a href="#cb43-74"></a>  <span class="cf">for</span> eqn <span class="kw">in</span> comb_eqns:</span>
+<span id="cb43-75"><a href="#cb43-75"></a>    combine[nlin_outputs.index(eqn.invars[<span class="dv">0</span>].count)] <span class="op">+=</span> <span class="fl">1.0</span></span>
+<span id="cb43-76"><a href="#cb43-76"></a>    <span class="cf">if</span> eqn.primitive.name <span class="op">==</span> <span class="st">"sub"</span>:</span>
+<span id="cb43-77"><a href="#cb43-77"></a>      combine[nlin_outputs.index(eqn.invars[<span class="dv">1</span>].count)] <span class="op">+=</span> <span class="op">-</span><span class="fl">1.0</span></span>
+<span id="cb43-78"><a href="#cb43-78"></a>    <span class="cf">else</span>:</span>
+<span id="cb43-79"><a href="#cb43-79"></a>      combine[nlin_outputs.index(eqn.invars[<span class="dv">1</span>].count)] <span class="op">+=</span> <span class="fl">1.0</span></span>
+<span id="cb43-80"><a href="#cb43-80"></a></span>
+<span id="cb43-81"><a href="#cb43-81"></a></span>
+<span id="cb43-82"><a href="#cb43-82"></a>  <span class="cf">return</span> lin_funs, nlin_funs, nlin_inputs, combine</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+</section>
+<section id="making-the-hessian" class="level2">
+<h2 class="anchored" data-anchor-id="making-the-hessian">Making the Hessian</h2>
+<p>After <em>all</em> of this work, we can finally make a function that builds a Hessian!</p>
+<p>We remember that if <span class="math inline">\(f(x) = g(h(x))\)</span>, where <span class="math inline">\(h(x)\)</span> is linear and <span class="math inline">\(g(x)\)</span> is nonlinear, then the hessian of <span class="math inline">\(f\)</span> is</p>
+<p><span class="math display">\[
+H_f(x) = J_h^T H_g J_h,
+\]</span> where <span class="math inline">\(J_h\)</span> is the Jacobian of <span class="math inline">\(h\)</span>.</p>
+<div id="a491e0bc" class="cell" data-execution_count="30">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1"></a><span class="kw">def</span> smarter_hessian(fun: Callable) <span class="op">-&gt;</span> Callable:</span>
+<span id="cb44-2"><a href="#cb44-2"></a>  <span class="im">from</span> jax <span class="im">import</span> jacfwd</span>
+<span id="cb44-3"><a href="#cb44-3"></a>  <span class="im">from</span> jax <span class="im">import</span> hessian</span>
+<span id="cb44-4"><a href="#cb44-4"></a>  <span class="im">from</span> jax <span class="im">import</span> numpy <span class="im">as</span> jnp</span>
+<span id="cb44-5"><a href="#cb44-5"></a>  <span class="kw">def</span> hess(<span class="op">*</span>args):</span>
+<span id="cb44-6"><a href="#cb44-6"></a>    <span class="cf">assert</span> <span class="bu">len</span>(args) <span class="op">==</span> <span class="dv">1</span>, <span class="st">"This only works for functions with one input"</span></span>
+<span id="cb44-7"><a href="#cb44-7"></a>    </span>
+<span id="cb44-8"><a href="#cb44-8"></a>    lin_funs, nlin_funs, nlin_inputs, combine <span class="op">=</span> decompose(fun, <span class="op">*</span>args)</span>
+<span id="cb44-9"><a href="#cb44-9"></a>    n_in <span class="op">=</span> args[<span class="dv">0</span>].shape[<span class="dv">0</span>]</span>
+<span id="cb44-10"><a href="#cb44-10"></a>    part <span class="op">=</span> jnp.zeros((n_in, n_in))</span>
+<span id="cb44-11"><a href="#cb44-11"></a></span>
+<span id="cb44-12"><a href="#cb44-12"></a>    <span class="cf">for</span> lin, nlin, nimp, comb <span class="kw">in</span> <span class="bu">zip</span>(lin_funs, nlin_funs, nlin_inputs, combine):</span>
+<span id="cb44-13"><a href="#cb44-13"></a>      </span>
+<span id="cb44-14"><a href="#cb44-14"></a>      <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb44-15"><a href="#cb44-15"></a>        lin_val <span class="op">=</span> lin(<span class="op">*</span>args)</span>
+<span id="cb44-16"><a href="#cb44-16"></a>        jac <span class="op">=</span> jacfwd(lin)(<span class="op">*</span>args)</span>
+<span id="cb44-17"><a href="#cb44-17"></a>      </span>
+<span id="cb44-18"><a href="#cb44-18"></a></span>
+<span id="cb44-19"><a href="#cb44-19"></a>      h_args <span class="op">=</span> (lin_val,) <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> args</span>
+<span id="cb44-20"><a href="#cb44-20"></a>      hess <span class="op">=</span> hessian(nlin)(<span class="op">*</span>h_args) <span class="cf">if</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> <span class="va">None</span></span>
+<span id="cb44-21"><a href="#cb44-21"></a></span>
+<span id="cb44-22"><a href="#cb44-22"></a>      <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb44-23"><a href="#cb44-23"></a>        part <span class="op">+=</span> comb <span class="op">*</span> (jac.T <span class="op">@</span> (hess <span class="op">@</span> jac))</span>
+<span id="cb44-24"><a href="#cb44-24"></a>      <span class="cf">elif</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb44-25"><a href="#cb44-25"></a>        part <span class="op">+=</span> comb <span class="op">*</span> jac.T <span class="op">@</span> jac</span>
+<span id="cb44-26"><a href="#cb44-26"></a>      <span class="cf">elif</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb44-27"><a href="#cb44-27"></a>        part <span class="op">+=</span> comb <span class="op">*</span> hess</span>
+<span id="cb44-28"><a href="#cb44-28"></a>      </span>
+<span id="cb44-29"><a href="#cb44-29"></a>    <span class="cf">return</span> part</span>
+<span id="cb44-30"><a href="#cb44-30"></a>  <span class="cf">return</span> hess</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>After all of that, let’s see if this works!</p>
+<div id="02639ec3" class="cell" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1"></a>mode_jax, H_jax <span class="op">=</span> laplace(</span>
+<span id="cb45-2"><a href="#cb45-2"></a>  partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y),</span>
+<span id="cb45-3"><a href="#cb45-3"></a>  x0 <span class="op">=</span>jnp.zeros(X.shape[<span class="dv">1</span>] <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb45-4"><a href="#cb45-4"></a>)</span>
+<span id="cb45-5"><a href="#cb45-5"></a></span>
+<span id="cb45-6"><a href="#cb45-6"></a>H_smarter <span class="op">=</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> smarter_hessian(partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y))(mode_jax)</span>
+<span id="cb45-7"><a href="#cb45-7"></a></span>
+<span id="cb45-8"><a href="#cb45-8"></a><span class="bu">print</span>(<span class="ss">f"The error is </span><span class="sc">{</span>jnp<span class="sc">.</span>linalg<span class="sc">.</span>norm(H_jax <span class="op">-</span> H_smarter)<span class="sc">.</span>tolist()<span class="sc">}</span><span class="ss">!"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>The error is 2.3684690404479625e-06!</code></pre>
+</div>
+</div>
+<p>In single precision, that is good enough for government work.</p>
+<section id="but-is-it-faster" class="level3">
+<h3 class="anchored" data-anchor-id="but-is-it-faster">But is it faster?</h3>
+<p>Now let’s take a look at whether we have actually saved any time.</p>
+<div id="a6ed4d60" class="cell" data-execution_count="32">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1"></a><span class="im">import</span> jax</span>
+<span id="cb47-2"><a href="#cb47-2"></a>times_hess <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: jax.hessian(partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y))(mode_jax), number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb47-3"><a href="#cb47-3"></a><span class="bu">print</span>(<span class="ss">f"Full Hessian: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times_hess)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times_hess)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span>
+<span id="cb47-4"><a href="#cb47-4"></a></span>
+<span id="cb47-5"><a href="#cb47-5"></a>times_smarter <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: smarter_hessian(partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y))(mode_jax), number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb47-6"><a href="#cb47-6"></a><span class="bu">print</span>(<span class="ss">f"Smarter Hessian: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times_smarter)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times_smarter)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Full Hessian: The average time with p = 5000 is  4.034(+/- 0.240)
+Smarter Hessian: The average time with p = 5000 is  4.239(+/- 0.083)</code></pre>
+</div>
+</div>
+<p>Well that didn’t make much of a difference. If anything, it’s a little bit slower. This is likely due to compiler operations that can be improved if you just lower the whole thing.</p>
+</section>
+<section id="but-you-forgot-the-diagonal-trick" class="level3">
+<h3 class="anchored" data-anchor-id="but-you-forgot-the-diagonal-trick">But you forgot the diagonal trick</h3>
+<p>That said, the decomposition into linear and non-linear parts was <em>not</em> the real source of the savings. If we assume the Hessian of the likelihood is diagonal, then we can indeed do a lot better!</p>
+<p>The problem here is that while <code>smarter_hessian</code> worked for any<a href="#fn23" class="footnote-ref" id="fnref23" role="doc-noteref"><sup>23</sup></a> JAX-traceable function, we are now making a structural assumption. In theory, we could go through the JAX primitives and mark all of the ones that would (conditionally) lead to diagonal Hessians, but honestly I kinda want this bit of the post to be done. So I will leave that as an <em>exercise to the interested reader</em>.</p>
+<div id="e980521f" class="cell" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1"></a><span class="kw">def</span> smart_hessian(fun: Callable) <span class="op">-&gt;</span> Callable:</span>
+<span id="cb49-2"><a href="#cb49-2"></a>  <span class="im">from</span> jax <span class="im">import</span> jacfwd</span>
+<span id="cb49-3"><a href="#cb49-3"></a>  <span class="im">from</span> jax <span class="im">import</span> hessian</span>
+<span id="cb49-4"><a href="#cb49-4"></a>  <span class="im">from</span> jax <span class="im">import</span> numpy <span class="im">as</span> jnp</span>
+<span id="cb49-5"><a href="#cb49-5"></a>  <span class="kw">def</span> hess(<span class="op">*</span>args):</span>
+<span id="cb49-6"><a href="#cb49-6"></a>    <span class="cf">assert</span> <span class="bu">len</span>(args) <span class="op">==</span> <span class="dv">1</span>, <span class="st">"This only works for functions with one input"</span></span>
+<span id="cb49-7"><a href="#cb49-7"></a>    </span>
+<span id="cb49-8"><a href="#cb49-8"></a>    lin_funs, nlin_funs, nlin_inputs, combine <span class="op">=</span> decompose(fun, <span class="op">*</span>args)</span>
+<span id="cb49-9"><a href="#cb49-9"></a>    n_in <span class="op">=</span> args[<span class="dv">0</span>].shape[<span class="dv">0</span>]</span>
+<span id="cb49-10"><a href="#cb49-10"></a>    part <span class="op">=</span> jnp.zeros((n_in, n_in))</span>
+<span id="cb49-11"><a href="#cb49-11"></a></span>
+<span id="cb49-12"><a href="#cb49-12"></a>    <span class="cf">for</span> lin, nlin, nimp, comb <span class="kw">in</span> <span class="bu">zip</span>(lin_funs, nlin_funs, nlin_inputs, combine):</span>
+<span id="cb49-13"><a href="#cb49-13"></a>      </span>
+<span id="cb49-14"><a href="#cb49-14"></a>      <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb49-15"><a href="#cb49-15"></a>        lin_val <span class="op">=</span> lin(<span class="op">*</span>args)</span>
+<span id="cb49-16"><a href="#cb49-16"></a>        jac <span class="op">=</span> jacfwd(lin)(<span class="op">*</span>args)</span>
+<span id="cb49-17"><a href="#cb49-17"></a>      </span>
+<span id="cb49-18"><a href="#cb49-18"></a></span>
+<span id="cb49-19"><a href="#cb49-19"></a>      h_args <span class="op">=</span> (lin_val,) <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> args</span>
+<span id="cb49-20"><a href="#cb49-20"></a>      D <span class="op">=</span> jvp(grad(nlin), h_args, (jnp.ones_like(h_args[<span class="dv">0</span>]),))[<span class="dv">1</span>] <span class="cf">if</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> <span class="va">None</span></span>
+<span id="cb49-21"><a href="#cb49-21"></a></span>
+<span id="cb49-22"><a href="#cb49-22"></a>      <span class="cf">if</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb49-23"><a href="#cb49-23"></a></span>
+<span id="cb49-24"><a href="#cb49-24"></a>        part <span class="op">+=</span> comb <span class="op">*</span> (jac.T <span class="op">@</span> (jac <span class="op">*</span> D[:,<span class="va">None</span>]))</span>
+<span id="cb49-25"><a href="#cb49-25"></a>      <span class="cf">elif</span> lin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb49-26"><a href="#cb49-26"></a>        part <span class="op">+=</span> comb <span class="op">*</span> jac.T <span class="op">@</span> jac</span>
+<span id="cb49-27"><a href="#cb49-27"></a>      <span class="cf">elif</span> nlin <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb49-28"><a href="#cb49-28"></a>        part <span class="op">+=</span> comb <span class="op">*</span> jnp.diag(D)</span>
+<span id="cb49-29"><a href="#cb49-29"></a>      </span>
+<span id="cb49-30"><a href="#cb49-30"></a>    <span class="cf">return</span> part</span>
+<span id="cb49-31"><a href="#cb49-31"></a>  <span class="cf">return</span> hess</span>
+<span id="cb49-32"><a href="#cb49-32"></a></span>
+<span id="cb49-33"><a href="#cb49-33"></a></span>
+<span id="cb49-34"><a href="#cb49-34"></a></span>
+<span id="cb49-35"><a href="#cb49-35"></a>H_smart <span class="op">=</span> <span class="op">-</span><span class="fl">1.0</span> <span class="op">*</span> smart_hessian(partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y))(mode_jax)</span>
+<span id="cb49-36"><a href="#cb49-36"></a></span>
+<span id="cb49-37"><a href="#cb49-37"></a><span class="bu">print</span>(<span class="ss">f"The error is </span><span class="sc">{</span>jnp<span class="sc">.</span>linalg<span class="sc">.</span>norm(H_jax <span class="op">-</span> H_smart)<span class="sc">.</span>tolist()<span class="sc">}</span><span class="ss">!"</span>)</span>
+<span id="cb49-38"><a href="#cb49-38"></a></span>
+<span id="cb49-39"><a href="#cb49-39"></a>times_smart <span class="op">=</span> timeit.repeat(<span class="kw">lambda</span>: smart_hessian(partial(log_posterior, X <span class="op">=</span> X, y <span class="op">=</span> y))(mode_jax), number <span class="op">=</span> <span class="dv">5</span>, repeat <span class="op">=</span> <span class="dv">5</span>)</span>
+<span id="cb49-40"><a href="#cb49-40"></a><span class="bu">print</span>(<span class="ss">f"Smart (diagonal-aware) Hessian: The average time with p = </span><span class="sc">{</span>p<span class="sc">}</span><span class="ss"> is </span><span class="sc">{</span>np<span class="sc">.</span>mean(times_smart)<span class="sc">: .3f}</span><span class="ss">(+/-</span><span class="sc">{</span>np<span class="sc">.</span>std(times_smart)<span class="sc">: .3f}</span><span class="ss">)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>The error is 2.3684690404479625e-06!
+Smart (diagonal-aware) Hessian: The average time with p = 5000 is  2.628(+/- 0.029)</code></pre>
+</div>
+</div>
+<p>That is a proper saving!</p>
+</section>
+</section>
+<section id="some-concluding-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="some-concluding-thoughts">Some concluding thoughts</h2>
+<p>Well, this post got out of control. I swear when I sat down I was just going to write a quick post about Laplace approximations. Ooops.</p>
+<section id="the-power-of-compiler-optimizations" class="level3">
+<h3 class="anchored" data-anchor-id="the-power-of-compiler-optimizations">The power of compiler optimizations</h3>
+<p>I think what I’ve shown here is that one of the really powerful things about <em>compiled</em> languages like JAX is that you can perform a pile of code optimizations that can greatly improve their performance.</p>
+<p>In the ideal world, this type of optimization should be <em>invisible</em> to the end user. Were I to do this seriously<a href="#fn24" class="footnote-ref" id="fnref24" role="doc-noteref"><sup>24</sup></a>, I would make sure that if the assumptions of the optimized code weren’t met, the behaviour would revert back to the standard <code>jax.hessian</code>.</p>
+<p>Recognizing when to perform an optimization is, in reality, the whole art of this type of process. And it’s very hard. For this post, I was able to do that to automatically recognize the linear operation, but I didn’t try to find conditions that ensured the Hessian would be diagonal.</p>
+</section>
+<section id="sparsity-detection-and-sparse-autodiff" class="level3">
+<h3 class="anchored" data-anchor-id="sparsity-detection-and-sparse-autodiff">Sparsity detection and sparse autodiff</h3>
+<p>Would you believe that people have spent a lot of time studying the efficiency gains when you have things like sparse Hessians? There is, in fact, a massive literature on <em>sparse autodiff</em> and it is implemented in several autodiff libraries, including <a href="https://github.com/JuliaDiff/SparseDiffTools.jl">in Julia</a>.</p>
+<p>Sparsity exploiting autodiff uses symbolic analysis of the expression tree for a function to identify when certain derivatives are going to be zero. For Hessians, it needs to identify when two variables have at most linear dependencies.</p>
+<p>Once you have worked out the sparsity pattern, you need to do something with it. In the logistic case, it is diagonal, but in a lot of cases it will depend on more than one element of the latent representation. That is the Hessian will be sparse<a href="#fn25" class="footnote-ref" id="fnref25" role="doc-noteref"><sup>25</sup></a>, but it won’t be diagonal.</p>
+<p>I guess the question is <em>can we generalist the observation if the Hessian is diagonal we only need to compute a single Hessian-vector product</em> to general sparsity structures.</p>
+<p>In general, we won’t be able to get away with a single product and will instead need a specially constructed set of <span class="math inline">\(k\)</span> <em>probing vectors</em>, where <span class="math inline">\(k\)</span> is a number to be determined (that is hopefully <em>much</em> smaller than <span class="math inline">\(n\)</span>). This set of vectors <span class="math inline">\(s_k\)</span> will have the special property that <span class="math display">\[
+\sum_{j=1}^k s_j = 1.
+\]</span> This means that the non-zero elements of each probing vector corresponds to a disjoint grouping of the variables.</p>
+<p>To do this, we need to construct our set of probing vectors in a very special way. Each <span class="math inline">\(s_k\)</span> will be a vector containing zeros and ones. The set of indices with <span class="math inline">\([s_k]_j = 1\)</span> have color <span class="math inline">\(k\)</span>. The aim is to associate each index with a unique color in such a way that we can recover the algorithm. We can do this with a structurally symmetric orthogonal partition, which is detailed in <a href="http://www.ii.uib.no/~fredrikm/fredrik/papers/sirev2005.pdf">Section 4 of this great review article</a>.</p>
+<p>Implementing<a href="#fn26" class="footnote-ref" id="fnref26" role="doc-noteref"><sup>26</sup></a> sparsity-aware autodiff Hessians does require some graph algorithms, and is frankly beyond the scope of my patience here. But it certainly is possible and you would get quite general performance from it.</p>
+<p>Critically, because it reduces the computation of a <span class="math inline">\(p \times p\)</span> dense Hessian matrix with <span class="math inline">\(k\)</span> Hessian-vector products, it is extremely well suited to modern GPU acceleration techniques!</p>
+</section>
+<section id="could-we-do-more" class="level3">
+<h3 class="anchored" data-anchor-id="could-we-do-more">Could we do more?</h3>
+<p>There are so many many many ways to improve the very simple symbolic reduction of the autodiff beyond the simple “identify $f(Ax)” strategy. For more complex cases, it might be necessary to relax the <em>only one input and only one output</em> assumption.</p>
+<p>It also might be possible to chain multiple instances of this, although this would require a more complex Hessian chain rule. Nevertheless, the extra complexity might be balanced by savings form the applicable instances of sparse autodiff.</p>
+<p>But probably the thing that <em>actually</em> annoys me in all of this is that we are constantly recomputing the Jacobian for the linear equation, which is fixed. A better implementation would consider implementing symbolic differentiation for linear sub-graphs, which should lead to even more savings.</p>
+</section>
+<section id="but-is-jax-the-right-framework-for-this" class="level3">
+<h3 class="anchored" data-anchor-id="but-is-jax-the-right-framework-for-this">But is JAX the right framework for this?</h3>
+<p>All of this was a fair bit of work so I’m tempted to throw myself at the sunk-cost fallacy and just declare it to be good. But there is a problem. Because JAX doesn’t do a symbolic transformation of the program (only a trace through paths associated with specific values), there is no guarantee that the sparsity pattern for <span class="math inline">\(H\)</span> remains the same at each step. And there is nothing wrong with that. It’s an expressive, exciting language.</p>
+<p>But all of the code transformation to make a sparsity-exploiting Hessian doesn’t come for free. And the idea of having to do it again every time a Hessian is needed is … troubling. If we could guarantee that the sparsity pattern was static, then we could factor all of this complex parsing and coloring code away and just run it once for each problem.</p>
+<p>Theoretically, we could do something like hashing on the jaxpr, but I’m not sure how much that would help.</p>
+<p>Ideally, we could do this in a library that performs <em>symbolic</em> manipulations and can compile them into an expression graph. JAX is not quite<a href="#fn27" class="footnote-ref" id="fnref27" role="doc-noteref"><sup>27</sup></a> that language. An option for this type of symbolic manipulation would be <a href="https://aesara.readthedocs.io/en/latest/">Aesara</a>. It may even be possible to do it in <a href="https://github.com/stan-dev/stanc3">Stan</a>, but even my wandering mind doesn’t want to work out how to do this in OCaml.</p>
+
+
+</section>
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>I will never reveal how much. But it was most of it.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>or on<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>that probably converges. Think of it like <span class="math inline">\(f_n(\theta) = n^{-1} \left(\sum_{i=1}^n p(y_i \mid \theta) + p(\theta)\right)\)</span>, where <span class="math inline">\(p(y_i \mid \theta)\)</span> is the likelihood and <span class="math inline">\(p(\theta)\)</span> is the prior.<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn4"><p>The first-order term disappears because at the mode <span class="math inline">\(x^*\)</span> <span class="math inline">\(\nabla f(x^*)=0\)</span><a href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn5"><p>or has one dominant mode<a href="#fnref5" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn6"><p>Something isn’t always better than nothing but sometimes it is<a href="#fnref6" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn7"><p>You could say reproducible code but I won’t because that word means something pretty specific. I mean, this is not the place for a rant, but it is <em>very</em> difficult to write strictly reproducible code and I am frankly not even going to try to take a bite out of that particular onion.<a href="#fnref7" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn8"><p>The maths under this is very interesting and surprisingly accessible (in a very advanced sort of way). I guess it depends on what you think of as accessible, but it’s certainly much nicer than entropy and VC-classes. A lovely set of notes that cover everything you’ve ever wanted to know is <a href="https://arxiv.org/abs/1011.3027">here</a><a href="#fnref8" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn9"><p>Unless someone’s been doing their design of experiments<a href="#fnref9" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn10"><p>With 100 observations, we expect our data-driven variation (aka the frequentist version) to be about one decimal place, so the Laplace approximation is accurate within that tolerance. In fact, clever maths types can analyse the error in the Laplace approximation and show that the error is about <span class="math inline">\(\mathcal{O}(n^{-1})\)</span>, which is asymptotically much smaller than the sampling variability of <span class="math inline">\(\mathcal{O}(n^{-1/2})\)</span>, which suggests that the error introduced by the Laplace approximation isn’t catastrophic. At least with enough data.<a href="#fnref10" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn11"><p>Be still my beating heart.<a href="#fnref11" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn12"><p>Ok. You caught me. They’re not technically the same model. The symbolic code doesn’t include an intercept. I just honestly cannot be arsed to do the very minor matrix algebra to add it in. Nor can I be arsed to add a column of ones to <code>X</code>.<a href="#fnref12" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn13"><p>So many tuples<a href="#fnref13" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn14"><p>This is in pretty stark contrast to the pytorch docs, which are shit. Be more like JAX.<a href="#fnref14" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn15"><p>INLA does this. Very explicitly. And a lot of other cool stuff. It doesn’t use autodiff though.<a href="#fnref15" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn16"><p>For example, there’s no call to <code>logistic</code> in the code, but a quick look at <code>jax.lax.logistic</code> shows that it’s the same thing as <code>expit</code>.<a href="#fnref16" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn17"><p>This basically <em>just works</em> as long as you’ve got <code>graphviz</code> installed on your system. And once you find the right regex to strip out the <em>terrible</em> auto-generated title.<a href="#fnref17" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn18"><p>You need to install the dev version, or else it renders a lot of <code>pjit</code>s where the <code>sum</code> and <code>sub</code>s are supposed to be.<a href="#fnref18" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn19"><p>If I wasn’t sure, I deleted them from the linear list. There were also <code>scatter_mul</code>, <code>reduce_window</code>, and <code>reduce_window_shape_tuple</code>, which are all sometimes linear but frankly I didn’t want to work out the logic.<a href="#fnref19" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn20"><p>The letters are <code>__repl__</code> magic<a href="#fnref20" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn21"><p>Lord I hate a big ‘if’/‘elif’ block. Just terrible. I should refactor but this is a weekend blog post not a work thing<a href="#fnref21" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn22"><p>It is very little extra work to deal with eg JIT’d primitives and that sort of stuff, but for the purpose of this post, let’s keep things as simple as possible.<a href="#fnref22" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn23"><p>With input/output restrictions<a href="#fnref23" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn24"><p>I am currently dressed like a sexy clown.<a href="#fnref24" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn25"><p>Most of the entries will be zero<a href="#fnref25" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn26"><p>The previous article goes for ease of implementation over speed. A faster and better algorithm, and a <em>very</em> detailed comparison of all of the available options can be found <a href="http://www.ii.uib.no/~fredrikm/fredrik/papers/SISC2007.pdf">here</a>. And I am not implementing that for a fucking blog.<a href="#fnref26" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn27"><p>And it’s not trying to. Their bread and butter is autodiff and what they’re doing is absolutely natural for that.<a href="#fnref27" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2024,
+  author = {Simpson, Dan},
+  title = {An Unexpected Detour into Partially Symbolic,
+    Sparsity-Expoiting Autodiff; or {Lord} Won’t You Buy Me a {Laplace}
+    Approximation},
+  date = {2024-05-08},
+  url = {https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html},
+  langid = {en}
+}
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2024" class="csl-entry quarto-appendix-citeas" role="listitem">
+Simpson, Dan. 2024. <span>“An Unexpected Detour into Partially Symbolic,
+Sparsity-Expoiting Autodiff; or Lord Won’t You Buy Me a Laplace
+Approximation.”</span> May 8, 2024. <a href="https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html">https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html</a>.
+</div></div></section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp("https:\/\/dansblog\.netlify\.app");
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
