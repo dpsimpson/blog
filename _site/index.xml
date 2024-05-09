@@ -31,8 +31,8 @@
 <p>The post started as a pedagogical introduction to Laplace approximations (for reasons I don’t fully remember), but it rapidly went off the rails. So strap yourself in<sup>2</sup> for a tour through the basics of sparse autodiff and a tour through manipulating the <code>jaxpr</code> intermediate representation in order to make one very simple logistic regression produce autodiff code that is almost as fast as a manually programmed gradient.</p>
 <section id="the-laplace-approximation" class="level2">
 <h2 class="anchored" data-anchor-id="the-laplace-approximation">The Laplace approximation</h2>
-<p>One of the simplest approximations to a distribution is the Laplace approximation. It be defined as the Gaussian distribution that matches that the mode and the curvature and the curvature at the mode of the target distribution. It lives its best life when the density is of the form <img src="https://latex.codecogs.com/png.latex?%0Ap(x)%20%5Cpropto%20%5Cexp(-nf_n(x)),%0A"> where <img src="https://latex.codecogs.com/png.latex?f_n"> is a sequence of functions<sup>3</sup>. Let’s imagine that we want to approximate the normalized density <img src="https://latex.codecogs.com/png.latex?p(x)"> near the mode <img src="https://latex.codecogs.com/png.latex?x%5E*">. We can do this by taking the second order Taylor expansion of <img src="https://latex.codecogs.com/png.latex?f_n"> around <img src="https://latex.codecogs.com/png.latex?x=x_0">, which is <img src="https://latex.codecogs.com/png.latex?%0Af_n%20=%20f_n(x%5E*)%20+%20(x-x%5E*)%5ETH(x%5E*)(x-x%5E*)%20%20+%20%5Cmathcal%7BO%7D((x-x%5E*)%5E3),%0A"> where<sup>4</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5BH(x%5E*)%5D_%7Bij%7D%20=%20%5Cfrac%7B%5Cpartial%5E2%20f_n%7D%7B%5Cpartial%20x_i%20%5Cpartial%20x_j%7D%0A"> is the Hessian matrix.</p>
-<p>If we replace <img src="https://latex.codecogs.com/png.latex?f_n"> by it’s quadratic approximation we get <img src="https://latex.codecogs.com/png.latex?%0Ap(x)%20%5Capprox%20%20C%5Cexp(-n(x-%20x%5E*)%5ETH(x%5E*)(x-x%5E*)),%0A"> where <img src="https://latex.codecogs.com/png.latex?C"> is a constant.</p>
+<p>One of the simplest approximations to a distribution is the Laplace approximation. It be defined as the Gaussian distribution that matches the location and the curvature at the mode of the target distribution. It lives its best life when the density is of the form <img src="https://latex.codecogs.com/png.latex?%0Ap(x)%20%5Cpropto%20%5Cexp(-nf_n(x)),%0A"> where <img src="https://latex.codecogs.com/png.latex?f_n"> is a sequence of functions<sup>3</sup>. Let’s imagine that we want to approximate the normalized density <img src="https://latex.codecogs.com/png.latex?p(x)"> near the mode <img src="https://latex.codecogs.com/png.latex?x%5E*">. We can do this by taking the second order Taylor expansion of <img src="https://latex.codecogs.com/png.latex?f_n"> around <img src="https://latex.codecogs.com/png.latex?x=x_0">, which is <img src="https://latex.codecogs.com/png.latex?%0Af_n%20=%20f_n(x%5E*)%20+%20(x-x%5E*)%5ETH(x%5E*)(x-x%5E*)%20%20+%20%5Cmathcal%7BO%7D((x-x%5E*)%5E3),%0A"> where<sup>4</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5BH(x%5E*)%5D_%7Bij%7D%20=%20%5Cfrac%7B%5Cpartial%5E2%20f_n%7D%7B%5Cpartial%20x_i%20%5Cpartial%20x_j%7D%0A"> is the Hessian matrix.</p>
+<p>If we replace <img src="https://latex.codecogs.com/png.latex?f_n"> by its quadratic approximation we get <img src="https://latex.codecogs.com/png.latex?%0Ap(x)%20%5Capprox%20%20C%5Cexp(-n(x-%20x%5E*)%5ETH(x%5E*)(x-x%5E*)),%0A"> where <img src="https://latex.codecogs.com/png.latex?C"> is a constant.</p>
 <p>After normalizing the approximation to make sure that we get a proper density, we get the Laplace approximation <img src="https://latex.codecogs.com/png.latex?%0Ap(x)%20%5Capprox%20N(x%5E*,%20n%5E%7B-1%7DH(x%5E*)%5E%7B-1%7D).%0A"></p>
 <p>The Laplace approximation can be justified rigorously and has a well-studied error and it’s known to work quite well when <img src="https://latex.codecogs.com/png.latex?p(x)"> is a) unimodal<sup>5</sup> and b) isn’t tooooo non-Gaussian.</p>
 <p>In practice, people have found that Laplace approximations do a reasonable<sup>6</sup> job quantifying uncertainty <a href="https://arxiv.org/abs/2106.14806">even in complex neural network models</a> and it is at the heart of any number of classical estimators in statistics.</p>
@@ -47,7 +47,7 @@
 <section id="computing-the-laplace-approximation-in-jax" class="level3">
 <h3 class="anchored" data-anchor-id="computing-the-laplace-approximation-in-jax">Computing the Laplace approximation in JAX</h3>
 <p>This is a two step process and, to be honest, all of the steps are pretty standard. So (hopefully) this will not be too tricky to implement. For simplicity, I’m not going to bother with the dividing and multiplying by <img src="https://latex.codecogs.com/png.latex?n">, although for very large data it could be quite</p>
-<div id="b8706506" class="cell" data-execution_count="1">
+<div id="4cea8f03" class="cell" data-execution_count="1">
 <div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> jax.numpy <span class="im" style="color: #00769E;
@@ -118,7 +118,7 @@ font-style: inherit;">return</span> mode, H</span></code></pre></div>
 <p>There are a few things worth noting here. There’s not really much in this code, except to note that <code>jax.scipy.optimize.minimize</code> finds the minimum of <img src="https://latex.codecogs.com/png.latex?f">, so I had to pass through the negative of the function. This change also propagates to the computation of the Hessian, which is computed as the Jacobian of the gradient of f.&nbsp;</p>
 <p>Depending on what needs to be done with the Laplace approximation, it might be more appropriate to output the log-density rather than just the mode and the Hessian, but for the moment we will keep this signature.</p>
 <p>Let’s try it out. First of all, I’m going to generate some random data from a logistic regression model. This is going to use <a href="https://jax.readthedocs.io/en/latest/jax-101/05-random-numbers.html">Jax’s slightly odd random number system where you need to manually update the state of the pseudo-random number generator</a>. This is beautifully repeatable<sup>7</sup> unlike, say, R or standard numpy, where you’ve got to pay <em>a lot</em> of attention to the state of the random number generator to avoid oddities.</p>
-<div id="55630b08" class="cell" data-execution_count="2">
+<div id="938fe91c" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> jax <span class="im" style="color: #00769E;
@@ -184,7 +184,7 @@ font-style: inherit;">return</span> (y, X)</span></code></pre></div>
 </div>
 <p>An interesting side-note here is that I’ve generated the design matrix <img src="https://latex.codecogs.com/png.latex?X"> to have standard Gaussian columns. This is <em>not</em> a benign choice as <img src="https://latex.codecogs.com/png.latex?n"> gets big. With <em>very</em> high probability, the columns of <img src="https://latex.codecogs.com/png.latex?X"> will be almost<sup>8</sup> orthonormal, which means that this is the best possible case for logistic regression. Generally speaking, design matrices from real<sup>9</sup> data have a great deal of co-linearity in them and so algorithms that perform well on random design matrices may perform less well on real data.</p>
 <p>Ok, so let’s fit the model! I’m just going to use <img src="https://latex.codecogs.com/png.latex?N(0,1)"> priors on all of the <img src="https://latex.codecogs.com/png.latex?%5Cbeta">s.</p>
-<div id="d2663675" class="cell" data-execution_count="3">
+<div id="58eec67f" class="cell" data-execution_count="3">
 <div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> functools <span class="im" style="color: #00769E;
@@ -294,7 +294,7 @@ background-color: null;
 font-style: inherit;">=</span> jnp.linalg.inv(H)</span></code></pre></div>
 </div>
 <p>Let’s see how this performs relative to MCMC. To do that, I’m going to build and equivalent PyMC model.</p>
-<div id="e3114d7a" class="cell" data-execution_count="4">
+<div id="28ec7812" class="cell" data-execution_count="4">
 <div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> numpy <span class="im" style="color: #00769E;
@@ -529,12 +529,12 @@ Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws 
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code>        Variable   mean  laplace_mean     sd  laplace_sd
-beta[0]  beta[0]  0.241         0.234  0.230       0.229
-beta[1]  beta[1] -0.955        -0.914  0.440       0.428
-beta[2]  beta[2] -1.707        -1.616  0.488       0.470
-beta[3]  beta[3] -0.968        -0.926  0.411       0.416
-beta[4]  beta[4] -0.731        -0.716  0.460       0.457
-beta[5]  beta[5]  0.649         0.609  0.485       0.475</code></pre>
+beta[0]  beta[0]  0.249         0.234  0.235       0.229
+beta[1]  beta[1] -0.964        -0.914  0.435       0.428
+beta[2]  beta[2] -1.710        -1.616  0.490       0.470
+beta[3]  beta[3] -0.975        -0.926  0.423       0.416
+beta[4]  beta[4] -0.739        -0.716  0.470       0.457
+beta[5]  beta[5]  0.637         0.609  0.481       0.475</code></pre>
 </div>
 </div>
 <p>Well that’s just dandy! Everything is pretty<sup>10</sup> close. With 1000 observations it’s identical to within 3 decimal places.</p>
@@ -542,7 +542,7 @@ beta[5]  beta[5]  0.649         0.609  0.485       0.475</code></pre>
 <section id="speeding-up-the-computation" class="level3">
 <h3 class="anchored" data-anchor-id="speeding-up-the-computation">Speeding up the computation</h3>
 <p>So that is all well and dandy. Let’s see how long it takes. I am interested in big models, so for this demonstration, I’m going to take <img src="https://latex.codecogs.com/png.latex?p%20=%205000">. That said, I’m not enormously interested in seeing how this scales in <img src="https://latex.codecogs.com/png.latex?n"> (linearly), so I’m going to keep that at the fairly unrealistic value of <img src="https://latex.codecogs.com/png.latex?n=1000">.</p>
-<div id="b73fcc03" class="cell" data-execution_count="5">
+<div id="4fda5153" class="cell" data-execution_count="5">
 <div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> timeit</span>
@@ -637,14 +637,14 @@ font-style: inherit;">: .3f}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Autodiff: The average time with p = 5000 is  3.785(+/- 0.513)</code></pre>
+<pre><code>Autodiff: The average time with p = 5000 is  3.222(+/- 0.379)</code></pre>
 </div>
 </div>
 <p>That doesn’t seem too bad, but the thing is that I know quite a lot about logistic regression. It is, after all, logistic regression. In particular, I know that the Hessian has the form <img src="https://latex.codecogs.com/png.latex?%0AH%20=%20X%5ET%20D(%5Cbeta)%20X,%0A"> where <img src="https://latex.codecogs.com/png.latex?D(%5Cbeta)"> is a <em>diagonal</em> <img src="https://latex.codecogs.com/png.latex?n%20%5Ctimes%20n"> matrix that has a known form.</p>
 <p>This means that the appropriate comparison is between the speed of the autodiff Hessian and how long it takes to compute <img src="https://latex.codecogs.com/png.latex?X%5ETDX"> for some diagonal matrix X.</p>
 <p>Now you might be worried here that I didn’t explicitly save <img src="https://latex.codecogs.com/png.latex?X"> and <img src="https://latex.codecogs.com/png.latex?y">, so the comparison might not be fair. But my friends, I have good news! All of that awkward <code>key, sub = jrandom.split(key)</code> malarkey has the singular advantage that if I pass the same key into <code>make_data</code> that I used for <code>hess_test</code>, I will get <em>the exact same generated data</em>! So let’s do that. For <img src="https://latex.codecogs.com/png.latex?D"> I’m just going to pick a random matrix. This will give a <em>minimum</em> achievable time for computing the Hessian (as it doesn’t do the extra derivatives to compute <img src="https://latex.codecogs.com/png.latex?D"> properly).</p>
 <p>If you look at that code and say <em>but Daniel you used the wrong multiplication operator</em>, you can convince yourself that <code>X * d[:, None]</code> gives the same result as <code>jnp.diag(d) @ X</code>. But it will be faster. And it uses such beautiful<sup>11</sup> broadcasting rules.</p>
-<div id="0c6e2da9" class="cell" data-execution_count="6">
+<div id="252d7828" class="cell" data-execution_count="6">
 <div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1">y, X <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> make_data(key, n , p)</span>
@@ -706,12 +706,12 @@ font-style: inherit;">: .3f}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Symbolic (minimum possible): The average time with p = 5000 is  0.775(+/- 0.022)</code></pre>
+<pre><code>Symbolic (minimum possible): The average time with p = 5000 is  0.766(+/- 0.014)</code></pre>
 </div>
 </div>
 <p>Oh dear. The symbolic derivative<sup>12</sup> is <em>a lot</em> faster.</p>
 <p>Speeding this up is going to take a little work. The first thing we can try is to explicitly factor out the linear transformation. Instead of passing in the function <img src="https://latex.codecogs.com/png.latex?f">, we could pass in <img src="https://latex.codecogs.com/png.latex?g"> such that <img src="https://latex.codecogs.com/png.latex?%0Af(x)%20=%20g(Ax),%0A"> for some matrix <img src="https://latex.codecogs.com/png.latex?A">. In our case <img src="https://latex.codecogs.com/png.latex?g"> would have a diagonal Hessian. Let’s convince ourselves of that with a small example. As well as dropping the intercept, I’ve also dropped the prior term.</p>
-<div id="e2399eb7" class="cell" data-execution_count="7">
+<div id="3a085e1e" class="cell" data-execution_count="7">
 <div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1">g <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
@@ -773,7 +773,7 @@ font-style: inherit;">1</span>))</span></code></pre></div>
 </div>
 </div>
 <p>Wonderfully diagonal!</p>
-<div id="d96efda0" class="cell" data-execution_count="8">
+<div id="9afd020c" class="cell" data-execution_count="8">
 <div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">def</span> hess2(g, A, x):</span>
@@ -876,13 +876,13 @@ font-style: inherit;">: .3f}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Separated Hessian: The average time with p = 5000 is  1.002(+/- 0.182)</code></pre>
+<pre><code>Separated Hessian: The average time with p = 5000 is  0.975(+/- 0.163)</code></pre>
 </div>
 </div>
 <p>Well that’s definitely better.</p>
 <p>Now, we might be able to do even better than that if we notice that if we <em>know</em> that <img src="https://latex.codecogs.com/png.latex?D"> is diagonal, then we don’t need to compute the entire Hessian, we can simply compute the Hessian-vector product <img src="https://latex.codecogs.com/png.latex?%0A%5Coperatorname%7Bdiag%7D(H)%20=%20H%201%20%5Cqquad%20%5Ctext%7Biff%20%7DH%5Ctext%7B%20is%20diagonal%7D,%0A"> where <img src="https://latex.codecogs.com/png.latex?1"> is the vector of ones. Just as we computed the Hessian by computing the Jacobian of the gradient, it turns out that we can compute a Hessian-vector product by computing a Jacobian-vector product <code>jvp</code> of the gradient. The syntax in JAX is, honestly, a little bit gross here<sup>13</sup>, but if you want to read up about how it works <a href="https://jax.readthedocs.io/en/latest/notebooks/autodiff_cookbook.html#hessian-vector-products-using-both-forward-and-reverse-mode">the docs are really nice</a><sup>14</sup>.</p>
 <p>This observation is going to be useful because <code>jacfwd</code> computes the Jacobian by computing <img src="https://latex.codecogs.com/png.latex?n"> Jacobian-vector products. So this observation is saving us <em>a lot</em> of work.</p>
-<div id="67cbbb0b" class="cell" data-execution_count="9">
+<div id="279128f8" class="cell" data-execution_count="9">
 <div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> jax <span class="im" style="color: #00769E;
@@ -967,7 +967,7 @@ font-style: inherit;">: .3f}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Compressed Hessian: The average time with p = 5000 is  0.904(+/- 0.129)</code></pre>
+<pre><code>Compressed Hessian: The average time with p = 5000 is  0.879(+/- 0.082)</code></pre>
 </div>
 </div>
 <p>This is very nearly as fast as the lower bound for the symbolic Hessian. There must be a way to use this.</p>
@@ -984,7 +984,7 @@ font-style: inherit;">)"</span>)</span></code></pre></div>
 <h3 class="anchored" data-anchor-id="getting-to-know-jaxprs">Getting to know jaxprs</h3>
 <p>A <code>jaxpr</code> is a transformation of the python code for evaluating a JAX function into a human-readable language that maps types primitives through the code. We can view it using the <code>jax.make_jaxpr</code> function.</p>
 <p>Let’s look at the log-posterior function after partial evaluation to make it a single-input function.</p>
-<div id="e5a4dc57" class="cell" data-execution_count="10">
+<div id="bd5d6df2" class="cell" data-execution_count="10">
 <div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb17-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> jax <span class="im" style="color: #00769E;
@@ -1036,7 +1036,7 @@ font-style: inherit;">1</span>)))</span></code></pre></div>
 <p>All of the other lines can be read similarly. A good trick, if you don’t recognize the primitive<sup>16</sup>, is to <a href="https://jax.readthedocs.io/en/latest/jax.lax.html">look it up</a> in the <code>jax.lax</code> sub-module.</p>
 <p>Even a cursory read of this suggests that we could probably save a couple of tedious operations by passing in an integer <code>y</code>, rather than a Boolean <code>y</code>, but hey. That really shouldn’t cost much.</p>
 <p>While the <code>jaxpr</code> is lovely, it’s a whole lot easier to reason about if you see it graphically. We can plot the <em>expression graph</em> using<sup>17</sup> the <code>haiku</code><sup>18</sup> package from DeepMind.</p>
-<div id="51dc05b9" class="cell" data-execution_count="11">
+<div id="bf3d6463" class="cell" data-execution_count="11">
 <div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb20-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> haiku.experimental <span class="im" style="color: #00769E;
@@ -1100,7 +1100,7 @@ font-style: inherit;">=</span>re.DOTALL)</span>
 <section id="splitting-the-expression-graph-into-linear-and-non-linear-subgraphs" class="level3">
 <h3 class="anchored" data-anchor-id="splitting-the-expression-graph-into-linear-and-non-linear-subgraphs">Splitting the expression graph into linear and non-linear subgraphs</h3>
 <p>Looking at the graph, we can split it into three sub-graphs. The first sub-graph can be found by tracing an input value through the graph until it hits either a non-linear operation or the end of the graph. The sub-graph is created by making the penultimate node in that sequence an output node. This sub-graph represents a linear transformations.</p>
-<div id="68812d32" class="cell" data-execution_count="12">
+<div id="a5a99eed" class="cell" data-execution_count="12">
 <div class="cell-output cell-output-display" data-execution_count="12">
 <div>
 <figure class="figure">
@@ -1110,7 +1110,7 @@ font-style: inherit;">=</span>re.DOTALL)</span>
 </div>
 </div>
 <p>Once we have reached the end of the linear portion, we can link the output from this operation to the input of the non-linear sub-graph.</p>
-<div id="559bc19a" class="cell" data-execution_count="13">
+<div id="56993076" class="cell" data-execution_count="13">
 <div class="cell-output cell-output-display" data-execution_count="13">
 <div>
 <figure class="figure">
@@ -1120,7 +1120,7 @@ font-style: inherit;">=</span>re.DOTALL)</span>
 </div>
 </div>
 <p>Finally, we have one more trace of <img src="https://latex.codecogs.com/png.latex?%5Cbeta"> through the graph that is non-linear. We could couple this into the non-linear graph at the cost of having to reason about a bivariate Hessian (which will become complex).</p>
-<div id="b595a3fe" class="cell" data-execution_count="14">
+<div id="96b1b043" class="cell" data-execution_count="14">
 <div class="cell-output cell-output-display" data-execution_count="14">
 <div>
 <figure class="figure">
@@ -1130,7 +1130,7 @@ font-style: inherit;">=</span>re.DOTALL)</span>
 </div>
 </div>
 <p>The two non-linear portions of the graph are merged through a trivial linear combination.</p>
-<div id="a9b25248" class="cell" data-execution_count="15">
+<div id="b473bcd8" class="cell" data-execution_count="15">
 <div class="cell-output cell-output-display" data-execution_count="15">
 <div>
 <figure class="figure">
@@ -1158,7 +1158,7 @@ font-style: inherit;">=</span>re.DOTALL)</span>
     ] c c</code></pre>
 <p>In this case, <code>c</code> is a linear transformation of the input (it’s just <code>beta</code>), but <code>dot(c,c)</code> is a quadratic function. Hence in this case, <code>dot_general</code> is not linear.</p>
 <p>We are going to need to work out how to handle this case. In the folded code is a partial<sup>19</sup> list of the <code>jax.lax</code> primitives that are linear or occasionally linear. All in all there are 69 linear or no-op primitives and 7 sometimes linear primitives.</p>
-<div id="45ac6e11" class="cell" data-execution_count="16">
+<div id="de3a709f" class="cell" data-execution_count="16">
 <details class="code-fold">
 <summary>jax.lax linear and sometimes linear primitives</summary>
 <div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb23-1">jax_linear <span class="op" style="color: #5E5E5E;
@@ -1440,7 +1440,7 @@ font-style: inherit;">'tridiagonal_solve'</span></span>
 </figure>
 </div>
 <p>This figure corresponds roughly to the jaxpr</p>
-<div id="fd46152f" class="cell" data-execution_count="17">
+<div id="2d3dd5e6" class="cell" data-execution_count="17">
 <div class="cell-output cell-output-stdout">
 <pre><code>{ lambda ; a:f32[] b:f32[]. let c:f32[] = add a b; d:f32[] = mul 0.5 c in (d,) }</code></pre>
 </div>
@@ -1453,7 +1453,7 @@ font-style: inherit;">'tridiagonal_solve'</span></span>
 <li>whether or not this node depends on the inputs. This is useful for ignoring non-linearities that just apply to the constants bound to the jaxpr.</li>
 </ul>
 <p>We can record this information in a dataclass.</p>
-<div id="e7d62eb8" class="cell" data-execution_count="18">
+<div id="ebcee419" class="cell" data-execution_count="18">
 <div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> dataclasses <span class="im" style="color: #00769E;
@@ -1508,7 +1508,7 @@ font-style: inherit;">True</span></span></code></pre></div>
 </div>
 </div>
 </div>
-<div id="7404bdeb" class="cell" data-execution_count="19">
+<div id="39e76b59" class="cell" data-execution_count="19">
 <div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb26-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> jax.core <span class="im" style="color: #00769E;
@@ -1669,7 +1669,7 @@ font-style: inherit;">in</span> node.parents</span>
 </div>
 </div>
 <p>Now let’s identify which equations are linear and which aren’t.</p>
-<div id="b42378d0" class="cell" data-execution_count="20">
+<div id="9cfeb635" class="cell" data-execution_count="20">
 <div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb28-1">linear_eqn <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span>[<span class="va" style="color: #111111;
@@ -1818,7 +1818,7 @@ font-style: inherit;"># Constants are linear</span></span></code></pre></div>
 <p>The <em>third rule</em> is that every independent use of the function input is the opportunity to start a new tree. (It may merge with a known tree.)</p>
 <p>And that’s it. Should be simple enough to implement.</p>
 <p>I’m feeling like running this bad boy backwards, so let’s do that. One of the assumption we have made is that the function we are tracing has a single output and that is always in the last node and defined in the last equation. So first off, lets get our terminal combination expressions.</p>
-<div id="8a71784d" class="cell" data-execution_count="21">
+<div id="bf20c90a" class="cell" data-execution_count="21">
 <div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb29-1"><span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">## Find the terminal combination expressions</span></span>
@@ -1883,7 +1883,7 @@ font-style: inherit;">print</span>(comb_eqns)</span></code></pre></div>
 </div>
 <p>Now for each of the terminal combination expressions, we will trace their parent back until we run out of tree. While we are doing this, we can also keep track of runs of linear operations. We also have to visit each equation once, so we need to keep track of our visited equations. This is, whether we like it or not, a depth-first search. It’s always a bloody depth-first search, isn’t it.</p>
 <p>So what we are going to do is go through each of the combiner nodes and trace the graph down from it and note the path and it’s parent. If we run into a portion of the graph we have already traced, we will note that for later. These paths will either be merged or, if the ancestral path from that point is all linear, will be used as a linear sub-graph.</p>
-<div id="3b21f56e" class="cell" data-execution_count="22">
+<div id="d1c69405" class="cell" data-execution_count="22">
 <div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb31-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">def</span> dfs(visited, graph, subgraph, to_check, node):</span>
@@ -1984,7 +1984,7 @@ Danger nodes: set()</code></pre>
 </div>
 </div>
 <p>The <code>to_check</code> nodes are only dangerous insofar as we need to make sure that if they are in one of the linear sub-graphs they are terminal nodes of a sub-graph. To that end, let’s make the linear sub-graphs.</p>
-<div id="ca7db0d5" class="cell" data-execution_count="23">
+<div id="594c17e8" class="cell" data-execution_count="23">
 <div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb33-1">linear_subgraph <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> []</span>
@@ -2104,7 +2104,7 @@ Nonlinear subgraphs: [[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], [17, 18]]</co
 </div>
 <p>The only interesting thing here is making sure that if there is a linear node in the graph that was visited twice, it is the terminal node of the linear graph. The better thing would be to actually split the linear graph, but I’m getting a little bit sick of this post and I don’t really want to deal with multiple linear sub-graphs. So I shan’t. But hopefully it’s relatively clear how you would do that.</p>
 <p>In this case it’s pretty clear that we are ok.</p>
-<div id="6ce83611" class="cell" data-execution_count="24">
+<div id="c986a424" class="cell" data-execution_count="24">
 <div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb35-1"><span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">any</span>(linear_eqn[node_list[j].eqn] <span class="cf" style="color: #003B4F;
@@ -2120,7 +2120,7 @@ font-style: inherit;">in</span> to_check)</span></code></pre></div>
 <section id="putting-it-together" class="level3">
 <h3 class="anchored" data-anchor-id="putting-it-together">Putting it together</h3>
 <p>Well that’s a nice script that does what I want. Now let’s put it together in a function. I’m going to give it the <em>very</em> unspecific name <code>transform_jaxpr</code> because sometimes you’ve gotta annoy your future self.</p>
-<div id="5595ebd0" class="cell" data-execution_count="25">
+<div id="c0f4a607" class="cell" data-execution_count="25">
 <details class="code-fold">
 <summary>Show the code</summary>
 <div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb37-1"><span class="kw" style="color: #003B4F;
@@ -2647,7 +2647,7 @@ font-style: inherit;">return</span> (linear_subgraph, nonlin_subgraph, comb_eqns
 </details>
 </div>
 <p>For one final sense check, let’s compare these outputs to the original jaxpr.</p>
-<div id="96fa14bd" class="cell" data-execution_count="26">
+<div id="22f15cd4" class="cell" data-execution_count="26">
 <div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb38-1"><span class="cf" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">for</span> j, lin <span class="kw" style="color: #003B4F;
@@ -2744,7 +2744,7 @@ a:f32[] = sub b c</code></pre>
 </div>
 </div>
 <p>Comparing to the original jaxpr, we see it has the same information (the formatting is a bit unfortunate, as the original <code>__repr__</code> keeps track of the links between things, but what can you do?).</p>
-<div id="92b66d53" class="cell" data-execution_count="27">
+<div id="c85d5f8b" class="cell" data-execution_count="27">
 <div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb40-1"><span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">print</span>(jpr)</span></code></pre></div>
@@ -2779,7 +2779,7 @@ font-style: inherit;">print</span>(jpr)</span></code></pre></div>
 <p>Now that we have the graph partitioned, let’s make our sub-functions. We do this by manipulating the <code>jaxpr</code> and then <em>closing</em> over the literals.</p>
 <p>There are a few ways we can do this. We could build completely new <a href="https://github.com/google/jax/blob/c3f5af7d46b803da346aa7644cbeea3cb73b4c10/jax/_src/core.py#L297"><code>JaxprEqn</code></a> objects from the existing Jaxpr. But honestly, that is just annoying, so instead I’m just going to modify the <a href="https://jax.readthedocs.io/en/latest/notebooks/Writing_custom_interpreters_in_Jax.html">basic, but incomplete, parser</a><sup>22</sup>.</p>
 <p>The only modification from the standard <code>eval_jaxpr</code> is that we are explicitly specifying the <code>invars</code> in order to overwrite the standard ones. This relies on the lexicographic ordering of the jaxpr expression graph.</p>
-<div id="5c489a70" class="cell" data-execution_count="28">
+<div id="20360fac" class="cell" data-execution_count="28">
 <div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb42-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">from</span> typing <span class="im" style="color: #00769E;
@@ -2950,7 +2950,7 @@ input sets. But once again: blog code.
 
 But if you're going to write code that does weird shit like this, the least you can
 do is remember to catch it and throw a useful error down the line. -->
-<div id="1722fb5e" class="cell" data-execution_count="29">
+<div id="827d3dec" class="cell" data-execution_count="29">
 <div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb43-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">def</span> decompose(fun: Callable, <span class="op" style="color: #5E5E5E;
@@ -3321,7 +3321,7 @@ font-style: inherit;">return</span> lin_funs, nlin_funs, nlin_inputs, combine</s
 <p>After <em>all</em> of this work, we can finally make a function that builds a Hessian!</p>
 <p>We remember that if <img src="https://latex.codecogs.com/png.latex?f(x)%20=%20g(h(x))">, where <img src="https://latex.codecogs.com/png.latex?h(x)"> is linear and <img src="https://latex.codecogs.com/png.latex?g(x)"> is nonlinear, then the hessian of <img src="https://latex.codecogs.com/png.latex?f"> is</p>
 <p><img src="https://latex.codecogs.com/png.latex?%0AH_f(x)%20=%20J_h%5ET%20H_g%20J_h,%0A"> where <img src="https://latex.codecogs.com/png.latex?J_h"> is the Jacobian of <img src="https://latex.codecogs.com/png.latex?h">.</p>
-<div id="a491e0bc" class="cell" data-execution_count="30">
+<div id="d7f21525" class="cell" data-execution_count="30">
 <div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb44-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">def</span> smarter_hessian(fun: Callable) <span class="op" style="color: #5E5E5E;
@@ -3502,7 +3502,7 @@ background-color: null;
 font-style: inherit;">return</span> hess</span></code></pre></div>
 </div>
 <p>After all of that, let’s see if this works!</p>
-<div id="02639ec3" class="cell" data-execution_count="31">
+<div id="431cf1b2" class="cell" data-execution_count="31">
 <div class="sourceCode cell-code" id="cb45" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb45-1">mode_jax, H_jax <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> laplace(</span>
@@ -3563,7 +3563,7 @@ font-style: inherit;">!"</span>)</span></code></pre></div>
 <section id="but-is-it-faster" class="level3">
 <h3 class="anchored" data-anchor-id="but-is-it-faster">But is it faster?</h3>
 <p>Now let’s take a look at whether we have actually saved any time.</p>
-<div id="a6ed4d60" class="cell" data-execution_count="32">
+<div id="7907d5b4" class="cell" data-execution_count="32">
 <div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb47-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> jax</span>
@@ -3657,8 +3657,8 @@ font-style: inherit;">: .3f}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Full Hessian: The average time with p = 5000 is  4.034(+/- 0.240)
-Smarter Hessian: The average time with p = 5000 is  4.239(+/- 0.083)</code></pre>
+<pre><code>Full Hessian: The average time with p = 5000 is  3.444(+/- 0.201)
+Smarter Hessian: The average time with p = 5000 is  3.569(+/- 0.024)</code></pre>
 </div>
 </div>
 <p>Well that didn’t make much of a difference. If anything, it’s a little bit slower. This is likely due to compiler operations that can be improved if you just lower the whole thing.</p>
@@ -3667,7 +3667,7 @@ Smarter Hessian: The average time with p = 5000 is  4.239(+/- 0.083)</code></pre
 <h3 class="anchored" data-anchor-id="but-you-forgot-the-diagonal-trick">But you forgot the diagonal trick</h3>
 <p>That said, the decomposition into linear and non-linear parts was <em>not</em> the real source of the savings. If we assume the Hessian of the likelihood is diagonal, then we can indeed do a lot better!</p>
 <p>The problem here is that while <code>smarter_hessian</code> worked for any<sup>23</sup> JAX-traceable function, we are now making a structural assumption. In theory, we could go through the JAX primitives and mark all of the ones that would (conditionally) lead to diagonal Hessians, but honestly I kinda want this bit of the post to be done. So I will leave that as an <em>exercise to the interested reader</em>.</p>
-<div id="e980521f" class="cell" data-execution_count="33">
+<div id="f8675103" class="cell" data-execution_count="33">
 <div class="sourceCode cell-code" id="cb49" style="background: #f1f3f5;"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb49-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-style: inherit;">def</span> smart_hessian(fun: Callable) <span class="op" style="color: #5E5E5E;
@@ -3934,7 +3934,7 @@ background-color: null;
 font-style: inherit;">)"</span>)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>The error is 2.3684690404479625e-06!
-Smart (diagonal-aware) Hessian: The average time with p = 5000 is  2.628(+/- 0.029)</code></pre>
+Smart (diagonal-aware) Hessian: The average time with p = 5000 is  2.269(+/- 0.031)</code></pre>
 </div>
 </div>
 <p>That is a proper saving!</p>

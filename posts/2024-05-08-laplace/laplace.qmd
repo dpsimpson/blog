@@ -30,7 +30,7 @@ The post started as a pedagogical introduction to Laplace approximations (for re
 ## The Laplace approximation
 
 One of the simplest approximations to a distribution is the Laplace approximation. It
-be defined as the Gaussian distribution that matches that the mode and the curvature 
+be defined as the Gaussian distribution that matches the location
 and the curvature at the mode of the target distribution. It lives its best life when
 the density is of the form
 $$
@@ -48,7 +48,7 @@ $$
 $$
 is the Hessian matrix. 
 
-If we replace $f_n$ by it's quadratic approximation we get 
+If we replace $f_n$ by its quadratic approximation we get 
 $$
 p(x) \approx  C\exp(-n(x- x^*)^TH(x^*)(x-x^*)),
 $$
