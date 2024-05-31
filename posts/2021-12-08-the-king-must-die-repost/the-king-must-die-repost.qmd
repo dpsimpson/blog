@@ -52,7 +52,7 @@ resemblance to the Lasso. Or, in the words of Law and Order: SVU, "The
 The Bayesian Lasso is a good example of what's commonly known as the Lupita 
 Nyong'o fallacy^[(2021 edit): Really, Daniel? Really?], which goes something
 like this: Lupita Nyong'o had a break out 
-role in Twelve Years a Slave, she also had a heavily disguised role in one of '
+role in Twelve Years a Slave, she also had a heavily disguised role in one of 
 the Star Wars films (the specific Star Wars film is not important. I haven't 
 seen it and I don't care). Hence Twelve Years a Slave exists in the extended 
 Star Wars universe.^[(2021): Ok. That ended better than I feared.]
@@ -74,7 +74,7 @@ parallel construction.].
 
 To be fair to Park and Casella, they never really say that the Baysian Lasso should be used for sparsity. Except for one sentence in the introduction where they say the median gives approximately sparse estimators and the title which links it to the most prominent and popular method for estimating a sparse signal. Marketing eh. (See, I'm Canadian now^[2021: The other week someone asked if I was Canadian, which is a sure sign that my accent is just broken.]).
 
-##The devil has designed my death and is waiting to be sure
+## The devil has designed my death and is waiting to be sure
 
 So what is the Bayesian LASSO (and why did I spend 600 words harping on about something before defining it? The answer will shock you. Actually the answer will not shock you, it's because it's kinda hard to do equations on this thing^[2021: Prophetic words].)
 
@@ -109,7 +109,7 @@ The critical idea behind the Bayesian Lasso is that _we can use the i.i.d. Lapla
 
 For example, $\lambda = 1$, the Bayesian Lasso will not give an approximately sparse signal.  
 
-While we could just use a  prior for $\lambda$ that has a very heavy right tail (something like an inverse gamma), this is at odds with a good practice principle of making sure all of thee parameters in your models are properly scaled to make them order 1.  Why do we do this? Because it makes it much much easier to set sensible priors.
+While we could just use a  prior for $\lambda$ that has a very heavy right tail (something like an inverse gamma), this is at odds with a good practice principle of making sure all of the parameters in your models are properly scaled to make them order 1.  Why do we do this? Because it makes it much much easier to set sensible priors.
 
 Some of you may have noticed that the scaling $c(p,s_0,\mathbf{X})$ can depend on the unknown sparsity $s_0$.  This seems like cheating. People who do asymptotic theory call this sort of value for $\lambda$ an oracle value, mainly because people studying Bayesian asymptotics are really really into database software. 
 
