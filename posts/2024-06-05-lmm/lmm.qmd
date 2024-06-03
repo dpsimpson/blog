@@ -1,0 +1,599 @@
+---
+title: "Getting fast linear mixed models into Stan; or I'm ok with C++ but C++ isn't ok with me."
+description: "Sure. You've been saying you were going to do this for year"
+  
+date: 2024-06-05
+image: "scooby.JPG"
+categories: [Stan, Sparse matrices, Autodiff]
+twitter-card:
+  title: "Getting fast linear mixed models into Stan"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html
+format: 
+  html:
+    df-print: paged
+jupyter: python3
+draft: true
+execute:
+  eval: true
+
+---
+
+Sometimes when you want something done you need to do it yourself. And sometimes
+you are unemployed and need something to do that isn't interviewing for jobs.
+And sure. Something that demonstrates my LLM prowess or my MLE capabilities 
+would be a sensible thing to do. But fuck that. This blog is not for the sensible.
+This blog is for whims and regrets^[and unnecessary gay shit.].
+
+And it is my whim to clean up one of my regrets: that I never got fast linear
+mixed models^[Gaussian Multilevel Models.] into Stan. 
+
+There a pile of reasons for that. It's a fuck-tonne of work that requires someone
+to actually go down the sparse matrix mines. Furthermore, it's gotta be done
+in modern C++, which I think we can all agree is not a language that one casusually
+codes in only on occasion. C++ is a lifestyle. It is a calling. 
+
+But thankfully I am old as shit^[Actually I got a discounted "youth ticket" the other night because I'm not yet 40. So maybe I'm not ready to star in the remake of one foot in the grave.]
+and I have a PhD in numerical linear algebra. So I have more than a passing, if
+rusty familiarity with C++.
+
+Over the years, I've contributed occasionally to the Stan codebase, but that was
+never my core contribution---I was an algorithm and methods man. Also the amount
+of time it would take me to add a feautre like sparse matrices was impossible to
+justify when I was an academic^[vs the reward] or in industry^[vs the weekend].
+But, as I said before, I am _unemployed_ and don't have to justify my time to 
+anyone. So let's fucking do this.
+
+## Agreeing on the formulation
+
+Probably the biggest challenge here is agreeing on the basic formulation. In
+a [previous post](https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model),
+where I started off down this direction in JAX^[Didn't work. XLA isn't optimized for these sorts of methods.],
+I defined a version of the problem where I have a data likelihood
+$$
+y \mid u, \sigma \sim N(Au, \Sigma),
+$$
+and $u$ was defined as 
+$$
+u \mid \theta \sim N(0, Q(\theta)^{-1}).
+$$
+
+This is a very computationally convenient way to write the problem, as it abstracts
+away the regression term and the random effects term(s) into $A$  and $Q$, which
+are block sparse matrices.
+
+Unfortunately this is a) at a level of abstraction that is offputting to people
+who are thinking of using the method rather than just coding them, and b) making
+the key assumption that the priors on the regression coeffients are Gaussian 
+(conditinal on $\theta$).
+
+This is one of those things that isn't actually a huge loss of generality; the
+set of probability densities given by 
+$$
+p(\beta) \propto \int_\Theta |\Sigma(\theta)|^{-1/2} \exp\left(-\frac{1}{2}\beta^T\Sigma(\theta)^{-1}\beta\right) \, p(\theta)\, d\theta
+$$
+is extremely expressive. So if you choose the correct $p(\theta)$ you can still
+have basically any prior^[This is how eg the horseshoe prior is always implemented] on the regression parameters you want.
+
+But once again, this is thinking like a programmer and not a user. Users want to 
+be able to specificy priors. They don't want to have to work out what the correct
+mixing measure is to get, eg, a Student-t distribution.
+
+So, taking a leaf out of the Stan functions that are already built to speed up
+linear regression (`normal_id_lm_lpdf`), I'm going to go with the following 
+eventual Stan syntax
+```{stan}
+y ~ normal_id_lmm_lpdf(alpha, beta, X, Z, W, \Lambda, sigma);
+```
+to fit the model
+\begin{align*}
+y \mid \alpha, \beta,u,\sigma &\sim N(\alpha + X\beta + Zu, \sigma^2 W)\\
+u \mid \Lambda &\sim N(0, \Lambda \Lambda^T).
+\end{align*}
+This is the same model (and the same notation) as the R package `lme4`, which is
+the gold standard for non-Bayesian GLMMs. If you want to dive into, eg, what 
+$Z$ is, [this paper](https://www.jstatsoft.org/article/view/v067i01) is an excelelnt resource.
+
+(The canny reader might notice that I have lazily introduced broadcast semantics to make sure that eg the scalar $\alpha$ is interpereted as $\alpha 1$, where $1$ is a vector of 1s.)
+
+The user has free choice for priors on $\beta$, $\Lambda$ 
+and^[Note that $\sigma$ is a constant, which is different to the usual Stan specification.] $\sigma$.
+
+There is one thing that you might notice above: I am  explicitly assuming that $X$,
+$Z$, and $W$ are _constants_. This is in contrast to the usual Stan thing where
+anything to the right of `~` can be a parameter. There are a bunch of reasons for 
+this, but the main one is that I want to make this as fast as possible. And if 
+those matrices are fixed I can do lots of sick tricks.
+
+Just to close out, I want to zoom in on one more assumtion. I am assumeing that 
+we are passed the Cholesky factorisation of the covariance matrix of $u$. This is
+a good formulation for mixed effects models (and also aligns with the output
+you can get from `lme4` in R). It is not, however, the right formulation for spatial or temporal
+models, where you often want to specify the precision matrix^[For Markovian models, this is sparse, which allows for fast linear algbra.] of $u$ instead. As much as I love it, I am shelving that application
+for the moment in favour of the more commonly used one.
+
+## Marginalizing out $u$
+
+The way that we make this computationally efficient is to marginalise out the vector
+of random effects $u$. This can be done efficiently using sparse linear algebra
+and the resulting marginal posterior 
+$$
+p(\beta, \theta \mid y)
+$$
+is both lower-dimensional that the full posterior $p(u,\beta,\theta\mid y)$ and 
+it has a considerably nicer geometry. This means that MCMC methods will be easier
+to tune and faster to run on the marginal posterior compared to the full posterior.
+
+Furthermore, given a sample $(\beta_i, \theta_i)$ from the marginal posterior,
+we can sample 
+$$
+u_i \sim N(\mu(\beta_i, \theta_i), Q(\beta_i, \theta_i)^{-1})
+$$
+to recover the corresponding sample $(u_i, \beta_i, \theta_i)$ from the full
+posterior. This conditional distriubiton is multivariate Gaussian and can be sampled
+efficently.
+
+So let's compute these things.
+
+The core thing that any true Bayesian needs to know is that constants are 
+not our problem. So lets dump them and write the joint distribuiton for the 
+data and the parameters as 
+\begin{multline}
+\log p(y, \alpha, \beta, u, \Lambda,\sigma) = K - N\log \sigma\\ - \frac{1}{2\sigma^2} (y-\alpha-X\beta-Zu)^TW(y-\alpha-X\beta-Zu)\\
+- \frac{1}{2}u^T(\Lambda\Lambda^T)^{-1}u + \log p(\alpha, \beta, \Lambda,\sigma),
+\end{multline}
+where $K$ is our unimportant constant term and $N$ is the number of observations. I will be using $K$ for every constant
+because there is truly no point^[If you're a crypto-frequentist who needs to compute a Bayes factor, do it on your own time.] in tracking them. 
+
+### Computing $p(u \mid \alpha, \beta, \Lambda, \sigma, y)$
+
+This joint distriubiton contains all of our information.
+We can get conditional distributions by just treating any
+term on the RHS of the conditioning bar as a constant. 
+For example,
+$$
+\log p(u \mid y, \alpha, \beta, \sigma ) = K - \frac{1}{2}u^T(\sigma^{-2}Z^TWZ + (\Lambda\Lambda^T)^{-1})u + \frac{1}{\sigma^2}(y - \alpha-X\beta)^TWZu.
+$$
+
+If you've been doing this for long enough (or if you read the last post where
+I did this calculation), you'll see that this is normal distribution with mean
+$$
+(\sigma^{-2}Z^TWZ + (\Lambda\Lambda^T)^{-1})^{-1}Z^TW(y - \alpha - X\beta)
+$$
+covariance matrix 
+$$
+(\sigma^{-2}Z^TWZ + (\Lambda\Lambda^T)^{-1})^{-1}.
+$$
+
+It's probably useful to clean up that covariance matrix bit to remove that 
+inverse-of-an-inverse bullshit. The easiest way is to write it as 
+$$
+\sigma^2\Lambda(\Lambda^TZ^TWZ\Lambda + \sigma^2 I)^{-1}\Lambda^T.
+$$
+
+The canny amongst you will notice that this is the covariance
+matrix of $u = \Lambda w$,
+where 
+$$
+w \sim N\left((\Lambda^TZ^TWZ\Lambda + I)^{-1}\Lambda^TZ^TW(y - \alpha - X\beta), \sigma^2 (\Lambda^TZ^TWZ\Lambda + \sigma^2 I)^{-1}\right).
+$$
+
+Looking at all of this, it's pretty clear that it's a lot nicer computationally to work with $w$ rather than $u$, which is
+equivalent to writing the model as
+$$
+y \mid \alpha,\beta, w \sim N(\alpha + X\beta + Z\Lambda w, \sigma^2 W^{-1}),
+$$
+where $w\sim N(0,I)$.
+
+This reformulation is a consequence of how the random effect has 
+been parameterized. If it was parameterized with its precsion
+ matrix instead of its covariance, we wouldn't need to do this.
+
+### Computing $p(\alpha, \beta, \Lambda, \sigma \mid y)$
+
+So now we've got to do an integral. Luckliy, it's Gaussian so we can do it. 
+The trick with this part of the computation is to express the full conditional
+as 
+$$
+\log p(u,\theta \mid y) = K - \frac{1}{2}(u - m)^T Q (u - m) + f(\theta),
+$$
+where I have defined $\theta = (\alpha, \beta, \sigma, \Lambda)$ because frankly I 
+got sick of typing, $f(\theta)$ is all of the non-constant terms that don't involve $u$,
+  $m$ is some vector, and $Q$ is some precision matrix. With this in hand,
+we can integrate out $u$ directly and get 
+$$
+\log p(u,\theta \mid y) = K + \frac{1}{2}\log |Q| + \log p(\theta),
+$$
+by dint of the Gaussian integral being the only multivaraite integral I remember.
+
+So how do we find this mystical $(m, Q)$? Well the godo news is that we have 
+technically already done this to get the conditional distribution. 
+Behind the scenes I added and subtracted
+$$
+\frac{1}{2}\mu_{u \mid y, \theta}^TQ_{u\mid y,\theta}\mu_{u \mid y, \theta},
+$$
+where 
+$$
+\mu_{u \mid y, \theta} = Q_{u\mid y,\theta}^{-1}Z^T(y-\alpha - X\beta) = \Lambda(\sigma^{-2}\Lambda^TZ^TWZ\Lambda + I)^{-1}(y-\alpha -X\beta)
+$$ 
+is the mean of $p(u \mid \theta, y)$, and 
+$$
+Q_{u\mid y,\theta} = \sigma^{-2}Z^TWZ + (\Lambda \Lambda^T)^{-1}.
+$$
+
+This means that if we drop all of the terms in the joint that depend on $u$ and add 
+$$
+\frac{1}{2}\log |\Lambda^TZ^TWZ\Lambda + I| - \log |
+\Lambda| + \frac{1}{2} (y - \alpha - X\beta)^T\Lambda(\sigma^{-2}\Lambda^TZ^TWZ\Lambda + I)^{-1}\Lambda^T(y - \alpha - X\beta)
+$$
+to the leftovers, we will get the marginal distribution.
+
+
+
+This leads to the marginal distribution
+\begin{align*}
+\log p(\alpha, \beta, \Lambda,\sigma \mid y) = K - N\log \sigma  
+- \frac{1}{2\sigma^2} \alpha^T W \alpha  - \frac{1}{2\sigma^2} \beta^TX^TWX\beta&
+\\ + \frac{1}{\sigma^2}y^TW(\alpha + X\beta) - \frac{1}{\sigma^2} \alpha^TWX\beta &\\
++ \frac{1}{2} (y-\alpha - X\beta)^T\Lambda(\sigma^{-2}\Lambda^TZ^T W Z\Lambda + I)^{-1}\Lambda^T(y - \alpha - X\beta)&
+\\ + \frac{1}{2}\log|\Lambda^TZ^TZ\Lambda + I| - \log|\Lambda|
++ \frac{1}{2}\log |Q_{u\mid \alpha,\beta,y}| + \log p(\alpha, \beta, \Lambda, \sigma).&
+\end{align*}
+
+This is a fantastically ugly expression. We could clean it up a bit, but there's one thing that it fails
+to do for us.
+
+When doing any sort of linear regression, there computation of $X^TX$ and terms of its ilk is a potentially huge bottleneck, especially when the number of observations is large. Ideally, we would be able to pre-compute and pass all of the operations that involve $X$ so that we don't have to repeat these potentially expensive computations. Sadly this is impossible here as we still need $X\beta$. And even
+if it wasn't, the number of things we would need to pass in is prohibative.
+
+## A less flexible model that's acutally useful
+
+Ok, well then what if we go back to our other formulation. In this case, we do not distinguish between $\alpha$, $\beta$, and $u$ as they are all 
+(conditionally) Gaussian. This means that we can just pretend $\alpha$ and $\beta$
+are zero in the previous formulation and define^[The ordering is important her--[in a previous post](https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices) I talked about how important it is to put the dense rows at the back!] 
+$$
+\tilde{Z} = (Z\vdots X), \tilde{u} = \begin{pmatrix} u \\ \beta \end{pmatrix}.
+$$
+Then we have the model
+$$
+y \sim N(\tilde{Z} \tilde{u}, \sigma^2 W^{-1}),
+$$
+where 
+$$
+\tilde{u} \sim N\left(0, \begin{pmatrix}\Lambda \Lambda^T &0 \\0 & \Sigma_\beta\end{pmatrix}\right).
+$$
+
+The difference between this and the previous model is that we have now 
+explicitly assumed that $\beta$ has a scale mixture of Gaussian prior.
+For the computational beneifit that we are going to get, I don't think this is
+much of an assumption. The reason why I'm so comfortable with the assumption 
+is^[If you want something different, code it yourself.] is that this assumption
+covers the most commonly used priors for regression coefficients (normals and 
+horseshoes).
+
+This greatly simplifies our previous calculation and we get, after a bit of 
+coersion, that 
+$$
+\log p(y \mid \theta) = K  + \frac{1}{2}\log |Q_{\tilde{u}\mid y,\theta}(\theta)| + \frac{1}{2} y^TW\tilde{Z} \tilde{\mu}_{\tilde{u}\mid y,\theta} + \log p(\theta),
+$$
+where
+$$
+Q_{\tilde{u}\mid y,\theta}(\theta) = \tilde{Z}^TW\tilde{Z} = \begin{pmatrix}
+\Lambda^TZ^TWZ\Lambda + I & \Lambda^T Z^T WX \\ X^TWZ\Lambda & X^TWX  + \Sigma_\beta^{-1}
+\end{pmatrix}.
+$$
+The most important thing about this matrix is that all of the terms except $\Lambda$ and $\Sigma_\beta$ are constants and only need to be computed once.
+
+The posterior mean for $\tilde{u} \mid y,\theta$ is given by the solution to 
+$$
+\begin{pmatrix}
+\Lambda^TZ^TWZ\Lambda + I & \Lambda^T Z^T WX \\ X^TWZ\Lambda & X^TWX  + \Sigma_\beta^{-1}
+\end{pmatrix} \tilde{\mu}_{\tilde{u}\mid y,\theta} = \begin{pmatrix} \Lambda^T Z^TWy \\ X^TWy\end{pmatrix}.
+$$
+
+As the notation suggests, 
+$$
+u \mid y, \theta \sim N(\mu_{\tilde{u}\mid y,\theta}(\theta), Q_{\tilde{u}\mid y,\theta}(\theta)^{-1}).
+$$
+
+Although they look quite different, both of these formulations are^[Unlike in non-Bayesian mixed effects modelling, where the order of marginalization, profiling, and maximization matter _a lot_, Bayesian coherence means that it's all describling joint distribution.] equivalent^[If you pretend I didn't shit-can the intercept.]. 
+
+### What are the derivatives?
+
+In order to add this to the Stan math library, I need all of the relevant partial derivatives. As we have marginalized out $u$ and $\beta$, there are 
+no derivatives to compute. We only need to compute derivatives wrt $\theta_j$. Thankfully [I computed thosse in a previous post](https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative#primitive-one-the-general-a-1b). Technially, I computed Jacobian-vector products, but the same arguments work fine for vector-Jacobian products. Which is to say tht it's a Sunday afternoon and I have absolutely no interest in re-typing those posts.
+
+## C++: Building a block sparse matrix
+
+The first thing that we need to do is build a block-sparse matrix. We know
+that this matrix is symmetric so we only need to store the lower-triangle.
+
+In general, this is not the most difficult task in the world. We have [already talked about how we store sparse matrices](https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices#so-how-do-we-store-a-sparse-matrix) 
+and, in particular, have had some fun with the Compressed Column Storage (CCS) 
+scheme, which stores sparse matrices column-by-column. In the lingo, we call this
+_column major_ storage.
+
+When any array of numbers is stored in memory by a program, it is stored as 
+a long vector and when you index into it (using something like `A[i,j]`) this
+is just some syntactic sugar for finding the correct value in that long vector.
+
+Some languages, such as Fortran and Matlab, and libraries, such as [Eigen](https://gitlab.com/libeigen/eigen), store
+arrays in column major order. Others, like C/C++ and Python, use row-major storage.
+Stan is written in C++ but all of its linear algebra is done using Eigen, so we are 
+going to use column-major storage.
+
+It may seem catastrophically nerdy to be talking about internal storage 
+orders for arrays in different languages, but I promise you this is _incredibly_
+important. If you want to write any sort of performant code, it's extremely 
+important that your algorithms are aligned with the internal storage order.
+That means that we need to prefer algorithms that run down columns of matrices
+over ones that run across rows.
+
+This is because computers are clever and when you ask them for, eg `A[0,0]`, the CPU 
+will actually load the first few entries of the 0th _column_^[Or row if it's row major] of `A` in anticipation^[Let's anthopomorphise. I don't want to write a blog about caches.] 
+that you will need `A[0,1]` and its friends next. If you instead next ask for 
+`A[1,0]`, the CPU has to throw its pre-loaded stuff out, reach out to some potentially
+distant memory and try again. When an array has a lot of rows, these cache misses^[Drag name: Cache Mx]
+noticably degrade the performance of a program.
+
+
+All of that is to say that this is actually not too too hard to implement
+because we are just interleaving some contiguous chunks of a vector. While 
+the main loop is pretty straightforward, C++ is truly a journey. So it's gonna 
+be like 100 lines of code.
+
+The structure is 
+
+1. Allocate 3 arrays to store the outer index (which column?), the inner index (which row?), and the value.
+
+2. Iterate through each column of the matrix, only storing the lower triangle.
+
+3. Return an `Eigen::SparseMatrix<double>` built from those arrays.
+
+There are essentially two challenges in doing this. Firstly, the number of 
+columns and then number of non-zeros are not known at compile time so we need
+to allocate dynamic memory on the heap. This is always a risky proposition in 
+C++ as it's pretty easy to screw up and end up with a memory leak. To get around
+this, I'm using the RAII (resource aquisition is instantiation) pattern, which
+basically encapsulates all the memory usage inside a functor, who's call method
+return a sparse symmetric matrix.
+
+The second challenge is that the Eigen API demands raw pointers. So this is 
+going to have that good old fashioned `*ptr++` action.
+
+Without further ado, here is the code. I'll explain some key bits after.
+
+```c++
+#include <stan/math/prim/meta/is_eigen_sparse_base.hpp>
+#include <stan/math/prim/meta/is_eigen.hpp>
+#include <stan/math/prim/meta/is_stan_scalar.hpp>
+#include <stan/math/prim/meta/base_type.hpp>
+#include <stan/math/prim/err/check_size_match.hpp>
+#include <stan/math/prim/fun/to_ref.hpp>
+#include <Eigen/SparseCore>
+
+namespace stan {
+namespace math {
+
+typedef Eigen::SparseMatrix<double>::StorageIndex StorageIndex;
+
+// The require_ statements are defined in the first #include
+template<typename SpMat, typename EigMat1, typename EigMat2, 
+require_eigen_sparse_base_t<SpMat>* = nullptr,
+require_all_eigen_t<EigMat1, EigMat2>* = nullptr,
+require_all_stan_scalar_t<base_type_t<SpMat>,
+                          base_type_t<EigMat1>,
+                          base_type_t<EigMat2>>* = nullptr>  
+class Block_sparse_lower {
+    /* 
+    A RAII functor class because Jesus hates memory leaks
+    Make this encapsulate the whole thing.
+    You may be asking why I'm using arrays and pointers
+    like I'm writing in C, and the answer is 
+    "that's the interface to Map". The dream of the 
+    C-90 is alive and well in the eigen code base.
+
+    Anyway, `operator ()` returns a sparseMatrixMap
+    */
+    using T = typename base_type<SpMat>::type;
+   
+    StorageIndex* m_outer;
+    StorageIndex* m_inner;
+    T* m_val;
+    StorageIndex m_cols;
+    StorageIndex m_nnz;
+
+    public:
+
+    Block_sparse_lower(const SpMat top_left, const EigMat1 bottom_left, const EigMat2 bottom_right) 
+    {
+        // only eval once
+        const auto& tl_ref = to_ref(top_left);
+        const auto& bl_ref = to_ref(bottom_left);
+        const auto& br_ref = to_ref(bottom_right);
+
+        // Get sizes.
+        // NB tmp_nnz is an upper bound. Will only be correct if `top_left` is lower 
+        // triangular. We will compute the real value on the fly.
+        const StorageIndex ncols_tl = tl_ref.cols();
+        const StorageIndex ncols_br = br_ref.cols();
+        const StorageIndex tmp_nnz = (tl_ref.nonZeros() + ncols_tl * ncols_br 
+                                        + (ncols_br + 1) * ncols_br / 2);
+
+        // check sizes
+        check_size_match("Block_sparse_lower", "Columns of ", "top_left ", tl_ref.cols(), "Columns of ", "Bottom Left", bl_ref.cols());
+        check_size_match("Block_sparse_lower", "Rows of ", "bottom-left ", bl_ref.rows(), "Rows of ", "Bottom-right", br_ref.rows());
+        
+        // Allocate!
+        m_cols = ncols_tl + ncols_br;
+
+        m_outer = new StorageIndex[m_cols + 1];
+        m_outer[0] = *top_left.outerIndexPtr();
+        m_inner = new StorageIndex[tmp_nnz];
+        m_val = new T[tmp_nnz];
+        
+        double* p_val = m_val;
+        StorageIndex* p_inner = m_inner;
+        StorageIndex out_nnz = 0;
+        
+        for (StorageIndex j = 0; j < ncols_tl; ++j) {
+            StorageIndex col_cnt = 0;
+            for (typename SpMat::InnerIterator it(tl_ref, j); it; ++it) {
+                if (it.row() < j) continue; // lower triangle only
+                *p_val++ = it.value();
+                *p_inner++ = it.row();
+                ++out_nnz;
+                ++col_cnt;
+            }
+
+            for (StorageIndex i = 0; i < ncols_br; ++i) {
+                *p_val++ = bl_ref.coeff(i, j);
+                *p_inner++ = ncols_tl + i;
+                ++out_nnz;
+                ++col_cnt;
+            }
+        
+            m_outer[j+1] = m_outer[j] + col_cnt;
+        }
+        
+        for (StorageIndex j = 0; j < ncols_br; ++j) {
+            // only need lower triangle
+            for (StorageIndex i = j; i < ncols_br; ++i) {
+                *p_val++ = br_ref.coeff(i,j);
+                *p_inner++ = ncols_tl + i;
+                ++out_nnz;
+            }
+            m_outer[ncols_tl+j+1] = m_outer[ncols_tl + j] + ncols_br - j;
+        }
+        m_nnz = out_nnz;
+    } // constructor
+
+    ~Block_sparse_lower() {
+        delete[] m_outer;
+        delete[] m_inner;
+        delete[] m_val;
+    } // destructor
+
+    Eigen::SparseMatrix<T> operator () () {
+        return typename Eigen::SparseMatrix<T>::Map(
+            m_cols, 
+            m_cols,
+            m_nnz,
+            m_outer,
+            m_inner,
+            m_val
+        );   
+    } //operator ()
+}; // Block_sparse_lower
+} // namespace math
+} // namespace stan
+```
+
+The first thing you probably noticed was all the templates. Templates are 
+a beautiful^[Until you're rooting around a seventy page compiler error that really just means you forgot a typename on the final `return`.] feature of C++ and pretty much all that bit just alllows us to have 
+any matrix and sparse matrix from Eigen as long as they contain scalars (as
+opposed to autodiff variables). They also allow us to hack together a pre-C++20
+version of [concepts](https://en.wikipedia.org/wiki/Concepts_(C%2B%2B)), 
+which is all of the `require_` statements.
+
+Once we are actually in the class, it has three methods. The constructor
+takes in the three matrices, one sparse and two dense. It checks at compile time
+that they are all column-major and then starts doing its work. There's nothing too
+exciting happening here. Some size checking, and then we run through the loop
+stacking the relevant vector parts onto each other.
+
+The destructor frees the allocated memory (a core part of the RAII pattern).
+
+Finally, we need to actually get access to this sparse matrix, which I implemented
+as a call operator. It returns a self-adjoint view (aka it will pretend to be
+symmetric when doing operations even though only the lower triangle is filled)
+of a `Map` of the three pointers. `Map`s are a nice way for Eigen to tell its
+internal `SparseMatrix` representation to look at the pieces of memory defined 
+in this class when it is looking for inner indices, outer indices, or values.
+This doesn't create a copy so it's memory efficient.
+
+So let's test it. I'm going to run the following code 
+```c++
+#include <iostream>
+#include "sp_block.hpp"
+#include "Eigen/SparseCore"
+#include "Eigen/Dense"
+
+
+int main() {
+    std::cout << "-----------matrix test---------" << std::endl;
+    double values[] = { 1., 2., 3., 4. };
+    int inner[] = { 4, 3, 2, 1 }; // nonzero row indices
+    int outer[] = { 0, 1, 2, 3, 4, 4 }; // start index per column + 1 for last col
+    Eigen::SparseMatrix<double> A = Eigen::SparseMatrix<double>::Map(
+        5 /*rows*/, 5 /*cols*/, 4 /*nonzeros*/, outer, inner, values);
+    
+    std::cout << Eigen::MatrixXd(A) << std::endl << std::endl;
+
+    Eigen::Matrix<double, 2, 5> B;
+    B << 1.,2.,3.,4.,5.,1.,2.,3.,4.,5.;
+    std::cout << B << std::endl << std::endl;
+    Eigen::Matrix<double, 2, 2> C;
+    C << 1.,1.,1.,1.;
+    std::cout << C << std::endl << std::endl;
+    
+    std::cout << "   -------ans-------" << std::endl;
+    Eigen::SparseMatrix<double> D = 
+        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(A, B, C)();
+    std::cout << Eigen::MatrixXd(D) << std::endl << std::endl;
+
+    std::cout << "-----------to_ref test---------" << std::endl;
+    Eigen::SparseMatrix<double> E = A * A;
+    std::cout << Eigen::MatrixXd(A) << std::endl << std::endl;
+    std::cout << "   -------ans-------" << std::endl;
+    Eigen::SparseMatrix<double> F = 
+        stan::math::Block_sparse_lower<decltype(E), decltype(B),decltype(C)>(A, B, C)();
+    std::cout << Eigen::MatrixXd(F) << std::endl << std::endl;
+}
+
+```
+
+After compilation, the output is 
+```
+-----------matrix test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+1 2 3 4 5
+1 2 3 4 5
+
+1 1
+1 1
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+
+-----------to_ref test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+
+```
+This is exactly what we expect! Hooray.
+
