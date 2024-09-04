@@ -1,12 +1,12 @@
 ---
-title: "Random C++ Part 1: Building a block sparse matrix"
+title: "Random C++ Part 1: Building a block sparse matrix in Eigen"
 description: "I was writing a longer thing, but it was too long, so hey. Let's just do this for a change"
   
 date: 2024-09-04
 image: "ravens.JPEG"
-categories: [Stan, Sparse matrices, Autodiff]
+categories: [Stan, Sparse matrices, Autodiff, Eigen]
 twitter-card:
-  title: "Building a block sparse matrix"
+  title: "Building a block sparse matrix in Eigen"
   creator: "@dan_p_simpson"
 citation: 
   url: https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html

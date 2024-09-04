@@ -10,7 +10,7 @@
 <meta name="dcterms.date" content="2024-09-04">
 <meta name="description" content="I was writing a longer thing, but it was too long, so hey. Let’s just do this for a change">
 
-<title>Un garçon pas comme les autres (Bayes) - Random C++ Part 1: Building a block sparse matrix</title>
+<title>Un garçon pas comme les autres (Bayes) - Random C++ Part 1: Building a block sparse matrix in Eigen</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -106,11 +106,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <link rel="stylesheet" href="../../styles.css">
-<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Random C++ Part 1: Building a block sparse matrix">
+<meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Random C++ Part 1: Building a block sparse matrix in Eigen">
 <meta property="og:description" content="I was writing a longer thing, but it was too long, so hey. Let’s just do this for a change">
 <meta property="og:image" content="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/ravens.JPEG">
 <meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
-<meta name="twitter:title" content="Building a block sparse matrix">
+<meta name="twitter:title" content="Building a block sparse matrix in Eigen">
 <meta name="twitter:description" content="I was writing a longer thing, but it was too long, so hey. Let’s just do this for a change">
 <meta name="twitter:image" content="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/ravens.JPEG">
 <meta name="twitter:creator" content="@dan_p_simpson">
@@ -169,7 +169,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <header id="title-block-header" class="quarto-title-block default toc-left page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
-      <h1 class="title">Random C++ Part 1: Building a block sparse matrix</h1>
+      <h1 class="title">Random C++ Part 1: Building a block sparse matrix in Eigen</h1>
                   <div>
         <div class="description">
           I was writing a longer thing, but it was too long, so hey. Let’s just do this for a change
@@ -179,6 +179,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
                 <div class="quarto-category">Stan</div>
                 <div class="quarto-category">Sparse matrices</div>
                 <div class="quarto-category">Autodiff</div>
+                <div class="quarto-category">Eigen</div>
               </div>
                   </div>
   </div>
@@ -472,14 +473,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </ol>
 </section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2024,
   author = {Simpson, Dan},
-  title = {Random {C++} {Part} 1: {Building} a Block Sparse Matrix},
+  title = {Random {C++} {Part} 1: {Building} a Block Sparse Matrix in
+    {Eigen}},
   date = {2024-09-04},
   url = {https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html},
   langid = {en}
 }
 </code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2024" class="csl-entry quarto-appendix-citeas" role="listitem">
 Simpson, Dan. 2024. <span>“Random C++ Part 1: Building a Block Sparse
-Matrix.”</span> September 4, 2024. <a href="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html">https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</a>.
+Matrix in Eigen.”</span> September 4, 2024. <a href="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html">https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</a>.
 </div></div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {

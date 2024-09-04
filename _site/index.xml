@@ -17,7 +17,7 @@
 <generator>quarto-1.4.553</generator>
 <lastBuildDate>Tue, 03 Sep 2024 14:00:00 GMT</lastBuildDate>
 <item>
-  <title>Random C++ Part 1: Building a block sparse matrix</title>
+  <title>Random C++ Part 1: Building a block sparse matrix in Eigen</title>
   <dc:creator>Dan Simpson</dc:creator>
   <link>https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</link>
   <description><![CDATA[ 
@@ -1612,18 +1612,20 @@ font-style: inherit;">}</span></span></code></pre></div>
 </ol>
 </section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2024,
   author = {Simpson, Dan},
-  title = {Random {C++} {Part} 1: {Building} a Block Sparse Matrix},
+  title = {Random {C++} {Part} 1: {Building} a Block Sparse Matrix in
+    {Eigen}},
   date = {2024-09-04},
   url = {https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html},
   langid = {en}
 }
 </code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2024" class="csl-entry quarto-appendix-citeas">
 Simpson, Dan. 2024. <span>“Random C++ Part 1: Building a Block Sparse
-Matrix.”</span> September 4, 2024. <a href="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html">https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</a>.
+Matrix in Eigen.”</span> September 4, 2024. <a href="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html">https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</a>.
 </div></div></section></div> ]]></description>
   <category>Stan</category>
   <category>Sparse matrices</category>
   <category>Autodiff</category>
+  <category>Eigen</category>
   <guid>https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</guid>
   <pubDate>Tue, 03 Sep 2024 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/ravens.JPEG" medium="image"/>
