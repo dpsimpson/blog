@@ -1,0 +1,332 @@
+---
+title: "Random C++ Part 1: Building a block sparse matrix"
+description: "I was writing a longer thing, but it was too long, so hey. Let's just do this for year"
+  
+date: 2024-06-05
+image: "ravens.JPEG"
+categories: [Stan, Sparse matrices, Autodiff]
+twitter-card:
+  title: "Building a block sparse matrix"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html
+format: 
+  html:
+    df-print: paged
+jupyter: python3
+draft: false 
+execute:
+  eval: true
+
+---
+
+I'll be honest with y'all. I was writing something else. It was really long
+and was getting annoying to edit and was probably never going to be finished.
+So instead of doing that, I am just going to post this. It's about making a 
+block matrix in a Stan-compatible way. Why?? Because I wanted to be able to
+do this.
+
+
+There is no context forthcoming. There are no good jokes. Just building one sparse matrix.
+
+Enjoy
+
+
+## C++ Plumbing: Building a 2x2 block sparse matrix from a sparse (1,1) block and two dense matrices
+
+The first thing that we need to do is build a block-sparse matrix. We know
+that this matrix is symmetric so we only need to store the lower-triangle.
+
+In general, this is not the most difficult task in the world. We have [already talked about how we store sparse matrices](https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices#so-how-do-we-store-a-sparse-matrix) 
+and, in particular, have had some fun with the Compressed Column Storage (CCS) 
+scheme, which stores sparse matrices column-by-column. In the lingo, we call this
+_column major_ storage.
+
+When any array of numbers is stored in memory by a program, it is stored as 
+a long vector and when you index into it (using something like `A[i,j]`) this
+is just some syntactic sugar for finding the correct value in that long vector.
+
+Some languages, such as Fortran and Matlab, and libraries, such as [Eigen](https://gitlab.com/libeigen/eigen), store
+arrays in column major order. Others, like C/C++ and Python, use row-major storage.
+Stan is written in C++ but all of its linear algebra is done using Eigen, so we are 
+going to use column-major storage.
+
+It may seem catastrophically nerdy to be talking about internal storage 
+orders for arrays in different languages, but I promise you this is _incredibly_
+important. If you want to write any sort of performant code, it's extremely 
+important that your algorithms are aligned with the internal storage order.
+That means that we need to prefer algorithms that run down columns of matrices
+over ones that run across rows.
+
+This is because computers are clever and when you ask them for, eg `A[0,0]`, the CPU 
+will actually load the first few entries of the 0th _column_^[Or row if it's row major] of `A` in anticipation^[Let's anthopomorphise. I don't want to write a blog about caches.] 
+that you will need `A[0,1]` and its friends next. If you instead next ask for 
+`A[1,0]`, the CPU has to throw its pre-loaded stuff out, reach out to some potentially
+distant memory and try again. When an array has a lot of rows, these cache misses^[Drag name: Cache Mx]
+noticably degrade the performance of a program.
+
+
+All of that is to say that this is actually not too too hard to implement
+because we are just interleaving some contiguous chunks of a vector. While 
+the main loop is pretty straightforward, C++ is truly a journey. So it's gonna 
+be like 100 lines of code.
+
+The structure is 
+
+1. Allocate 3 arrays to store the outer index (which column?), the inner index (which row?), and the value.
+
+2. Iterate through each column of the matrix, only storing the lower triangle.
+
+3. Return an `Eigen::SparseMatrix<double>` built from those arrays.
+
+There are essentially two challenges in doing this. Firstly, the number of 
+columns and then number of non-zeros are not known at compile time so we need
+to allocate dynamic memory on the heap. This is always a risky proposition in 
+C++ as it's pretty easy to screw up and end up with a memory leak. To get around
+this, I'm using the RAII (resource aquisition is instantiation) pattern, which
+basically encapsulates all the memory usage inside a functor, who's call method
+return a sparse symmetric matrix.
+
+The second challenge is that the Eigen API demands raw pointers. So this is 
+going to have that good old fashioned `*ptr++` action.
+
+Without further ado, here is the code. I'll explain some key bits after.
+
+```c++
+#include <stan/math/prim/meta/is_eigen_sparse_base.hpp>
+#include <stan/math/prim/meta/is_eigen.hpp>
+#include <stan/math/prim/meta/is_stan_scalar.hpp>
+#include <stan/math/prim/meta/base_type.hpp>
+#include <stan/math/prim/err/check_size_match.hpp>
+#include <stan/math/prim/fun/to_ref.hpp>
+#include <Eigen/SparseCore>
+
+namespace stan {
+namespace math {
+
+typedef Eigen::SparseMatrix<double>::StorageIndex StorageIndex;
+
+// The require_ statements are defined in the first #include
+template<typename SpMat, typename EigMat1, typename EigMat2, 
+require_eigen_sparse_base_t<SpMat>* = nullptr,
+require_all_eigen_t<EigMat1, EigMat2>* = nullptr,
+require_all_stan_scalar_t<base_type_t<SpMat>,
+                          base_type_t<EigMat1>,
+                          base_type_t<EigMat2>>* = nullptr>  
+class Block_sparse_lower {
+    /* 
+    A RAII functor class because Jesus hates memory leaks
+    Make this encapsulate the whole thing.
+    You may be asking why I'm using arrays and pointers
+    like I'm writing in C, and the answer is 
+    "that's the interface to Map". The dream of the 
+    C-90 is alive and well in the eigen code base.
+
+    Anyway, `operator ()` returns a sparseMatrixMap
+    */
+    using T = typename base_type<SpMat>::type;
+   
+    StorageIndex* m_outer;
+    StorageIndex* m_inner;
+    T* m_val;
+    StorageIndex m_cols;
+    StorageIndex m_nnz;
+
+    public:
+
+    Block_sparse_lower(
+        const SpMat& top_left, 
+        const EigMat1& bottom_left, 
+        const EigMat2& bottom_right
+        ) 
+    {
+        // only eval once
+        const auto& tl_ref = to_ref(top_left);
+        const auto& bl_ref = to_ref(bottom_left);
+        const auto& br_ref = to_ref(bottom_right);
+
+        // Get sizes.
+        // NB tmp_nnz is an upper bound. Will only be correct if `top_left` is lower 
+        // triangular. We will compute the real value on the fly.
+        const StorageIndex ncols_tl = tl_ref.cols();
+        const StorageIndex ncols_br = br_ref.cols();
+        const StorageIndex tmp_nnz = (tl_ref.nonZeros() + ncols_tl * ncols_br 
+                                        + (ncols_br + 1) * ncols_br / 2);
+
+        // check sizes
+        check_size_match("Block_sparse_lower", "Columns of ", "top_left ", tl_ref.cols(), "Columns of ", "Bottom Left", bl_ref.cols());
+        check_size_match("Block_sparse_lower", "Rows of ", "bottom-left ", bl_ref.rows(), "Rows of ", "Bottom-right", br_ref.rows());
+        
+        // Allocate!
+        m_cols = ncols_tl + ncols_br;
+
+        m_outer = new StorageIndex[m_cols + 1];
+        m_outer[0] = *top_left.outerIndexPtr();
+        m_inner = new StorageIndex[tmp_nnz];
+        m_val = new T[tmp_nnz];
+        
+        T* p_val = m_val;
+        StorageIndex* p_inner = m_inner;
+        StorageIndex out_nnz = 0;
+        
+        for (StorageIndex j = 0; j < ncols_tl; ++j) {
+            StorageIndex col_cnt = 0;
+            for (typename SpMat::InnerIterator it(tl_ref, j); it; ++it) {
+                if (it.row() < j) continue; // lower triangle only
+                *p_val++ = it.value();
+                *p_inner++ = it.row();
+                ++out_nnz;
+                ++col_cnt;
+            }
+
+            for (StorageIndex i = 0; i < ncols_br; ++i) {
+                *p_val++ = bl_ref.coeff(i, j);
+                *p_inner++ = ncols_tl + i;
+                ++out_nnz;
+                ++col_cnt;
+            }
+        
+            m_outer[j+1] = m_outer[j] + col_cnt;
+        }
+        
+        for (StorageIndex j = 0; j < ncols_br; ++j) {
+            // only need lower triangle
+            for (StorageIndex i = j; i < ncols_br; ++i) {
+                *p_val++ = br_ref.coeff(i,j);
+                *p_inner++ = ncols_tl + i;
+                ++out_nnz;
+            }
+            m_outer[ncols_tl+j+1] = m_outer[ncols_tl + j] + ncols_br - j;
+        }
+        m_nnz = out_nnz;
+    } // constructor
+
+    ~Block_sparse_lower() {
+        delete[] m_outer;
+        delete[] m_inner;
+        delete[] m_val;
+    } // destructor
+
+    Eigen::SparseMatrix<T> operator () () {
+        return typename Eigen::SparseMatrix<T>::Map(
+            m_cols, 
+            m_cols,
+            m_nnz,
+            m_outer,
+            m_inner,
+            m_val
+        );   
+    } //operator ()
+}; // Block_sparse_lower
+} // namespace math
+} // namespace stan
+```
+The first thing you probably noticed was all the templates. Templates are 
+a beautiful^[Until you're rooting around a seventy page compiler error that really just means you forgot a typename on the final `return`.] feature of C++ and pretty much all that bit just alllows us to have 
+any matrix and sparse matrix from Eigen as long as they contain scalars (as
+opposed to autodiff variables). They also allow us to hack together a pre-C++20
+version of [concepts](https://en.wikipedia.org/wiki/Concepts_(C%2B%2B)), 
+which is all of the `require_` statements.
+
+Once we are actually in the class, it has three methods. The constructor
+takes in the three matrices, one sparse and two dense. It checks at compile time
+that they are all column-major and then starts doing its work. There's nothing too
+exciting happening here. Some size checking, and then we run through the loop
+stacking the relevant vector parts onto each other.
+
+The destructor frees the allocated memory (a core part of the RAII pattern).
+
+Finally, we need to actually get access to this sparse matrix, which I implemented
+as a call operator. It returns a self-adjoint view (aka it will pretend to be
+symmetric when doing operations even though only the lower triangle is filled)
+of a `Map` of the three pointers. `Map`s are a nice way for Eigen to tell its
+internal `SparseMatrix` representation to look at the pieces of memory defined 
+in this class when it is looking for inner indices, outer indices, or values.
+This doesn't create a copy so it's memory efficient.
+
+So let's test it. I'm going to run the following code .
+```c++
+#include <iostream>
+#include "sp_block.hpp"
+#include "Eigen/SparseCore"
+#include "Eigen/Dense"
+
+
+int main() {
+    std::cout << "-----------matrix test---------" << std::endl;
+    double values[] = { 1., 2., 3., 4. };
+    int inner[] = { 4, 3, 2, 1 }; // nonzero row indices
+    int outer[] = { 0, 1, 2, 3, 4, 4 }; // start index per column + 1 for last col
+    Eigen::SparseMatrix<double> A = Eigen::SparseMatrix<double>::Map(
+        5 /*rows*/, 5 /*cols*/, 4 /*nonzeros*/, outer, inner, values);
+    
+    std::cout << Eigen::MatrixXd(A) << std::endl << std::endl;
+
+    Eigen::Matrix<double, 2, 5> B;
+    B << 1.,2.,3.,4.,5.,1.,2.,3.,4.,5.;
+    std::cout << B << std::endl << std::endl;
+    Eigen::Matrix<double, 2, 2> C;
+    C << 1.,1.,1.,1.;
+    std::cout << C << std::endl << std::endl;
+    
+    std::cout << "   -------ans-------" << std::endl;
+    Eigen::SparseMatrix<double> D = 
+        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(
+            A.triangularView<Eigen::Lower>(), B, C.triangularView<Eigen::Lower>())();
+    std::cout << Eigen::MatrixXd(D) << std::endl << std::endl;
+
+    std::cout << "-----------to_ref test---------" << std::endl;
+    Eigen::SparseMatrix<double> E = A * A;
+    std::cout << Eigen::MatrixXd(A) << std::endl << std::endl;
+    std::cout << "   -------ans-------" << std::endl;
+    Eigen::SparseMatrix<double> F = 
+        stan::math::Block_sparse_lower<decltype(E), decltype(B),decltype(C)>(A, B, C)();
+    std::cout << Eigen::MatrixXd(F) << std::endl << std::endl;
+}
+```
+
+After compilation, the output is 
+```
+-----------matrix test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+1 2 3 4 5
+1 2 3 4 5
+
+1 1
+1 1
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+
+-----------to_ref test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+
+```
+This is exactly what we expect! Hooray. 
+
+And that's it. A symmetric 2x2 block sparse matrix in C++. Who knows what I'll do next.
+

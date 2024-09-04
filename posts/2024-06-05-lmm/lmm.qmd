@@ -45,42 +45,46 @@ justify when I was an academic^[vs the reward] or in industry^[vs the weekend].
 But, as I said before, I am _unemployed_ and don't have to justify my time to 
 anyone. So let's fucking do this.
 
-## Agreeing on the formulation
+## What do we want from this?
+First of all, we need to set up some guidelines. I know that the vibe of this 
+blog is jsut me writing text until I'm sick of it, which is (I am told), a lot 
+later than most readers are sick of it. But this is actually a piece of 
+software I want people to use, so I'm going to have at least some
+structure before I get fully on my bullshit.
 
-Probably the biggest challenge here is agreeing on the basic formulation. In
-a [previous post](https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model),
-where I started off down this direction in JAX^[Didn't work. XLA isn't optimized for these sorts of methods.],
-I defined a version of the problem where I have a data likelihood
-$$
-y \mid u, \sigma \sim N(Au, \Sigma),
-$$
-and $u$ was defined as 
-$$
-u \mid \theta \sim N(0, Q(\theta)^{-1}).
-$$
+So let's look at what we want.
 
-This is a very computationally convenient way to write the problem, as it abstracts
-away the regression term and the random effects term(s) into $A$  and $Q$, which
-are block sparse matrices.
+1. There should be functionality equivalent, at least, to the linear mixed 
+effects models implemented in the R package `lme4`.
+This is a much lower bar than trying to match the various extensions to the basic
+formula implemented in things like `brms` or `INLA`. This should hopefully make 
+the scope reasonable. Future extensions can be left for the future.
 
-Unfortunately this is a) at a level of abstraction that is offputting to people
-who are thinking of using the method rather than just coding them, and b) making
-the key assumption that the priors on the regression coeffients are Gaussian 
-(conditinal on $\theta$).
+1. This should pre-compute as many of the common operations as possible. For 
+example, when there is a lot of data, it does not make sense to compute $X^TX$
+at every iteration of the dynamic HMC sampler. Unfortunately, the fundamental
+design decisions^[In keeping the code stateless we remove the possiblity for a pile of annoying and subtle bugs. So this is a good thing, even when it is inconvenient!] underlying Stan 
+do not let us cache information from iterations. Hence, we are going to need
+to pass all of these static quantities to the function. This _will_ complicate
+the signature!
 
-This is one of those things that isn't actually a huge loss of generality; the
-set of probability densities given by 
-$$
-p(\beta) \propto \int_\Theta |\Sigma(\theta)|^{-1/2} \exp\left(-\frac{1}{2}\beta^T\Sigma(\theta)^{-1}\beta\right) \, p(\theta)\, d\theta
-$$
-is extremely expressive. So if you choose the correct $p(\theta)$ you can still
-have basically any prior^[This is how eg the horseshoe prior is always implemented] on the regression parameters you want.
+1. We want the function signature and the code to be as useable and maintainable
+as possible. Hence, we may want to deal with a simplified model rather than the
+most general possible case. It is better to have useable code that covers 90% of 
+the cases than general code that is such a mess people simply want to cry.
 
-But once again, this is thinking like a programmer and not a user. Users want to 
-be able to specificy priors. They don't want to have to work out what the correct
-mixing measure is to get, eg, a Student-t distribution.
+With these things in mind, our first trick will be to work out exactly how we want 
+to formulate this problem. It's going to turn out that our first attempt is pretty 
+quickly going to break our third rule, so we will go with a slightly more restrictive
+model that still covers the majority of use cases.
 
-So, taking a leaf out of the Stan functions that are already built to speed up
+
+
+## Attempt 1: A general formualtion
+
+
+
+Taking a leaf out of the Stan functions that are already built to speed up
 linear regression (`normal_id_lm_lpdf`), I'm going to go with the following 
 eventual Stan syntax
 ```{stan}
@@ -98,7 +102,7 @@ $Z$ is, [this paper](https://www.jstatsoft.org/article/view/v067i01) is an excel
 (The canny reader might notice that I have lazily introduced broadcast semantics to make sure that eg the scalar $\alpha$ is interpereted as $\alpha 1$, where $1$ is a vector of 1s.)
 
 The user has free choice for priors on $\beta$, $\Lambda$ 
-and^[Note that $\sigma$ is a constant, which is different to the usual Stan specification.] $\sigma$.
+and^[Note that $\sigma$ is a scalar, which is different to the usual Stan specification, where it can be a vector.] $\sigma$.
 
 There is one thing that you might notice above: I am  explicitly assuming that $X$,
 $Z$, and $W$ are _constants_. This is in contrast to the usual Stan thing where
@@ -113,7 +117,7 @@ you can get from `lme4` in R). It is not, however, the right formulation for spa
 models, where you often want to specify the precision matrix^[For Markovian models, this is sparse, which allows for fast linear algbra.] of $u$ instead. As much as I love it, I am shelving that application
 for the moment in favour of the more commonly used one.
 
-## Marginalizing out $u$
+### Marginalizing out $u$
 
 The way that we make this computationally efficient is to marginalise out the vector
 of random effects $u$. This can be done efficiently using sparse linear algebra
@@ -247,9 +251,26 @@ to do for us.
 When doing any sort of linear regression, there computation of $X^TX$ and terms of its ilk is a potentially huge bottleneck, especially when the number of observations is large. Ideally, we would be able to pre-compute and pass all of the operations that involve $X$ so that we don't have to repeat these potentially expensive computations. Sadly this is impossible here as we still need $X\beta$. And even
 if it wasn't, the number of things we would need to pass in is prohibative.
 
-## A less flexible model that's acutally useful
+## Attempt 2: A less flexible model that's acutally useful
 
-Ok, well then what if we go back to our other formulation. In this case, we do not distinguish between $\alpha$, $\beta$, and $u$ as they are all 
+In
+a [previous post](https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model),
+where I started off down this direction in JAX^[Didn't work. XLA isn't optimized for these sorts of methods.],
+I defined a version of the problem where I have a data likelihood
+$$
+y \mid u, \sigma \sim N(Au, \Sigma),
+$$
+and $u$ was defined as 
+$$
+u \mid \theta \sim N(0, Q(\theta)^{-1}).
+$$
+
+This is a very computationally convenient way to write the problem, as it abstracts
+away the regression term and the random effects term(s) into $A$  and $Q$, which
+are block sparse matrices.
+
+
+In this case, we do not distinguish between $\alpha$, $\beta$, and $u$ as they are all 
 (conditionally) Gaussian. This means that we can just pretend $\alpha$ and $\beta$
 are zero in the previous formulation and define^[The ordering is important her--[in a previous post](https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices) I talked about how important it is to put the dense rows at the back!] 
 $$
@@ -264,13 +285,20 @@ $$
 \tilde{u} \sim N\left(0, \begin{pmatrix}\Lambda \Lambda^T &0 \\0 & \Sigma_\beta\end{pmatrix}\right).
 $$
 
-The difference between this and the previous model is that we have now 
-explicitly assumed that $\beta$ has a scale mixture of Gaussian prior.
-For the computational beneifit that we are going to get, I don't think this is
-much of an assumption. The reason why I'm so comfortable with the assumption 
-is^[If you want something different, code it yourself.] is that this assumption
-covers the most commonly used priors for regression coefficients (normals and 
-horseshoes).
+Unfortunately this is a) at a level of abstraction that is offputting to people
+who are thinking of using the method rather than just coding them, and b) making
+the key assumption that the priors on the regression coeffients are Gaussian 
+(conditinal on $\theta$).
+
+This is one of those things that isn't actually a huge loss of generality; the
+set of probability densities given by 
+$$
+p(\beta) \propto \int_\Theta |\Sigma(\theta)|^{-1/2} \exp\left(-\frac{1}{2}\beta^T\Sigma(\theta)^{-1}\beta\right) \, p(\theta)\, d\theta
+$$
+is extremely expressive. So if you choose the correct $p(\theta)$ you can still
+have basically any prior^[This is how eg the horseshoe prior is always implemented] on the regression parameters you want.
+
+
 
 This greatly simplifies our previous calculation and we get, after a bit of 
 coersion, that 
@@ -299,12 +327,7 @@ $$
 
 Although they look quite different, both of these formulations are^[Unlike in non-Bayesian mixed effects modelling, where the order of marginalization, profiling, and maximization matter _a lot_, Bayesian coherence means that it's all describling joint distribution.] equivalent^[If you pretend I didn't shit-can the intercept.]. 
 
-### What are the derivatives?
-
-In order to add this to the Stan math library, I need all of the relevant partial derivatives. As we have marginalized out $u$ and $\beta$, there are 
-no derivatives to compute. We only need to compute derivatives wrt $\theta_j$. Thankfully [I computed thosse in a previous post](https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative#primitive-one-the-general-a-1b). Technially, I computed Jacobian-vector products, but the same arguments work fine for vector-Jacobian products. Which is to say tht it's a Sunday afternoon and I have absolutely no interest in re-typing those posts.
-
-## C++: Building a block sparse matrix
+## C++ Plumbing: Building a block sparse matrix
 
 The first thing that we need to do is build a block-sparse matrix. We know
 that this matrix is symmetric so we only need to store the lower-triangle.
@@ -406,7 +429,11 @@ class Block_sparse_lower {
 
     public:
 
-    Block_sparse_lower(const SpMat top_left, const EigMat1 bottom_left, const EigMat2 bottom_right) 
+    Block_sparse_lower(
+        const SpMat& top_left, 
+        const EigMat1& bottom_left, 
+        const EigMat2& bottom_right
+        ) 
     {
         // only eval once
         const auto& tl_ref = to_ref(top_left);
@@ -433,7 +460,7 @@ class Block_sparse_lower {
         m_inner = new StorageIndex[tmp_nnz];
         m_val = new T[tmp_nnz];
         
-        double* p_val = m_val;
+        T* p_val = m_val;
         StorageIndex* p_inner = m_inner;
         StorageIndex out_nnz = 0;
         
@@ -489,7 +516,6 @@ class Block_sparse_lower {
 } // namespace math
 } // namespace stan
 ```
-
 The first thing you probably noticed was all the templates. Templates are 
 a beautiful^[Until you're rooting around a seventy page compiler error that really just means you forgot a typename on the final `return`.] feature of C++ and pretty much all that bit just alllows us to have 
 any matrix and sparse matrix from Eigen as long as they contain scalars (as
@@ -513,7 +539,7 @@ internal `SparseMatrix` representation to look at the pieces of memory defined
 in this class when it is looking for inner indices, outer indices, or values.
 This doesn't create a copy so it's memory efficient.
 
-So let's test it. I'm going to run the following code 
+So let's test it. I'm going to run the following code .
 ```c++
 #include <iostream>
 #include "sp_block.hpp"
@@ -540,7 +566,8 @@ int main() {
     
     std::cout << "   -------ans-------" << std::endl;
     Eigen::SparseMatrix<double> D = 
-        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(A, B, C)();
+        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(
+            A.triangularView<Eigen::Lower>(), B, C.triangularView<Eigen::Lower>())();
     std::cout << Eigen::MatrixXd(D) << std::endl << std::endl;
 
     std::cout << "-----------to_ref test---------" << std::endl;
@@ -551,7 +578,6 @@ int main() {
         stan::math::Block_sparse_lower<decltype(E), decltype(B),decltype(C)>(A, B, C)();
     std::cout << Eigen::MatrixXd(F) << std::endl << std::endl;
 }
-
 ```
 
 After compilation, the output is 
@@ -596,4 +622,325 @@ After compilation, the output is
 
 ```
 This is exactly what we expect! Hooray.
+
+### How about the derivative?
+
+This is all lovely, unfortunately it is not enough. We still need a way to relate
+derivatives with respect to this block matrix to derivatives with respect to 
+the components. In order to do this, we need to think a little bit more about
+how reverse-mode autodiff works.
+
+The most important thing about the Stan math library from a user perspective
+is that its functions are _differentiable_. The only way to make this true
+is to specialize the functions so that they behave correctly when touched by
+and autodiff variable. In Stan math, these are called `var`s. These have two
+important member functions `var.val()`, which returns its variable and `var.adj()`,
+which returns its adjoint. 
+
+This is not really the place to go through how autodiff works. I recommend 
+[Charles' review](https://arxiv.org/abs/1811.05031), or for more Stan-specific
+information we have the [old paper](https://arxiv.org/pdf/1509.07164) or this
+[blog post describing the most recent implementation of autodiff in Stan math](https://blog.mc-stan.org/2020/11/23/thinking-about-automatic-differentiation-in-fun-new-ways/).
+
+But the very very very short version is that if we want to backward differentiate 
+the formula 
+```
+z = f(x, y)
+```
+we need to update 
+```
+x.adj() += df_dxt * z.adj()
+y.adj() += df_dyt * z.adj()
+```
+where the variable `df_dxt` is the transpose of the Jacobian matrix.
+
+We need to compute the derivative of the log-determinant (which involves the 
+partial inverse above), the derivative of the linear solve used to compute the mean,
+and the derivative of the blocking operation.
+
+The reason that we need to explicitly consider the blocking operation is that 
+we are interested in the adjoint $\bar \Lambda$, but when we differentiate the 
+log-determinant and the linear solve, we will be computing $\bar Q$. So we 
+need to work out the link.
+
+For instance, we need the derivative of 
+$$
+\log \left|\begin{pmatrix}
+\Lambda^TZ^TWZ\Lambda + I & \Lambda^T Z^T WX \\ X^TWZ\Lambda & X^TWX  + \Sigma_\beta^{-1}
+\end{pmatrix}\right|
+$$
+with respect to $\Lambda$. 
+
+To do this we will break this into two steps (in pesudocode):
+```
+Q = BlockMatrix(Lambda.T* A * Lambda + I, Lambda.T * B, C)
+log_det = log(det(Q))
+```
+where `A`, `B`, and `C` are constant matrices. The reverse-mode autodiff procedure 
+would then be
+```
+Q.adj() -= partial_inverse(Q) * log_det.adj()
+Lambda.adj() += [derivative] * [adjoint of the block matrix] 
+```
+So we need to work otu what that second line actually is!
+
+### Differentiating the block matrix
+
+In order to do this, we need to work from first principles. We can do this using
+the notation and concepts from Mike Giles' [fabulous paper](https://people.maths.ox.ac.uk/gilesm/files/NA-08-01.pdf.)
+
+The adjoints $\bar X$ and $\bar Y$ of the equation $Z = f(X,Y)$ satisfy
+$$
+\operatorname{tr}\left(\bar{Z}^TdZ\right) = \operatorname{tr}\left(\bar{X}^TdX\right) + \operatorname{tr}\left(\bar{Y}^TdY\right),
+$$
+where $\bar{X}$ and $\bar{Y}$ going to depend on $f$ and $\bar{C}$. The order is the reverse of evaluation order, which gives this mode of autodiff its name. In fact, we can do a lil maths and get
+$$
+\bar{X} = \frac{\partial f}{\partial X}^T \bar{Z},
+$$
+where $\frac{\partial f}{\partial X}$ is the Jacobian of $f$ wrt $X$.
+
+To get 
+the update rule for $\bar{\Lambda}$ wrt $\bar Q$, we use the definition of the adjoint
+$$
+\operatorname{tr}(\bar{Q}^TdQ) = \operatorname{tr}(\bar{\Lambda}d\Lambda).
+$$
+
+We know that 
+$$
+dQ = \begin{pmatrix} (d\Lambda)^T Z^TWZ\Lambda + \Lambda^TZ^TWZd\Lambda & (d\Lambda)^TZ^TWX \\ X^TWZd\Lambda & 0 \end{pmatrix},
+$$
+which means we need to calculate
+$$
+\operatorname{tr}\left[\begin{pmatrix}
+\bar{Q}_{11} & \bar{Q}_{21}^T \\ \bar{Q}_{21} & \bar{Q}_{22}
+\end{pmatrix}^T\begin{pmatrix} (d\Lambda)^T Z^TWZ\Lambda + \Lambda^TZ^TWZd\Lambda & (d\Lambda)^TZ^TWX \\ X^TWZd\Lambda & 0 \end{pmatrix}\right].
+$$
+Some quick matrix multiplication and the cyclical property of the trace gives
+$$
+\operatorname{tr}(\bar{Q}^TdQ) = \operatorname{tr}\left[2\left(Z^TWZ\Lambda \bar{Q}_{11} + Z^TWX\bar{Q}_{{21}} \right)^Td\Lambda\right] 
+$$
+and hence 
+$$
+\bar \Lambda = 2Z^TWZ\Lambda \bar{Q}_{11} + Z^TWX\bar{Q}_{{21}}
+$$
+
+In order to compute this, we need to _un-block_ our block matrix. This will, once
+again, just be a bunch of looping through iterators and building `Eigen::Map`s.
+
+
+
+
+## C++ Plumbing: A partial inverse
+In order to compute the relevant derivatives, we need access to the elements of 
+$Q^{-1}$ that correspond to the non-zero elements of $Q$. While it seems like 
+this should be extremely expensive, it is cheap and straightforward to get these
+elements from the Cholesky triangle of $Q$.
+
+For a description of this algorithm and a background on why this is necessary, look at the [previous post](https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative#computing-the-partial-inverse) where I derived it and implemented it in Python.
+
+The C++ implementation (which is strongly indebted to Finn Lindgren!) is similar, but uses the Eigen iterators.
+
+Essentially, we need to implement the following pseudocode.
+```
+ for i = n-1, ..., 0
+   for j = n-1, ..., i
+   if (L[j,i] not known to be 0)
+      Sigma[j,i] = Sigma[i,j] = (I(i==j)/L[i,i] 
+        - sum_{k=i+1}^{n-1} L[k,i] Sigma[k,j] ) / L[i,i]
+```
+
+Using iterators to do this is, perhaps, a bit annoying, but it is
+very safe. It might look like you need three iterators to do this, but we atually need four. Because the matrix is stored in Column-major order, we are going to need a new iterator for every distinct column index. In this case, that is 
+1. A reverse iterator going up column `i` of `Sigma`
+2. A reverse iterator going up column `i` of `L`
+3. A reverse iterator going up colunn `j` of `Sigma`
+4. A reverse iterator going up column `i` in sync with iterator 3.
+
+The C++ code is pretty straightforward after that, you just need to keep your 
+iterators in sync. One wrinkle that I forgot about the first time I coded this 
+is that there are a few things that I need to be true: firstly, I need the output
+to be the lower-triangle of a symmetric matrix, and secondly I need that matrix
+to have the same sparsity pattern as $Q$. To do this, I wrote another RAII class,
+mainly because if I'm going to manipulate raw pointers I'm gonna want some safety.
+
+The code is below
+
+```c++
+#include <Eigen/SparseCore>
+#include <Eigen/SparseCholesky>
+
+namespace stan {
+namespace math {
+typedef Eigen::SparseMatrix<double>::StorageIndex StorageIndex;
+
+template<typename SpMat> class MatchPattern {
+    using T = typename base_type<SpMat>::type;
+    StorageIndex* m_outer;
+    StorageIndex* m_inner;
+    T* m_val;
+    StorageIndex m_cols;
+    StorageIndex m_nnz;
+
+    public:
+
+    MatchPattern(const SpMat& A, const SpMat& pattern) {
+        m_cols = pattern.cols();
+        m_nnz = pattern.nonZeros();
+        m_outer = pattern.outerIndexPtr(); 
+        m_inner = 
+        m_val = new T[m_nnz];
+
+        T* valptr = m_val;
+        for (int j = 0; j < m_cols; ++j) {
+            typename SpMat::InnerIterator Acol(A, j);
+            for (typename SpMat::InnerIterator pattern_col(pattern, j);
+                pattern_col; ++pattern_col) {
+                    while (Acol & (Acol.row() < pattern_col.row())){
+                        ++Acol;
+                    }
+                    valptr++ = Acol.value();
+                    ++Acol;
+                }
+        }
+    }
+
+    ~MatchPattern() {
+        delete[] m_val;
+    }
+
+    SpMat operator () () {
+        return typename SpMat::Map(
+            m_cols,
+            m_cols,
+            m_nnz,
+            m_inner,
+            m_val
+        );
+    }
+};
+
+
+template<typename SpChol, typename SpMat>
+typename SpChol::MatrixType partial_inverse(
+    const SpChol& llt,
+    const SpMat& Q
+) {
+    typedef typename SpMat::ReverseInnerIterator reverse_it;
+    StorageIndex ncols = llt.cols();
+    SpMat Qinv = llt.matrixL().template selfAdjointView();
+
+    for (int i = ncols - 1; i >= 0; --i) {
+        reverse_it QinvcolI(Qinv, i);
+        for (reverse_it LcolI_slow(llt.matrixL(), i); LcolI_slow; --LcolI_slow) {
+            // inner sum iterators
+            reverse_it LcolI(llt.matrixL(), i);
+            reverse_it QinvcolJ(Qinv, LcolI_slow.row());
+            
+            // Initialize Qinv[j,i]
+            QinvcolI.valueRef() = 0.0;
+
+            // Inner-most sum
+            while (LcolI.row() > i) {
+                // First up, sync the iterators
+                while ( QinvcolJ & (LcolI.row() < QinvcolJ.row())){
+                    --QinvcolJ;
+                }
+                if (QinvcolJ & (QinvcolJ.row() == LcolI.row())) {
+                    QinvcolI.valueRef() -= LcolI.value() * QinvcolJ.value();
+                    --QinvcolJ;
+                }
+                --LcolI;
+            }
+            // At this point LcolI is the diagonal value
+            if (i == LcolI.row()) {
+                QinvcolI.vaueRef() +=  1/ LcolI.value();
+                QinvcolI.vaueRef() /=  LcolI.value();
+            } else{
+                QinvcolI.vaueRef() /=  LcolI.value();
+                // Set Qinv[i,j] = Qinv[j,i]
+                while (QinvcolJ.row() > i) {
+                    --QinvcolJ;
+                }
+                QinvcolJ.valRef() = QinvcolI.value();
+            }
+        }
+        --QinvcolI;
+    }
+    // Undo the permuatation
+    Qinv = Qinv.twistedBy(llt.permutationP().inverse());
+
+    // Return the non-zero elements of Qinv corresponding to the non-zero
+    // elements of Q
+    return MatchPattern(Qinv, Q)();
+
+}
+
+} // namespace math
+} // namespace stan
+
+```
+
+You'll probably notice that there are far fewer template shennigans here than
+in the block matrix code. That is because this only needs to work with scalar
+types and doesn't need to be part of the `math` API. If needed, I guess we could always 
+work out what teh derivitave is and implement its reverse-mode specialization,
+but frankly why^[One reason would be to use gradient descent on the score function for a Gaussian MLE. Another is that this might be useful inside the `generated quantities` block to compute things like the marginal variances of the model, but, as the great lady said, not today Satan.] bother.
+
+**Do some testing**
+
+
+
+## C++ Plumbing: The linear solve
+
+The final primitive that we need to implement is the linear solve. One way
+to do this would be to autodiff directly through the Cholesky factorisation and 
+the triangular solve. But instead, we note that if $c = A^{-1}b$, then^[If you don't believe me, differentiate both sides of $AC = I$.]
+$$
+dc = A^{-1}db + A^{-1}dAc
+$$
+and thus
+$$
+\operatorname{tr}(\bar{c}^Tdc) = \operatorname{tr}((A^{-1}\bar{c})^Tdb) - \operatorname{tr}(c\bar{c}^TA^{-1}dA)
+$$
+and so we get the adjoints
+$$
+\bar{b} = A^{-1}\bar{c}, \qquad \bar{A} = - A^{-1}\bar{c}c^T = -\bar{b}c^T,
+$$
+where once again if $A$ is sparse then we only need to track the elements of $\bar{A}$ 
+that correspond to the non-zero values of $A$.
+
+
+This should be fairly simple to implement: the only tricky part is making 
+sure that we have a mechanism to only get the sparse lower triangle of $\bar{A}$.
+
+This problem is extremely similar to `MatchPattern` defined above, so let's just
+add a new constructor to that class.
+
+```c++
+MatchPattern(
+    const typename Eigen::Vector<T>& b, 
+    const typename Eigen::Vector<T>& c, 
+    const SpMat& pattern
+) {
+    m_cols = pattern.cols();
+    m_nnz = pattern.nonZeros();
+    m_outer = pattern.outerIndexPtr(); 
+    m_inner = 
+    m_val = new T[m_nnz];
+
+    T* valptr = m_val;
+    for (int j = 0; j < m_cols; ++j) {
+        for (typename SpMat::InnerIterator pattern_col(pattern, j);
+            pattern_col; ++pattern_col) {
+                valptr++ = b.coeff(pattern_col.row()) * c.coeff(j);
+            }
+    }
+    
+}
+```
+
+There's a little bit of code repeated here, which probably suggests that there
+is a way to refactor this a little more cleanly, but I really can't be bothered.
+
+## Adding the log-density to Stan
 

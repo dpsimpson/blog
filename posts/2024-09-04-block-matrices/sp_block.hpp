@@ -39,7 +39,11 @@ class Block_sparse_lower {
 
     public:
 
-    Block_sparse_lower(const SpMat top_left, const EigMat1 bottom_left, const EigMat2 bottom_right) 
+    Block_sparse_lower(
+        const SpMat& top_left, 
+        const EigMat1& bottom_left, 
+        const EigMat2& bottom_right
+        ) 
     {
         // only eval once
         const auto& tl_ref = to_ref(top_left);
@@ -66,7 +70,7 @@ class Block_sparse_lower {
         m_inner = new StorageIndex[tmp_nnz];
         m_val = new T[tmp_nnz];
         
-        double* p_val = m_val;
+        T* p_val = m_val;
         StorageIndex* p_inner = m_inner;
         StorageIndex out_nnz = 0;
         

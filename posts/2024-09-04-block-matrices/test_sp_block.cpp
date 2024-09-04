@@ -23,7 +23,8 @@ int main() {
     
     std::cout << "   -------ans-------" << std::endl;
     Eigen::SparseMatrix<double> D = 
-        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(A, B, C)();
+        stan::math::Block_sparse_lower<decltype(A), decltype(B),decltype(C)>(
+            A.triangularView<Eigen::Lower>(), B, C.triangularView<Eigen::Lower>())();
     std::cout << Eigen::MatrixXd(D) << std::endl << std::endl;
 
     std::cout << "-----------to_ref test---------" << std::endl;
@@ -33,6 +34,5 @@ int main() {
     Eigen::SparseMatrix<double> F = 
         stan::math::Block_sparse_lower<decltype(E), decltype(B),decltype(C)>(A, B, C)();
     std::cout << Eigen::MatrixXd(F) << std::endl << std::endl;
-
 }
 

@@ -15,7 +15,1619 @@
 <link>https://dansblog.netlify.app/</link>
 </image>
 <generator>quarto-1.4.553</generator>
-<lastBuildDate>Wed, 08 May 2024 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 04 Jun 2024 14:00:00 GMT</lastBuildDate>
+<item>
+  <title>Random C++ Part 1: Building a block sparse matrix</title>
+  <dc:creator>Dan Simpson</dc:creator>
+  <link>https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<p>I’ll be honest with y’all. I was writing something else. It was really long and was getting annoying to edit and was probably never going to be finished. So instead of doing that, I am just going to post this. It’s about making a block matrix in a Stan-compatible way. Why?? Because I wanted to be able to do this.</p>
+<p>There is no context forthcoming. There are no good jokes. Just building one sparse matrix.</p>
+<p>Enjoy</p>
+<section id="c-plumbing-building-a-2x2-block-sparse-matrix-from-a-sparse-11-block-and-two-dense-matrices" class="level2">
+<h2 class="anchored" data-anchor-id="c-plumbing-building-a-2x2-block-sparse-matrix-from-a-sparse-11-block-and-two-dense-matrices">C++ Plumbing: Building a 2x2 block sparse matrix from a sparse (1,1) block and two dense matrices</h2>
+<p>The first thing that we need to do is build a block-sparse matrix. We know that this matrix is symmetric so we only need to store the lower-triangle.</p>
+<p>In general, this is not the most difficult task in the world. We have <a href="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices#so-how-do-we-store-a-sparse-matrix">already talked about how we store sparse matrices</a> and, in particular, have had some fun with the Compressed Column Storage (CCS) scheme, which stores sparse matrices column-by-column. In the lingo, we call this <em>column major</em> storage.</p>
+<p>When any array of numbers is stored in memory by a program, it is stored as a long vector and when you index into it (using something like <code>A[i,j]</code>) this is just some syntactic sugar for finding the correct value in that long vector.</p>
+<p>Some languages, such as Fortran and Matlab, and libraries, such as <a href="https://gitlab.com/libeigen/eigen">Eigen</a>, store arrays in column major order. Others, like C/C++ and Python, use row-major storage. Stan is written in C++ but all of its linear algebra is done using Eigen, so we are going to use column-major storage.</p>
+<p>It may seem catastrophically nerdy to be talking about internal storage orders for arrays in different languages, but I promise you this is <em>incredibly</em> important. If you want to write any sort of performant code, it’s extremely important that your algorithms are aligned with the internal storage order. That means that we need to prefer algorithms that run down columns of matrices over ones that run across rows.</p>
+<p>This is because computers are clever and when you ask them for, eg <code>A[0,0]</code>, the CPU will actually load the first few entries of the 0th <em>column</em><sup>1</sup> of <code>A</code> in anticipation<sup>2</sup> that you will need <code>A[0,1]</code> and its friends next. If you instead next ask for <code>A[1,0]</code>, the CPU has to throw its pre-loaded stuff out, reach out to some potentially distant memory and try again. When an array has a lot of rows, these cache misses<sup>3</sup> noticably degrade the performance of a program.</p>
+<p>All of that is to say that this is actually not too too hard to implement because we are just interleaving some contiguous chunks of a vector. While the main loop is pretty straightforward, C++ is truly a journey. So it’s gonna be like 100 lines of code.</p>
+<p>The structure is</p>
+<ol type="1">
+<li><p>Allocate 3 arrays to store the outer index (which column?), the inner index (which row?), and the value.</p></li>
+<li><p>Iterate through each column of the matrix, only storing the lower triangle.</p></li>
+<li><p>Return an <code>Eigen::SparseMatrix&lt;double&gt;</code> built from those arrays.</p></li>
+</ol>
+<p>There are essentially two challenges in doing this. Firstly, the number of columns and then number of non-zeros are not known at compile time so we need to allocate dynamic memory on the heap. This is always a risky proposition in C++ as it’s pretty easy to screw up and end up with a memory leak. To get around this, I’m using the RAII (resource aquisition is instantiation) pattern, which basically encapsulates all the memory usage inside a functor, who’s call method return a sparse symmetric matrix.</p>
+<p>The second challenge is that the Eigen API demands raw pointers. So this is going to have that good old fashioned <code>*ptr++</code> action.</p>
+<p>Without further ado, here is the code. I’ll explain some key bits after.</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb1-1"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/meta/is_eigen_sparse_base.hpp&gt;</span></span>
+<span id="cb1-2"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/meta/is_eigen.hpp&gt;</span></span>
+<span id="cb1-3"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/meta/is_stan_scalar.hpp&gt;</span></span>
+<span id="cb1-4"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/meta/base_type.hpp&gt;</span></span>
+<span id="cb1-5"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/err/check_size_match.hpp&gt;</span></span>
+<span id="cb1-6"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;stan/math/prim/fun/to_ref.hpp&gt;</span></span>
+<span id="cb1-7"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;Eigen/SparseCore&gt;</span></span>
+<span id="cb1-8"></span>
+<span id="cb1-9"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">namespace</span> stan <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-10"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">namespace</span> math <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-11"></span>
+<span id="cb1-12"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typedef</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>StorageIndex StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-13"></span>
+<span id="cb1-14"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// The require_ statements are defined in the first #include</span></span>
+<span id="cb1-15"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">template</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> EigMat1<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> EigMat2<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb1-16"><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">require_eigen_sparse_base_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;*</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">nullptr</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-17"><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">require_all_eigen_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>EigMat1<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> EigMat2<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;*</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">nullptr</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-18"><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">require_all_stan_scalar_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">base_type_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb1-19">                          <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">base_type_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>EigMat1<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb1-20">                          <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">base_type_t</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>EigMat2<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&gt;*</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">nullptr</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span>  </span>
+<span id="cb1-21"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> Block_sparse_lower <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-22">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/* </span></span>
+<span id="cb1-23"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    A RAII functor class because Jesus hates memory leaks</span></span>
+<span id="cb1-24"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    Make this encapsulate the whole thing.</span></span>
+<span id="cb1-25"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    You may be asking why I'm using arrays and pointers</span></span>
+<span id="cb1-26"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    like I'm writing in C, and the answer is </span></span>
+<span id="cb1-27"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    "that's the interface to Map". The dream of the </span></span>
+<span id="cb1-28"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    C-90 is alive and well in the eigen code base.</span></span>
+<span id="cb1-29"></span>
+<span id="cb1-30"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    Anyway, `operator ()` returns a sparseMatrixMap</span></span>
+<span id="cb1-31"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    */</span></span>
+<span id="cb1-32">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">using</span> T <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">base_type</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>type<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-33">   </span>
+<span id="cb1-34">    StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-35">    StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-36">    T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-37">    StorageIndex <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-38">    StorageIndex <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-39"></span>
+<span id="cb1-40">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">public</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span></span>
+<span id="cb1-41"></span>
+<span id="cb1-42">    Block_sparse_lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb1-43">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> top_left<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb1-44">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> EigMat1<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> bottom_left<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb1-45">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> EigMat2<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> bottom_right</span>
+<span id="cb1-46">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> </span>
+<span id="cb1-47">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-48">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// only eval once</span></span>
+<span id="cb1-49">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">auto</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> tl_ref <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> to_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>top_left<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-50">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">auto</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> bl_ref <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> to_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>bottom_left<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-51">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">auto</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> br_ref <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> to_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>bottom_right<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-52"></span>
+<span id="cb1-53">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Get sizes.</span></span>
+<span id="cb1-54">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// NB tmp_nnz is an upper bound. Will only be correct if `top_left` is lower </span></span>
+<span id="cb1-55">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// triangular. We will compute the real value on the fly.</span></span>
+<span id="cb1-56">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> StorageIndex ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> tl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb1-57">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> StorageIndex ncols_br <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> br_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb1-58">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> StorageIndex tmp_nnz <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>tl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nonZeros<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> ncols_br </span>
+<span id="cb1-59">                                        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>ncols_br <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> ncols_br <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-60"></span>
+<span id="cb1-61">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// check sizes</span></span>
+<span id="cb1-62">        check_size_match<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Block_sparse_lower"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Columns of "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"top_left "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> tl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Columns of "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Bottom Left"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> bl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">());</span></span>
+<span id="cb1-63">        check_size_match<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Block_sparse_lower"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Rows of "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"bottom-left "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> bl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>rows<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Rows of "</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Bottom-right"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> br_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>rows<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">());</span></span>
+<span id="cb1-64">        </span>
+<span id="cb1-65">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Allocate!</span></span>
+<span id="cb1-66">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> ncols_br<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-67"></span>
+<span id="cb1-68">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb1-69">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>top_left<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>outerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb1-70">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>tmp_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb1-71">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>tmp_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb1-72">        </span>
+<span id="cb1-73">        T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> p_val <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-74">        StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> p_inner <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-75">        StorageIndex out_nnz <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-76">        </span>
+<span id="cb1-77">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>StorageIndex j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> ncols_tl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-78">            StorageIndex col_cnt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-79">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>InnerIterator it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>tl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span> it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-80">                <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">continue</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// lower triangle only</span></span>
+<span id="cb1-81">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_val<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb1-82">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb1-83">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>out_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-84">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>col_cnt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-85">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-86"></span>
+<span id="cb1-87">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>StorageIndex i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> ncols_br<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-88">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_val<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> bl_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>coeff<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-89">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-90">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>out_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-91">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>col_cnt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-92">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-93">        </span>
+<span id="cb1-94">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> col_cnt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-95">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-96">        </span>
+<span id="cb1-97">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>StorageIndex j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> ncols_br<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-98">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// only need lower triangle</span></span>
+<span id="cb1-99">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>StorageIndex i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> ncols_br<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-100">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_val<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> br_ref<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>coeff<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb1-101">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p_inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-102">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>out_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-103">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-104">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>ncols_tl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span>ncols_tl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> ncols_br <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-105">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-106">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> out_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-107">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// constructor</span></span>
+<span id="cb1-108"></span>
+<span id="cb1-109">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">~</span>Block_sparse_lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-110">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-111">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-112">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-113">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// destructor</span></span>
+<span id="cb1-114"></span>
+<span id="cb1-115">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">operator</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-116">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>Map<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb1-117">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb1-118">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-119">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-120">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-121">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-122">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span></span>
+<span id="cb1-123">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span>   </span>
+<span id="cb1-124">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">//operator ()</span></span>
+<span id="cb1-125"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Block_sparse_lower</span></span>
+<span id="cb1-126"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// namespace math</span></span>
+<span id="cb1-127"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// namespace stan</span></span></code></pre></div>
+<p>The first thing you probably noticed was all the templates. Templates are a beautiful<sup>4</sup> feature of C++ and pretty much all that bit just alllows us to have any matrix and sparse matrix from Eigen as long as they contain scalars (as opposed to autodiff variables). They also allow us to hack together a pre-C++20 version of <a href="https://en.wikipedia.org/wiki/Concepts_(C%2B%2B)">concepts</a>, which is all of the <code>require_</code> statements.</p>
+<p>Once we are actually in the class, it has three methods. The constructor takes in the three matrices, one sparse and two dense. It checks at compile time that they are all column-major and then starts doing its work. There’s nothing too exciting happening here. Some size checking, and then we run through the loop stacking the relevant vector parts onto each other.</p>
+<p>The destructor frees the allocated memory (a core part of the RAII pattern).</p>
+<p>Finally, we need to actually get access to this sparse matrix, which I implemented as a call operator. It returns a self-adjoint view (aka it will pretend to be symmetric when doing operations even though only the lower triangle is filled) of a <code>Map</code> of the three pointers. <code>Map</code>s are a nice way for Eigen to tell its internal <code>SparseMatrix</code> representation to look at the pieces of memory defined in this class when it is looking for inner indices, outer indices, or values. This doesn’t create a copy so it’s memory efficient.</p>
+<p>So let’s test it. I’m going to run the following code .</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb2-1"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;iostream&gt;</span></span>
+<span id="cb2-2"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"sp_block.hpp"</span></span>
+<span id="cb2-3"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"Eigen/SparseCore"</span></span>
+<span id="cb2-4"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"Eigen/Dense"</span></span>
+<span id="cb2-5"></span>
+<span id="cb2-6"></span>
+<span id="cb2-7"><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> main<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-8">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"-----------matrix test---------"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-9">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span> values<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4.</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb2-10">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// nonzero row indices</span></span>
+<span id="cb2-11">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> outer<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// start index per column + 1 for last col</span></span>
+<span id="cb2-12">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> A <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>Map<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb2-13">        <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/*rows*/</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/*cols*/</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/*nonzeros*/</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> outer<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> values<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-14">    </span>
+<span id="cb2-15">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>MatrixXd<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-16"></span>
+<span id="cb2-17">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Matrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-18">    B <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-19">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> B <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-20">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Matrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> C<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-21">    C <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-22">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> C <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-23">    </span>
+<span id="cb2-24">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"   -------ans-------"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-25">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> D <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> </span>
+<span id="cb2-26">        stan<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>math<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Block_sparse_lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">),</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">),</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>C<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)&gt;(</span></span>
+<span id="cb2-27">            A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>triangularView<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;(),</span> B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> C<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>triangularView<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;())();</span></span>
+<span id="cb2-28">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>MatrixXd<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>D<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-29"></span>
+<span id="cb2-30">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"-----------to_ref test---------"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-31">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> E <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> A <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-32">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>MatrixXd<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-33">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"   -------ans-------"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-34">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> F <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> </span>
+<span id="cb2-35">        stan<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>math<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Block_sparse_lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>E<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">),</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">),</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">decltype</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>C<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)&gt;(</span>A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> C<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)();</span></span>
+<span id="cb2-36">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>MatrixXd<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>F<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-37"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>After compilation, the output is</p>
+<pre><code>-----------matrix test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+1 2 3 4 5
+1 2 3 4 5
+
+1 1
+1 1
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+
+-----------to_ref test---------
+0 0 0 0 0
+0 0 0 4 0
+0 0 3 0 0
+0 2 0 0 0
+1 0 0 0 0
+
+   -------ans-------
+0 0 0 0 0 0 0
+0 0 0 0 0 0 0
+0 0 3 0 0 0 0
+0 2 0 0 0 0 0
+1 0 0 0 0 0 0
+1 2 3 4 5 1 0
+1 2 3 4 5 1 1
+</code></pre>
+<p>This is exactly what we expect! Hooray.</p>
+<p>And that’s it. A symmetric 2x2 block sparse matrix in C++. Who knows what I’ll do next.</p>
+
+
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Or row if it’s row major↩︎</p></li>
+<li id="fn2"><p>Let’s anthopomorphise. I don’t want to write a blog about caches.↩︎</p></li>
+<li id="fn3"><p>Drag name: Cache Mx↩︎</p></li>
+<li id="fn4"><p>Until you’re rooting around a seventy page compiler error that really just means you forgot a typename on the final <code>return</code>.↩︎</p></li>
+</ol>
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2024,
+  author = {Simpson, Dan},
+  title = {Random {C++} {Part} 1: {Building} a Block Sparse Matrix},
+  date = {2024-06-05},
+  url = {https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html},
+  langid = {en}
+}
+</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2024" class="csl-entry quarto-appendix-citeas">
+Simpson, Dan. 2024. <span>“Random C++ Part 1: Building a Block Sparse
+Matrix.”</span> June 5, 2024. <a href="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html">https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</a>.
+</div></div></section></div> ]]></description>
+  <category>Stan</category>
+  <category>Sparse matrices</category>
+  <category>Autodiff</category>
+  <guid>https://dansblog.netlify.app/posts/2024-09-04-block-matrices/blocks.html</guid>
+  <pubDate>Tue, 04 Jun 2024 14:00:00 GMT</pubDate>
+  <media:content url="https://dansblog.netlify.app/posts/2024-09-04-block-matrices/ravens.JPEG" medium="image"/>
+</item>
 <item>
   <title>An unexpected detour into partially symbolic, sparsity-expoiting autodiff; or Lord won’t you buy me a Laplace approximation</title>
   <dc:creator>Dan Simpson</dc:creator>
@@ -4028,7 +5640,7 @@ Approximation.”</span> May 8, 2024. <a href="https://dansblog.netlify.app/post
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html</guid>
-  <pubDate>Wed, 08 May 2024 04:00:00 GMT</pubDate>
+  <pubDate>Tue, 07 May 2024 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2024-05-08-laplace/hat.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -4257,7 +5869,7 @@ Sample from an Arbitrary Distribution.”</span> February 9, 2023. <a href="http
   <category>Diffusion model</category>
   <category>Introductions</category>
   <guid>https://dansblog.netlify.app/posts/2023-01-30-diffusion/diffusion.html</guid>
-  <pubDate>Thu, 09 Feb 2023 05:00:00 GMT</pubDate>
+  <pubDate>Wed, 08 Feb 2023 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2023-01-30-diffusion/megan.jpeg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -4526,7 +6138,7 @@ and Some Practical Stuff.”</span> January 21, 2023. <a href="https://dansblog.
   <category>Theory</category>
   <category>Deep Dives</category>
   <guid>https://dansblog.netlify.app/posts/2023-01-21-markov/markov.html</guid>
-  <pubDate>Sat, 21 Jan 2023 05:00:00 GMT</pubDate>
+  <pubDate>Fri, 20 Jan 2023 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2023-01-21-markov/gays.png" medium="image" type="image/png" height="165" width="144"/>
 </item>
 <item>
@@ -9018,7 +10630,7 @@ JAX-Ing the Cholesky Decomposition.”</span> December 2, 2022. <a href="https:/
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-27-sparse7/sparse7.html</guid>
-  <pubDate>Fri, 02 Dec 2022 05:00:00 GMT</pubDate>
+  <pubDate>Thu, 01 Dec 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-27-sparse7/south_pac.png" medium="image" type="image/png" height="81" width="144"/>
 </item>
 <item>
@@ -9171,7 +10783,7 @@ Probability.”</span> November 23, 2022. <a href="https://dansblog.netlify.app/
   <category>MCMC</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/wrong-mcmc.html</guid>
-  <pubDate>Wed, 23 Nov 2022 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 22 Nov 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-23-wrong-mcmc/elvira.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -9370,7 +10982,7 @@ For.”</span> November 15, 2022. <a href="https://dansblog.netlify.app/posts/20
   <category>MRP</category>
   <category>Bayes</category>
   <guid>https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/robins-ritov.html</guid>
-  <pubDate>Tue, 15 Nov 2022 05:00:00 GMT</pubDate>
+  <pubDate>Mon, 14 Nov 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-11-12-robins-ritov/misandrists.JPG" medium="image"/>
 </item>
 <item>
@@ -11741,7 +13353,7 @@ Process.”</span> September 27, 2022. <a href="https://dansblog.netlify.app/pos
   <category>Gaussian Processes</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html</guid>
-  <pubDate>Tue, 27 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 26 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-07-priors5/chair.JPG" medium="image"/>
 </item>
 <item>
@@ -14056,7 +15668,7 @@ September 6, 2022. <a href="https://dansblog.netlify.app/2022-09-04-everybodys-g
   <category>Prior distributions</category>
   <category>fundamentals</category>
   <guid>https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/everybodys-got-something-to-hide-except-me-and-my-monkey.html</guid>
-  <pubDate>Tue, 06 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 05 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-09-04-everybodys-got-something-to-hide-except-me-and-my-monkey/mark.png" medium="image" type="image/png" height="81" width="144"/>
 </item>
 <item>
@@ -15130,7 +16742,7 @@ Appropriately Penalise Complexity.”</span> September 3, 2022. <a href="https:/
   <category>fundamentals</category>
   <category>PC priors</category>
   <guid>https://dansblog.netlify.app/posts/2022-08-29-priors4/priors4.html</guid>
-  <pubDate>Sat, 03 Sep 2022 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 02 Sep 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-08-29-priors4/tina.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -15804,7 +17416,7 @@ Etimators: A Bit of Theory.”</span> June 15, 2022. <a href="https://dansblog.n
   <category>Pareto smoothed importance sampling</category>
   <category>PSIS</category>
   <guid>https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/that-psis-proof.html</guid>
-  <pubDate>Wed, 15 Jun 2022 04:00:00 GMT</pubDate>
+  <pubDate>Tue, 14 Jun 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-06-03-that-psis-proof/judy.JPG" medium="image"/>
 </item>
 <item>
@@ -19722,7 +21334,7 @@ First You’ve Got to Think Like a Derivative.”</span> May 30, 2022. <a href="
   <category>Sparse matrices</category>
   <category>Autodiff</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative.html</guid>
-  <pubDate>Mon, 30 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Sun, 29 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/sob.JPG" medium="image"/>
 </item>
 <item>
@@ -20811,7 +22423,7 @@ May 20, 2022. <a href="https://dansblog.netlify.app/2022-05-18-sparse4-some-prim
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/sparse4-some-primatives.html</guid>
-  <pubDate>Fri, 20 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Thu, 19 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-18-sparse4-some-primatives/nancy.jpg" medium="image" type="image/jpeg"/>
 </item>
 <item>
@@ -21025,7 +22637,7 @@ Passion.”</span> May 16, 2022. <a href="https://dansblog.netlify.app/2022-05-1
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/design-is-my-passion-sparse-matrices-part-four.html</guid>
-  <pubDate>Mon, 16 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Sun, 15 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-16-design-is-my-passion-sparse-matrices-part-four/scrod.JPG" medium="image"/>
 </item>
 <item>
@@ -21852,7 +23464,7 @@ May 14, 2022. <a href="https://dansblog.netlify.app/2022-05-14-jax-ing-a-sparse-
   <category>Python</category>
   <category>JAX</category>
   <guid>https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey.html</guid>
-  <pubDate>Sat, 14 May 2022 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 13 May 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-05-14-jax-ing-a-sparse-cholesky-factorisation-part-3-in-an-ongoing-journey/alien.JPG" medium="image"/>
 </item>
 <item>
@@ -23030,7 +24642,7 @@ Cholesky Factorisation.”</span> March 31, 2022. <a href="https://dansblog.netl
   <category>Sparse Cholesky factorisation</category>
   <category>Python</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/getting-jax-to-love-sparse-matrices.html</guid>
-  <pubDate>Thu, 31 Mar 2022 04:00:00 GMT</pubDate>
+  <pubDate>Wed, 30 Mar 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-23-getting-jax-to-love-sparse-matrices/tori.JPG" medium="image"/>
 </item>
 <item>
@@ -23270,7 +24882,7 @@ Linear Mixed Effects Models and Their Generalisations.”</span> March 22,
   <category>Sparse matrices</category>
   <category>Linear mixed models</category>
   <guid>https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/a-linear-mixed-effects-model.html</guid>
-  <pubDate>Tue, 22 Mar 2022 04:00:00 GMT</pubDate>
+  <pubDate>Mon, 21 Mar 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-03-22-a-linear-mixed-effects-model/patti.JPG" medium="image"/>
 </item>
 <item>
@@ -23455,7 +25067,7 @@ Alike Contest (Repost).”</span> January 26, 2022. <a href="https://dansblog.ne
   <category>Computation</category>
   <category>Assessing algorithms</category>
   <guid>https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost.html</guid>
-  <pubDate>Wed, 26 Jan 2022 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 25 Jan 2022 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2022-01-26-barry-gibb-came-fourth-in-a-barry-gibb-look-alike-contest-repost/yetta.JPG" medium="image"/>
 </item>
 <item>
@@ -23636,7 +25248,7 @@ Simpson, Dan, and Dan Simpson. 2021. <span>“Why Won’t You Cheat with Me?
   <category>Fundamentals</category>
   <category>Design dependence</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html</guid>
-  <pubDate>Thu, 09 Dec 2021 05:00:00 GMT</pubDate>
+  <pubDate>Wed, 08 Dec 2021 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" medium="image"/>
 </item>
 <item>
@@ -23776,336 +25388,8 @@ Simpson, Dan, and Dan Simpson. 2021. <span>“The King Must Die
   <category>Theory</category>
   <category>Things that don&#39;t work</category>
   <guid>https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html</guid>
-  <pubDate>Wed, 08 Dec 2021 05:00:00 GMT</pubDate>
+  <pubDate>Tue, 07 Dec 2021 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" medium="image" type="image/jpeg"/>
-</item>
-<item>
-  <title>Getting into the subspace; or what happens when you approximate a Gaussian process</title>
-  <dc:creator>Dan Simpson</dc:creator>
-  <link>https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<section id="so.-gaussian-processes-eh." class="level2">
-<h2 class="anchored" data-anchor-id="so.-gaussian-processes-eh.">So. Gaussian processes, eh.</h2>
-<p><a href="https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness.html">Now that we know what they are</a>, I guess we should do something with a Gaussian process. But we immediately hit a problem. You see, Gaussian processes are charming things, sweet and caring. But they have a dark side. Used naively<sup>1</sup>, they’re computationally expensive when you’ve got a lot of data.</p>
-<p><strong>Stab of dramatic music</strong></p>
-<p>Yeah. So. What’s the problem here? Well, the first problem is people seem to really like having a lot of data. Fuck knows why. Most of it is rubbish<sup>2</sup>. But they do.</p>
-<p>This is a problem for our poor little Gaussian processes because of how the data tends to come.</p>
-<p>A fairly robust model for data is that it comes like <img src="https://latex.codecogs.com/png.latex?%0A(y_i,%20s_i,%20x_i),%0A"> where <img src="https://latex.codecogs.com/png.latex?y_i"> is our measurement of choice (which might be a continuous, discrete or weird<sup>3</sup>), <img src="https://latex.codecogs.com/png.latex?s_i"> is our location<sup>4</sup> in the index set<sup>5</sup> <img src="https://latex.codecogs.com/png.latex?%5COmega"> (usually <img src="https://latex.codecogs.com/png.latex?%5COmega%20%5Csubset%20%5Cmathbb%7BR%7D%5Ed">) of the Gaussian process, and <img src="https://latex.codecogs.com/png.latex?x_i"> is whatever other information we have<sup>6</sup>. If we want to be really saucy, we could also assume these things are iid samples from some unknown distribution and then pretend like that isn’t a wildly strong structural assumption. But I’m not like that. I’ll assume the joint distribution of the samples is exchangeable<sup>7</sup> <sup>8</sup> <sup>9</sup>. Or something. I’m writing this sequentially, so I have no idea where this is going to end up.</p>
-<p>So where is the problem? The problem is that, if we use the most immediately computational definition of a Gaussian process, then we need to build <img src="https://latex.codecogs.com/png.latex?%0A%5Cbegin%7Bpmatrix%7D%20u(s_1)%5C%5C%20u(s_2)%20%5C%5C%20%5Cvdots%20%5C%5C%20u(s_n)%5Cend%7Bpmatrix%7D%20%5Csim%20N%5Cleft(%0A%5Cbegin%7Bpmatrix%7D%20%5Cmu(s_1)%5C%5C%20%5Cmu(s_2)%20%5C%5C%20%5Cvdots%20%5C%5C%20%5Cmu(s_n)%5Cend%7Bpmatrix%7D,%0A%5Cbegin%7Bpmatrix%7D%20c(s_1,%20s_1)%20&amp;%20c(s_1,%20s_2)%20&amp;%20%5Ccdots%20&amp;%20c(s_1,%20s_n)%20%20%5C%5C%20c(s_2,%20s_1)%20&amp;%20c(s_2,%20s_2)%20&amp;%20%5Ccdots%20&amp;%20c(s_2,%20s_n)%20%5C%5C%5Cvdots%20&amp;%5Cvdots%20%20&amp;%5Cddots%20&amp;%5Cvdots%20%5C%5C%20c(s_n,%20s_1)%20&amp;%20c(s_n,%20s_2)%20&amp;%20%5Ccdots%20&amp;%20c(s_n,%20s_n)%5Cend%7Bpmatrix%7D%5Cright).%0A"> Where <img src="https://latex.codecogs.com/png.latex?s_1,%5Cldots,%20s_n"> are all of the <em>distinct</em> values of <img src="https://latex.codecogs.com/png.latex?s_i"> in the dataset. If there are a lot of these, the covariance matrix is <em>very</em> large and this becomes a problem. First, we must construct it. Then we must solve it. <em>Then</em> we must do actual computations with it. The storage scales quadratically in <img src="https://latex.codecogs.com/png.latex?n">. The computation scales cubically in <img src="https://latex.codecogs.com/png.latex?n">. This is too much storage and too much computation if the data set has a lot of distinct GP evaluations, it will simply be too expensive to do the matrix work that we need to do in order to make this run.</p>
-<p>So we need to do something else.</p>
-</section>
-<section id="a-tangent-or-can-we-just-be-smarter" class="level2">
-<h2 class="anchored" data-anchor-id="a-tangent-or-can-we-just-be-smarter">A tangent; or Can we just be smarter?</h2>
-<p>On a tangent, because straight lines are for poor souls who don’t know about Gaussian processes, there’s a body of work on trying to circumvent this problem by being good at maths. The idea is to try to find some cases where we don’t need to explicitly form the covariance matrix in order to do all of the calculations. There’s a somewhat under-cooked<sup>10</sup> literature on this. It dances around an idea that traces back to fast multipole methods for integral equations: We know that correlations decay as points get further apart, so we do not need to calculate the correlations between points that are far apart as well as we need to calculate the correlations between points that are close together. For a fixed covariance kernel that decays in a certain way, you can modify the fast multipole method, however it’s more fruitful to use an algebraic<sup>11</sup> method. H-matrices was the first real version of this, and there’s a <a href="https://ins.uni-bonn.de/media/public/publication-media/gpWithH2.pdf">paper from 2008</a> using them to approximate GPs. A solid chunk of time later, there have been two good papers recently on this stuff. <a href="https://arxiv.org/pdf/1808.03215.pdf">Paper 1</a> <a href="https://www.sciencedirect.com/science/article/pii/S0167947319300374">Paper 2</a>. These methods really only provide gradient descent type methods for maximum likelihood estimation and it’s not clear to me that you’d be able to extend these ideas easily to a Bayesian setting (particularly when you need to infer some parameters in the covariance function)<sup>12</sup>.</p>
-<p>I think this sort of stuff is cool for a variety of reasons, but I also don’t think it’s the entire solution. (There was also a 2019 NeurIPS paper that scales a GP fit to a million observations as if that’s a good idea. It is technically impressive, however.) But I think the main possibility of the H-matrix work is that it allows us to focus on the modelling and not have to make premature trade offs with the computation.</p>
-<p>The problem with modelling a large dataset using a GP is that GPs are usually fit with a bunch of structural assumptions (like stationarity and isotropy) that are great simplifying assumptions for moderate data sizes but emphatically do not capture the complex dependency structures when there is a large amount of data. As you get more data, your model should become correspondingly more complex<sup>13</sup> and stationary, and/or isotropic Gaussian processes emphatically do not do this.</p>
-<p>This isn’t to say that you shouldn’t use GPs on a large data set (I am very much on record as thinking you should), but that it needs to be a <em>part</em> of your modelling arsenal and probably not the whole thing. The real glory of GPs is that they are a flexible enough structure to play well with other modelling techniques. Even if you end up modelling a large data set with a single GP, that GP will most likely be anisotropic, non-stationary, and built up from multiple scales. Which is a different way to say that it likely does not have a squared exponential kernel with different length scales for each feature.</p>
-<p>(It’s probably worth making the disclaimer at this point, but when I’m thinking about GPs, I’m typically thinking about them in 1-4 dimensions. My background is in spatial statistics, so that makes sense. Some of my reasoning doesn’t apply in more typical machine learning applications where <img src="https://latex.codecogs.com/png.latex?s_i"> might be quite high-dimensional. That said, you simply get a different end of the same problem. In that case you need to balance the smoothness needed to interpolate in high dimensions with the structure needed to allow your variables to be a) scaled differently and b) correlated. Life is pain either way.)</p>
-</section>
-<section id="so-can-we-make-things-better" class="level2">
-<h2 class="anchored" data-anchor-id="so-can-we-make-things-better">So can we make things better?</h2>
-<p>The problem with Gaussian processes, at least from a computational point of view, is that they’re just too damn complicated. Because they are supported on some infinite dimensional Banach space <img src="https://latex.codecogs.com/png.latex?B">, the more we need to see of them (for instance because we have a lot of unique <img src="https://latex.codecogs.com/png.latex?s_i">s) the more computational power they require. So the obvious solution is to <em>somehow</em> make Gaussian processes less complex.</p>
-<p>This <em>somehow</em> has occupied a lot of people’s time over the last 20 years and there are many many many many possible options. But for the moment, I just want to focus on one of the generic classes of solutions: You can make Gaussian processes less computationally taxing by making them less expressive.</p>
-<p>Or to put it another way, if you choose an <img src="https://latex.codecogs.com/png.latex?m"> dimensional subspace <img src="https://latex.codecogs.com/png.latex?V_m%20%5Csubset%20B"> and rep;ace the GP <img src="https://latex.codecogs.com/png.latex?u">, which is supported on the whole of <img src="https://latex.codecogs.com/png.latex?B">, with a <em>different</em> Gaussian process <img src="https://latex.codecogs.com/png.latex?u_m"> supported on <img src="https://latex.codecogs.com/png.latex?V_m">, then all of your problems go away.</p>
-<p>Why? Well because the Gaussian process on <img src="https://latex.codecogs.com/png.latex?V_m"> can be represented in terms of an <img src="https://latex.codecogs.com/png.latex?m">-dimensional Gaussian random vector. Just take <img src="https://latex.codecogs.com/png.latex?%5Cphi_j">, <img src="https://latex.codecogs.com/png.latex?j=1,%5Cldots,%20m"> to be a basis for <img src="https://latex.codecogs.com/png.latex?V_m">, then the GP <img src="https://latex.codecogs.com/png.latex?u_m"> can be written as <img src="https://latex.codecogs.com/png.latex?%0Au_m%20=%20%5Csum_%7Bj=1%7D%5Em%20w_j%20%5Cphi_j,%0A"> where <img src="https://latex.codecogs.com/png.latex?w%20%5Csim%20N(%5Cmu,%20%5CSigma)">, for some <img src="https://latex.codecogs.com/png.latex?%5Cmu"> and <img src="https://latex.codecogs.com/png.latex?%5CSigma">. (The critical thing here is that the <img src="https://latex.codecogs.com/png.latex?%5Cphi_j"> are functions so <img src="https://latex.codecogs.com/png.latex?u_m"> is still a random function! That link between the multivariate Gaussian <img src="https://latex.codecogs.com/png.latex?w"> and the function <img src="https://latex.codecogs.com/png.latex?u_m"> that can be evaluated at any <img src="https://latex.codecogs.com/png.latex?s_i"> is really important!)</p>
-<p>This means that I can express my Gaussian process prior in terms of the multivariate Gaussian prior on <img src="https://latex.codecogs.com/png.latex?w">, and I only need <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(m%5E3)"> operations to evaluate its log-density.</p>
-<p>If our observation model is such that <img src="https://latex.codecogs.com/png.latex?p(y_i%20%5Cmid%20u)%20=%20p(y_i%20%5Cmid%20u(s_i))">, and we assume conditional<sup>14</sup> independence, then we can eval the log-likelihood term <img src="https://latex.codecogs.com/png.latex?%0A%5Csum_%7Bi=1%7D%5En%20p(y%20%5Cmid%20u_m(s_i))%20=%20%5Csum_%7Bi=1%7D%5En%20p(y%20%5Cmid%20a_i%5ETw)%0A"> in <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(m%5E2%20n)"> operations. Here <img src="https://latex.codecogs.com/png.latex?%5Ba_i%5D_j%20=%20%5Cphi_j(s_i)"> is the vector that links the basis in <img src="https://latex.codecogs.com/png.latex?u_n"> that we use to define <img src="https://latex.codecogs.com/png.latex?w"> to the observation locations<sup>15</sup>.</p>
-<p>Many have been tempted to look at the previous paragraph and conclude that a single evaluation of the log-posterior (or its gradient) will be <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(n)">, as if that <img src="https://latex.codecogs.com/png.latex?m%5E2"> multiplier were just a piece of fluff to be flicked away into oblivion.</p>
-<p>This is, of course, sparkly bullshit.</p>
-<p>The subspace size <img src="https://latex.codecogs.com/png.latex?m"> controls the trade off between bias and computational cost and, if we want that bias to be reasonably small, we need <img src="https://latex.codecogs.com/png.latex?m"> to be quite large. In a lot of cases, it needs to grow with <img src="https://latex.codecogs.com/png.latex?n">. <a href="https://arxiv.org/pdf/2008.00323.pdf">A nice paper by David Burt, Carl Rasmussen, and Mark van der Wilk</a> suggests that <img src="https://latex.codecogs.com/png.latex?m(n)"> needs to depend on the covariance function<sup>16</sup>. In the best case (when you assume your function is so spectacularly smooth that a squared-exponential covariance function is ok), you need something like <img src="https://latex.codecogs.com/png.latex?m%20=%20%5Cmathcal%7BO%7D(%5Clog(n)%5Ed)">, while if you’re willing to make a more reasonable assumption that your function has <img src="https://latex.codecogs.com/png.latex?%5Cnu"> continuous<sup>17</sup> derivatives, then you need something like <img src="https://latex.codecogs.com/png.latex?m%20=%20%5Cmathcal%7BO%7D(n%5E%5Cfrac%7B2d%7D%7B2%5Cnu-d%7D)">.</p>
-<p>You might look at those two options for <img src="https://latex.codecogs.com/png.latex?m"> and say to yourself “well shit. I’m gonna use a squared exponential from now on”. But it is never as simple as that. You see, if you assume a function is so smooth it is analytic<sup>18</sup>, then you’re assuming that it lacks the derring-do to be particularly interesting between its observed values<sup>19</sup>. This translates to relatively narrow uncertainty bands. Whereas a function with <img src="https://latex.codecogs.com/png.latex?%5Cnu"> derivatives has more freedom to move around the smaller <img src="https://latex.codecogs.com/png.latex?%5Cnu"> is. This naturally results in wider uncertainty bands.</p>
-<p>I think<sup>20</sup> in every paper I’ve seen that compares a squared exponential covariance function to a Matérn-type covariance function (aka the ones that let you have <img src="https://latex.codecogs.com/png.latex?%5Cnu">-times differentiable sample paths), the Matérn family has performed better (in my mind this is also in terms of squared error, but it’s definitely the case when you’re also evaluating the uncertainty of the prediction intervals). So I guess the lesson is that cheap isn’t always good?</p>
-<p>Anyway. The point of all of this is that if we can somehow restrict our considerations to an <img src="https://latex.codecogs.com/png.latex?m">-dimensional subspace of <img src="https://latex.codecogs.com/png.latex?B">, then we can get some decent (if not perfect) computational savings.</p>
-<p>But what are the costs?</p>
-</section>
-<section id="some-notation-that-rapidly-degenerates-into-a-story-thats-probably-not-interesting" class="level2">
-<h2 class="anchored" data-anchor-id="some-notation-that-rapidly-degenerates-into-a-story-thats-probably-not-interesting">Some notation that rapidly degenerates into a story that’s probably not interesting</h2>
-<p>So I guess the key question we need to answer before we commit to any particular approximation of our Gaussian process is <em>what does it cost?</em> That is, how does the approximation affect the posterior distribution?</p>
-<p>To quantify this, we need a way to describe the posterior of a Gaussian process in general. As happens so often when dealing with Gaussian processes, shit is about to get wild.</p>
-<p>A real challenge with working with Gaussian processes theoretically is that they are objects that naturally live on some (separable<sup>21</sup>) Banach space <img src="https://latex.codecogs.com/png.latex?B">. One of the consequences of this is that we <em>cannot</em> just write the density of <img src="https://latex.codecogs.com/png.latex?u"> as <img src="https://latex.codecogs.com/png.latex?%0Ap(u)%20%5Cpropto%20%20%5Cexp%5Cleft(-%5Cfrac%7B1%7D%7B2%7DC_u(u,%20u)%5Cright)%0A"> because there is no measure<sup>22</sup> on <img src="https://latex.codecogs.com/png.latex?B"> such that <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(u%20%5Cin%20A)%20=%20%5Cint_A%20p(u)%5C,du.%0A"></p>
-<p>This means that we can’t just work with densities to do all of our Bayesian stuff. We need to work with posterior probabilities properly.</p>
-<p>Ugh. Measures.</p>
-<p>So let’s do this. We are going to need a prior probability associated with the Gaussian process <img src="https://latex.codecogs.com/png.latex?u">, which we will write as <img src="https://latex.codecogs.com/png.latex?%0A%5Cmu_0(A)%20=%20%5CPr(u%20%5Cin%20A),%0A"> where <img src="https://latex.codecogs.com/png.latex?A"> is a nice<sup>23</sup> set in <img src="https://latex.codecogs.com/png.latex?B">. We can then use this as a <em>base</em> for our posterior, which we define as <img src="https://latex.codecogs.com/png.latex?%0A%5Cmu%5Ey(A)%20=%20%5CPr(u%20%5Cin%20A%20%5Cmid%20y)%20=%20%5Cfrac%7B1%7D%7BZ%7D%5Cmathrm%7Be%7D%5E%7B-%5CPhi(u;y)%7D,%0A"> where <img src="https://latex.codecogs.com/png.latex?%5CPhi(u;y)"> is the negative log-likelihood function. Here <img src="https://latex.codecogs.com/png.latex?Z"> is the normalising constant <img src="https://latex.codecogs.com/png.latex?%0AZ%20=%20%5Cmathbb%7BE%7D_%5Cmu%5Cleft(%20%5Cmathrm%7Be%7D%5E%7B-%5CPhi(u;y)%7D%5Cright),%0A"> which is finite as long as <img src="https://latex.codecogs.com/png.latex?%5Cexp(-%5CPhi(u;y))%20%5Cleq%20C(%5Cepsilon)%5Cexp(%5Cepsilon%5C%7Cu%5C%7C%5E2)"> for all <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%20%3E%200">, where <img src="https://latex.codecogs.com/png.latex?C(%5Cepsilon)%5Cgeq%200"> is a constant. This is a <em>very</em> light condition.</p>
-<p>This way of looking at posteriors resulting Gaussian process priors was popularised in the inverse problems literature<sup>24</sup>. It very much comes from a <em>numerical analysis</em> lens: the work is framed as <em>here is an object, how do we approximate it?</em>.</p>
-<p>These questions are different to the traditional ones answered by a theoretical statistics papers, which are almost always riffs on <em>“what happens in asymptopia?”</em>.</p>
-<p>I came across this work for two reasons: one is because I have been low-key fascinated by Gaussian measures ever since I saw a talk about them during my PhD; and secondly my PhD was in numerical analysis, so I was reading the journals when these papers came out.</p>
-<p>That’s not why I explored these questions, though. That is a longer story. The tl;dr is</p>
-<blockquote class="blockquote">
-<p>I had to learn this so I could show a particular point process model converges, and so now the whole rest of this blog post is contained in a technical appendix that no one has ever read in <a href="https://arxiv.org/abs/1111.0641">this paper</a>.</p>
-</blockquote>
-<section id="here-comes-the-anecdote.-just-skip-to-the-next-bit.-i-know-youre-like-but-daniel-just-delete-the-bullshit-text-but-that-is-clearly-not-how-this-works." class="level3">
-<h3 class="anchored" data-anchor-id="here-comes-the-anecdote.-just-skip-to-the-next-bit.-i-know-youre-like-but-daniel-just-delete-the-bullshit-text-but-that-is-clearly-not-how-this-works.">Here comes the anecdote. Just skip to the next bit. I know you’re like “but Daniel just delete the bullshit text” but that is clearly not how this works.</h3>
-<details>
-<summary>
-Expand at your peril
-</summary>
-<p>I know these papers pretty much backwards for the usual academic reason: out of absolute spite. One of my postdocs involved developing some approximation methods for Markovian Gaussian processes<sup>25</sup>, which allowed for fast computation, especially when combined with INLA<sup>26</sup>, which is a fabulous method for approximating posterior distributions when a big chunk of the unobserved parameters have a joint Gaussian prior<sup>27</sup>.</p>
-<p>One of the things that INLA was already pretty good at doing was fitting log-Gaussian Cox processes (LGCP), which are a type of model for point patterns<sup>28</sup> that can be approximated over a regular grid by a Poisson regression with a log-mean given by (covariates +) a Gaussian process defined on the grid. If that process is Markov, you can get full posterior inference quickly and accurately using INLA. This compared very favourably with pre-INLA methods, which gave you full posterior inference laboriously using a truncated gradient MALA scheme in about the same amount of time it would take the US to get a high-speed rail system.</p>
-<p>Anyway. I was in Trondheim working on INLA and the, at that stage, very new SPDE<sup>29</sup> stuff (the <a href="https://rss.onlinelibrary.wiley.com/doi/full/10.1111/j.1467-9868.2011.00777.x">2011 JRSSSB read paper</a> had not been written yet, let alone been read). <a href="https://www.gla.ac.uk/schools/mathematicsstatistics/staff/janineillian/">Janine Illian</a>, who is a very excellent statistician and an all round fabulous person, had been working on the grided LGCP stuff in INLA and came to Trondheim to work with Håvard<sup>30</sup> and she happened to give a seminar on using these new LGCP methods to do species distribution mapping. I was strongly encouraged to work with Janine to extend her grid methods to the new shiny SPDE methods, which did not need a grid.</p>
-<p>Janine had to tell me what a Poisson distribution was.</p>
-<p>Anyway. A little while later<sup>31</sup> we had a method that worked and we<sup>32</sup> wrote it up. We submitted it to Series B and they desk rejected it. We then, for obscure reasons<sup>33</sup>, submitted it to Biometrika. Due to the glory of arXiv, <a href="https://arxiv.org/pdf/1111.0641v1.pdf">I can link to the original version</a>.</p>
-<p>Although it was completely unlike anything else that Biometrika publishes, we got some quite nice reviews and either major revisions or a revise and resubmit. But one of the reviewer comments pissed me off: they said that we hadn’t demonstrated that our method converges. Now, I was young at the time and new to the field and kinda shocked by all of the shonky numerics that was all over statistics at the time. So this comment<sup>34</sup> pissed me off. More than that, though, I was fragile and I hated the comment because I was new to this and had absolutely no fucking idea how to prove this method would converge. Rasmus Waagepetersen <a href="https://www.sciencedirect.com/science/article/abs/pii/S0167715203003079">had proven convergence of the grid approximation</a> but a) I didn’t understand the proof and b) our situation was so far away there was no chance of piggybacking off it.</p>
-<p>It was also very hard to use other existing statistics literature, because, far from being an iid situation, the negative log-likelihood for a Poisson process<sup>35</sup> on an observation window <img src="https://latex.codecogs.com/png.latex?%5COmega"> is <img src="https://latex.codecogs.com/png.latex?%0A%5CPhi(u;y)%20=%20%5Cint_%5COmega%20e%5E%7Bu(s)%7D%5C,ds%20-%20%5Csum_%7Bs_i%20%5Cin%20y%7De%5E%7Bu(s_i)%7D%20-%20%7C%5COmega%7C,%0A"> where the point pattern <img src="https://latex.codecogs.com/png.latex?y"> is a (random) collection of points <img src="https://latex.codecogs.com/png.latex?s_j"> and <img src="https://latex.codecogs.com/png.latex?%7C%5COmega%7C"> is the area/volume of the observation window. This is fundamentally not like a standard GP regression.</p>
-<p>So, long story short<sup>36</sup>, I was very insecure and rather than admit that it was difficult to show that these approximations converged, I worked on and off for like 2 years trying to work out how to do this<sup>37</sup> and eventually came up with a fairly full convergence theory for posteriors derived from approximate likelihoods and finite dimensional approximations to Gaussian processes<sup>38</sup>. Which I then put into the appendix of a paper that was essentially about something completely different.</p>
-<p>I don’t have all that many professional regrets (which is surprising because I’ve made a lot of questionable choices), but I do regret not just making that appendix its own paper. Because it was really good work.</p>
-<p>But anyway, I took the inverse problems<sup>39</sup> work of Andrew Stuart and Masoumeh Dashti and extended it out to meet my needs. And to that end, I’m going to bring out a small corner of that appendix because it tells us what happens to a posterior when we replace a Gaussian process by a finite dimensional approximation.</p>
-</details>
-</section>
-</section>
-<section id="how-do-we-measure-if-a-posterior-approximation-is-good" class="level2">
-<h2 class="anchored" data-anchor-id="how-do-we-measure-if-a-posterior-approximation-is-good">How do we measure if a posterior approximation is good?</h2>
-<p>Part of the struggle when you’re working with Gaussian processes as actual objects rather than as a way to generate a single finite-dimensional Gaussian distribution that you use for analysis is that, to quote Cosma Shalizi<sup>40</sup>, <em>“the topology of such spaces is somewhat odd, and irritatingly abrupt”</em>. Or to put it less mathematically, it is <em>hard</em> to quantify which Gaussian processes are close together.</p>
-<p>We actually saw this in the last blog where we noted that the distribution of <img src="https://latex.codecogs.com/png.latex?v%20=%20cu"> has no common support with the distribution of <img src="https://latex.codecogs.com/png.latex?u"> if <img src="https://latex.codecogs.com/png.latex?%7Cc%7C%20%5Cneq%201">. This means, for instance, that the total variation between <img src="https://latex.codecogs.com/png.latex?u"> and <img src="https://latex.codecogs.com/png.latex?v"> is 2 (which is it’s largest possible value) even if <img src="https://latex.codecogs.com/png.latex?c%20=%201%20+%20%5Cepsilon"> for some <em>tiny</em> <img src="https://latex.codecogs.com/png.latex?%5Cepsilon">.</p>
-<p>More generally, if you’re allowed to choose what you mean by “these distributions are close” you can get a whole range of theoretical results for the posteriors of infinite dimensional parameters, ranging from <em>this will never work and Bayes in bullshit</em> to <em>everything is wonderful and you never have to worry</em>.</p>
-<p>So this is not a neutral choice.</p>
-<p>In the absence of a neutral choice, we should try to make a meaningful one! An ok option for that is to try to find functions <img src="https://latex.codecogs.com/png.latex?G(u)"> that we may be interested in. Classically, we would choose <img src="https://latex.codecogs.com/png.latex?G"> to be bounded (weak<sup>41</sup> convergence / convergence in distribution) or bounded Lipschitz<sup>42</sup>. This is good but it precludes things like means and variances, which we would quite like to converge!</p>
-<p>The nice thing about everything being based off a Gaussian process is that we know<sup>43</sup> that there is some <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%20%3E%200"> (which may be very small) such that <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathbb%7BE%7D_%7B%5Cmu_0%7D%5Cleft(%5Cmathrm%7Be%7D%5E%7B%5Cepsilon%20%5C%7Cu%5C%7C_B%5E2%7D%5Cright)%20%3C%20%5Cinfty.%0A"> This suggests that as long as the likelihood isn’t too evil, the posterior will also have a whole arseload of moments.</p>
-<p>This is great because it suggests that we can be more ambitious than just looking at bounded Lipschitz functions. It turns out that we can consider convergence over the class of functionals <img src="https://latex.codecogs.com/png.latex?G"> such that <img src="https://latex.codecogs.com/png.latex?%0A%7CG(u)%20-%20G(v)%7C%20%5Cleq%20L(u)%20%5C%7Cu%20-%20v%5C%7C_B,%0A"> where <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BE%7D_%7B%5Cmu_0%7D(L(u))%20%3C%20%5Cinfty">. Critically this includes functions like moments of <img src="https://latex.codecogs.com/png.latex?%5C%7Cu%5C%7C_B"> and, assuming all of the functions in <img src="https://latex.codecogs.com/png.latex?B"> are continuous, moments of <img src="https://latex.codecogs.com/png.latex?u(s)">. These <em>are</em> the functions we tend to care about!</p>
-</section>
-<section id="convergence-of-finite-dimensional-gaussian-processes" class="level2">
-<h2 class="anchored" data-anchor-id="convergence-of-finite-dimensional-gaussian-processes">Convergence of finite dimensional Gaussian processes</h2>
-<p>In order to discuss the convergence of finite dimensional Gaussian processes, we need to define them and, in particular, we need to link them to some Gaussian process on <img src="https://latex.codecogs.com/png.latex?B"> that they are approximating.</p>
-<p>Let <img src="https://latex.codecogs.com/png.latex?u"> be a Gaussian process supported on a Banach space <img src="https://latex.codecogs.com/png.latex?B">. We define a <em>finite dimensional Gaussian process</em> to be a Gaussian process supported on some space <img src="https://latex.codecogs.com/png.latex?V_m%20%5Csubset%20B"> that satisfies <img src="https://latex.codecogs.com/png.latex?%0Au_n%20=%20R_m%20u,%0A"> where <img src="https://latex.codecogs.com/png.latex?R_m:%20B%20%5Crightarrow%20V_m"> is some operator. (For this to be practical we want this to be a family of operators indexed by <img src="https://latex.codecogs.com/png.latex?m">.)</p>
-<p>It will turn out that <em>how</em> this restriction is made is important. In particular, we are going to need to see how <em>stable</em> this restriction is. This can be quantified by examining <img src="https://latex.codecogs.com/png.latex?%0A%5Csup_%7B%5C%7Cf%5C%7C_V%20=%201%7D%20%5C%7CR_m%20f%5C%7C_%7BB%7D%20%5Cleq%20A_m%20%5C%7Cf%5C%7C_V,%0A"> where <img src="https://latex.codecogs.com/png.latex?A_m%20%3E%200"> is a constant that could vary with <img src="https://latex.codecogs.com/png.latex?m"> and <img src="https://latex.codecogs.com/png.latex?V%20%5Csubseteq%20B"> is some space we will talk about later. (Confusingly, I have set up the notation so that it’s not necessarily true that <img src="https://latex.codecogs.com/png.latex?V_m%20%5Csubset%20V">. Don’t hate me because I’m pretty, hate me because I do stupid shit like that.)</p>
-<section id="example-1-an-orthogonal-truncation" class="level3">
-<h3 class="anchored" data-anchor-id="example-1-an-orthogonal-truncation">Example 1: An orthogonal truncation</h3>
-<p>There is a prototypical example of <img src="https://latex.codecogs.com/png.latex?R_m">. Every Gaussian process on a separable Banach space admits a Karhunen-Loève representation <img src="https://latex.codecogs.com/png.latex?%0Au%20=%20%5Csum_%7Bk%20=%200%7D%5E%5Cinfty%20%5Clambda_k%5E%7B1/2%7D%20z_k%20%5Cphi_k,%0A"> <img src="https://latex.codecogs.com/png.latex?z_k"> are iid standard normal random variables and <img src="https://latex.codecogs.com/png.latex?(%5Clambda_k,%20%5Cphi_k)"> are the eigenpairs<sup>44</sup> of the covariance operator <img src="https://latex.codecogs.com/png.latex?C_u">. The natural restriction operator is then <img src="https://latex.codecogs.com/png.latex?%0AR_m%20f%20=%20%5Csum_%7Bj=0%7D%5Em%20%5Clangle%20f,%20%5Cphi_j%5Crangle_%7BL%5E2%7D%5Cphi_j.%0A"> This was the case considered by Dashti and Stuart in their 2011 paper. Although it’s prototypical, we typically do not work with the Karhunen-Loève basis directly, as it tends to commit us to a domain <img src="https://latex.codecogs.com/png.latex?%5COmega">. (Also because we almost<sup>45</sup> never know what the <img src="https://latex.codecogs.com/png.latex?%5Cphi_j"> are.)</p>
-<p>Because this truncation is an orthogonal projection, it follows that we have the stability bound with <img src="https://latex.codecogs.com/png.latex?A_m%20=%201"> for all <img src="https://latex.codecogs.com/png.latex?m">.</p>
-</section>
-<section id="example-2-subset-of-regressors" class="level3">
-<h3 class="anchored" data-anchor-id="example-2-subset-of-regressors">Example 2: Subset of regressors</h3>
-<p>Maybe a more interesting example is the <em>subset of regressors</em><sup>46</sup>. In this case, there are a set of inducing points <img src="https://latex.codecogs.com/png.latex?s_1,%20%5Cldots,%20s_m"> and <img src="https://latex.codecogs.com/png.latex?%0AR_m%20f%20=%20%5Csum_%7Bj=1%7D%5Em%20w_j%20r_u(%5Ccdot,%20s_j),%0A"> where the weights solve <img src="https://latex.codecogs.com/png.latex?%0AK_m%20w%20=%20b,%0A"> <img src="https://latex.codecogs.com/png.latex?%5BK_m%5D_%7Bij%7D%20=%20r_u(s_i,%20s_j)"> and <img src="https://latex.codecogs.com/png.latex?b_j%20=%20f(s_j)">.</p>
-<p>It’s a bit harder to get the stability result in this case. But if we let <img src="https://latex.codecogs.com/png.latex?V_m"> have the RKHS<sup>47</sup> norm, then <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0A%5C%7CR_m%20f%5C%7C%5E2_%7BH_u%7D%20&amp;=%20w%5ETK_m%20w%20%5C%5C%0A&amp;=%20b%5ET%20K%5E%7B-1%7D%20b%20%5C%5C%0A&amp;%5Cleq%20%5C%7CK%5E%7B-1%7D%5C%7C_2%20%5C%7Cb%5C%7C_2%5E2%0A%5Cend%7Balign*%7D"></p>
-<p>Assuming that <img src="https://latex.codecogs.com/png.latex?B"> contains continuous functions, then <img src="https://latex.codecogs.com/png.latex?%5C%7Cb%5C%7C_2%20%5Cleq%20C%5Csqrt%7Bm%7D%20%5C%7Cf%5C%7C_B">. I’m pretty lazy so I’m choosing not to give a shit about that <img src="https://latex.codecogs.com/png.latex?%5Csqrt%7Bm%7D"> but I doubt it’s unimprovable<sup>48</sup>. To be honest, I haven’t thought deeply about these bounds, I am doing them live, on my couch, after a couple of red wines. If you want a good complexity analysis of subset of regressors, google.</p>
-<p>More interestingly, <img src="https://latex.codecogs.com/png.latex?%5C%7CK_m%5E%7B-1%7D%5C%7C_2"> can be bounded, under mild conditions on the locations of the <img src="https://latex.codecogs.com/png.latex?s_j"> by the <img src="https://latex.codecogs.com/png.latex?m">-th largest eigenvalue of the operator <img src="https://latex.codecogs.com/png.latex?Kf%20=%20%5Cint_%5COmega%20r_u(s,t)f(t)%5C,dt">. This eigenvalue is controlled by how differentiable <img src="https://latex.codecogs.com/png.latex?u"> is, and is roughly <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D%5Cleft(m%5E%7B-%5Calpha%20-%20d/2%7D%5Cright)"> if <img src="https://latex.codecogs.com/png.latex?u"> has a version with <img src="https://latex.codecogs.com/png.latex?%5Calpha">-almost sure (Hölder) derivatives. In the (common) case where <img src="https://latex.codecogs.com/png.latex?u"> is analytic (eg if you used the squared exponential covariance function), then this bound increases exponentially (or squared exponentially for the squared exponential) in <img src="https://latex.codecogs.com/png.latex?m">.</p>
-<p>This means that the stability constant <img src="https://latex.codecogs.com/png.latex?A_m%20%5Cgeq%20%5C%7CK_m%5E%7B-1%7D%5C%7C"> will increase with <img src="https://latex.codecogs.com/png.latex?m">, sometimes quite alarmingly. <a href="https://www.jstor.org/stable/26164293?seq=1#metadata_info_tab_contents">Wing</a> argues that it is always at least <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(m%5E2)">. <a href="https://core.ac.uk/download/pdf/9695548.pdf">Wathan and Zhu</a> have a good discussion for the one-dimensional case and a lot of references to the more general situation.</p>
-</section>
-<section id="example-3-the-spde-method" class="level3">
-<h3 class="anchored" data-anchor-id="example-3-the-spde-method">Example 3: The SPDE method</h3>
-<p>My personal favourite way to approximate Gaussian processes works when they are <em>Markovian</em>. The Markov property, in general, says that if, for every<sup>49</sup> set of disjoint open domains <img src="https://latex.codecogs.com/png.latex?S_1"> and <img src="https://latex.codecogs.com/png.latex?S_2%20=%20%5COmega%20%5Cbackslash%20%5Cbar%20S_1"> such that <img src="https://latex.codecogs.com/png.latex?S_1%20%5Ccup%20%5CGamma%20%5Ccup%20S_2">, where <img src="https://latex.codecogs.com/png.latex?%5CGamma"> is the <em>boundary</em> between <img src="https://latex.codecogs.com/png.latex?S_1"> and <img src="https://latex.codecogs.com/png.latex?S_2">, then <img src="https://latex.codecogs.com/png.latex?%0A%5CPr(A_1%20%5Ccup%20A_2%20%5Cmid%20B_%5Cepsilon)%20=%20%5CPr(A_1%20%5Cmid%20B_%5Cepsilon)%20%5CPr(A_2%20%5Cmid%20B_%5Cepsilon),%0A"> where <img src="https://latex.codecogs.com/png.latex?A_j%20%5Cin%20%5Csigma%5Cleft(%5C%7Bu(s),%20s%20%5Cin%20S_j%5C%7D%5Cright)"> and<sup>50</sup> <img src="https://latex.codecogs.com/png.latex?B_%5Cepsilon%20%5Cin%20%5Csigma%5Cleft(%5C%7Bu(s);%20d(s,%20%5CGamma)%20%3C%20%5Cepsilon%5C%7D%5Cright)"> and <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%3E0">.</p>
-<p>Which is to say that it’s the normal Markov property, but you may need to fatten out the boundary between disjoint domains infinitesimally for it to work.</p>
-<p>In this case, we<sup>51</sup> know that the reproducing kernel Hilbert space has the property that the inner product is <em>local</em>. That means that if <img src="https://latex.codecogs.com/png.latex?f"> and <img src="https://latex.codecogs.com/png.latex?g"> are in <img src="https://latex.codecogs.com/png.latex?H_u"> and have disjoint support<sup>52</sup> then <img src="https://latex.codecogs.com/png.latex?%0A%5Clangle%20f,%20g%5Crangle_%7BH_u%7D%20=%200,%0A"> which, if you squint, implies that the precision operator <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BQ%7D"> is a differential operator. (That the RKHS inner product being local basically defines the Markov property.)</p>
-<p>We are going to consider a special case<sup>53</sup>, where <img src="https://latex.codecogs.com/png.latex?u"> solves the partial differential equation <img src="https://latex.codecogs.com/png.latex?%0AL%20u%20=%20W,%0A"> where <img src="https://latex.codecogs.com/png.latex?L"> is some differential operator and <img src="https://latex.codecogs.com/png.latex?W"> is <em>white noise</em><sup>54</sup>.</p>
-<p>We make sense of this equation by saying a Gaussian process <img src="https://latex.codecogs.com/png.latex?u"> solves it if <img src="https://latex.codecogs.com/png.latex?%0A%5Cint_%5COmega%20%5Cleft(L%5E*%5Cphi(s)%5Cright)%5Cleft(%20u(s)%5Cright)%5C,ds%20%20%5Csim%20N%5Cleft(0,%20%5Cint_%5COmega%20%5Cphi%5E2(s)%5C,ds%5Cright),%0A"> for every smooth function <img src="https://latex.codecogs.com/png.latex?%5Cphi">, where <img src="https://latex.codecogs.com/png.latex?L%5E*"> is the adjoint of <img src="https://latex.codecogs.com/png.latex?L"> (we need to do this because, in general, the derivatives of <img src="https://latex.codecogs.com/png.latex?u"> could be a bit funky).</p>
-<p>If we are willing to believe this exists (it does—it’s a linear filter of white noise, electrical engineers would die if it didn’t) then <img src="https://latex.codecogs.com/png.latex?u"> is a Gaussian process with zero mean and covariance operator <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathcal%7BC%7D%20=%20(L%5E*L)%5E%7B-1%7D,%0A"> where <img src="https://latex.codecogs.com/png.latex?L%5E*"> is the adjoint of <img src="https://latex.codecogs.com/png.latex?L">.</p>
-<p>This all seems like an awful lot of work, but it’s the basis of one of the more powerful methods for approximating Gaussian processes on low-dimensional spaces (or low-dimensional manifolds). In particular in 1-3 dimensions<sup>55</sup> or in (1-3)+1 dimensions<sup>56</sup> (as in space-time), Gaussian processes that are built this way can be extremely efficient.</p>
-<p>This representation was probably first found by <a href="https://academic.oup.com/biomet/article-abstract/41/3-4/434/230856?redirectedFrom=fulltext">Peter Whittle</a> and <a href="https://rss.onlinelibrary.wiley.com/doi/full/10.1111/j.1467-9868.2011.00777.x">Finn Lindgren, Johan Lindström and Håvard Rue</a> combined it with the finite element method to produce the SPDE method<sup>57</sup> A good review of the work that’s been done can be <a href="https://arxiv.org/pdf/2111.01084.pdf">found here</a>. There’s also a whole literature on linear filters and stochastic processes.</p>
-<p>We can use this <em>SDPE</em> representation of <img src="https://latex.codecogs.com/png.latex?u"> to construct a finite-dimensional Gaussian process and a restriction operator <img src="https://latex.codecogs.com/png.latex?R_m">. To do this, we define <img src="https://latex.codecogs.com/png.latex?L_m"> as the operator defined implicitly through the equation <img src="https://latex.codecogs.com/png.latex?%0A%5Clangle%20%5Cphi,%20L%5Cpsi%5Crangle_%7BL%5E2%7D%20=%20%5Clangle%20%5Cphi,%20L_m%5Cpsi%5Crangle_%7BL%5E2%7D,%20%5Cquad%20%5Cforall%20%5Cphi,%5Cpsi%20%5Cin%20V_m.%0A"> This is often called the Galerkin projection<sup>58</sup>. It is at the heart of the finite element method for solving elliptic partial differential equations.</p>
-<p>We can use <img src="https://latex.codecogs.com/png.latex?L_m"> to construct a Gaussian process with covariance function <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathcal%7BC%7D_m%20=%20(L_m%5E*L_m)%5E%5Cdagger,%0A"> where <img src="https://latex.codecogs.com/png.latex?%5E%5Cdagger"> is a pseudo-inverse<sup>59</sup>.</p>
-<p>It follows that <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathcal%7BC%7D_m%20%20=(L_m)%5E%5Cdagger%20L%20L%5E%7B-1%7D(L%5E*)%5E%7B-1%7DL%5E*(L_m%5E*)%5E%5Cdagger%20=%20R_m%20%5Cmathcal%7BC%7D%20R_m%5E*,%0A"> where <img src="https://latex.codecogs.com/png.latex?R_m%20=%20L_m%5E%5Cdagger%20L">.</p>
-<p>Before we can get a stability estimate, we definitely need to choose our space <img src="https://latex.codecogs.com/png.latex?V_m">. In general, the space will depend on the order of the PDE<sup>60</sup>, so to make things concrete we will work with second-order elliptic<sup>61</sup> PDE <img src="https://latex.codecogs.com/png.latex?%0ALu%20=%20-%5Csum_%7Bi,j%20=%201%7D%5Ed%5Cfrac%7B%5Cpartial%7D%7B%5Cpartial%20s_j%7D%5Cleft(a_%7Bij%7D(s)%20%5Cfrac%7B%5Cpartial%20u%7D%7B%5Cpartial%20s_i%7D%20%5Cright)%20+%5Csum_%7Bi=1%7D%5Ed%20b_i%5Cfrac%7B%5Cpartial%20u%7D%7B%5Cpartial%20s_i%7D%20+%20b_0(s)u(s),%0A"> where all of the <img src="https://latex.codecogs.com/png.latex?a_%7Bij%7D(s)"> and <img src="https://latex.codecogs.com/png.latex?b_j(s)"> are <img src="https://latex.codecogs.com/png.latex?L%5E%5Cinfty(%5COmega)"> and the uniform ellipticity condition<sup>62</sup> holds.</p>
-<p>These operators induce (potentially non-stationary) Gaussian processes that have continuous versions as long as<sup>63</sup> <img src="https://latex.codecogs.com/png.latex?d%20%5Cleq%203">.</p>
-<p>With this fixed, the natural finite element space to use is the space of continuous piecewise linear functions. Traditionally, this is done using combinations of tent functions on a triangular mesh.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/fem.png" class="img-fluid figure-img"></p>
-<figcaption>A piecewise linear approximation. <a href="https://arxiv.org/pdf/1110.6796.pdf">Source</a></figcaption>
-</figure>
-</div>
-<p>With this basis, we can get stability estimates by defining <img src="https://latex.codecogs.com/png.latex?v"> and <img src="https://latex.codecogs.com/png.latex?v_m"> by <img src="https://latex.codecogs.com/png.latex?Lv%20=%20f"> and <img src="https://latex.codecogs.com/png.latex?L_m%20v_m%20=%20f_m">, from which we get <img src="https://latex.codecogs.com/png.latex?%0A%5C%7CR_m%20v%5C%7C_B%20=%20%5C%7Cv_m%5C%7C_%7BV_m%7D%20%5Cleq%20A%5C%7Cf%5C%7C_%7BL_2%7D%0A"> which holds, in particular, when the <img src="https://latex.codecogs.com/png.latex?L"> has no first order derivatives<sup>64</sup>.</p>
-<p>An oddity about this structure is that functions in <img src="https://latex.codecogs.com/png.latex?V_m"> are not not continuously differentiable, while the sample paths of <img src="https://latex.codecogs.com/png.latex?u"> almost surely are<sup>65</sup>. This means that <img src="https://latex.codecogs.com/png.latex?V_m"> isn’t necessarily a subset of <img src="https://latex.codecogs.com/png.latex?B"> as we would naturally define it. In this case, we need to inflate <img src="https://latex.codecogs.com/png.latex?B"> to be big enough to contain the <img src="https://latex.codecogs.com/png.latex?V_m">. So instead of taking <img src="https://latex.codecogs.com/png.latex?B%20=%20C%5E1(%5COmega)">, we need to take <img src="https://latex.codecogs.com/png.latex?B%20=%20C(%5COmega)"> or <img src="https://latex.codecogs.com/png.latex?B%20=%20L%5E2(%5COmega)">.</p>
-<p>This has implications on the smoothness assumptions on <img src="https://latex.codecogs.com/png.latex?%5CPhi(u;y)">, which will need to hold uniformly over <img src="https://latex.codecogs.com/png.latex?B"> and <img src="https://latex.codecogs.com/png.latex?V_m"> if <img src="https://latex.codecogs.com/png.latex?V_m%20%5Cnot%20%5Csubset%20B"> and on the set of functionals <img src="https://latex.codecogs.com/png.latex?G(u)"> that we use to measure convergence.</p>
-</section>
-<section id="a-bit-of-perspective" class="level3">
-<h3 class="anchored" data-anchor-id="a-bit-of-perspective">A bit of perspective</h3>
-<p>The critical difference between the SPDE method and the subset-of-regressors approximation is that for the SPDE method, the stability constant <img src="https://latex.codecogs.com/png.latex?A_m%20=%20A"> is independent of <img src="https://latex.codecogs.com/png.latex?m">. This will be important, as this constant pops up somewhere important when we are trying to quantify the error in the finite dimensional approximation.</p>
-<p>On the other hand, the SPDE method only works in three and fewer dimensions and while it allows for quite flexible covariance structures<sup>66</sup>, it is can only directly construct Gaussian processes with integer numbers of continuous derivatives. Is this a problem? The asymptotics say yes, but they only hold if we are working with the exact Gaussian process (or, I guess, if we let the dimension of <img src="https://latex.codecogs.com/png.latex?V_m"> hurtle off towards infinity as we get more and more data).</p>
-<p>In practice, the Gaussian processes constructed via SPDE methods perform very well on real data<sup>67</sup>. I suspect part of this is that the stable set of basis functions are very good at approximating functions and the misspecification error plays off against the approximation error.</p>
-</section>
-</section>
-<section id="bounding-the-approximation-error" class="level2">
-<h2 class="anchored" data-anchor-id="bounding-the-approximation-error">Bounding the approximation error</h2>
-<p>With all of this setup, we are finally ready to bound the error between the posterior we would get with the full Gaussian process prior and the posterior we would get using the finite dimensional Gaussian process prior.</p>
-<p>We are going to deal with a simpler scenario than <a href="https://arxiv.org/abs/1111.0641">the paper we are (sort of) following</a>, because in that situation, I was forced to deal with simultaneously approximating the likelihood and honestly who needs that trouble.</p>
-<p>To remind ourselves, we have two priors: the full fat Gaussian process prior, the law of which we denote <img src="https://latex.codecogs.com/png.latex?%5Cmu_0"> and the one we could possibly work with <img src="https://latex.codecogs.com/png.latex?%5Cmu_0%5Em">. These lead to two different posteriors <img src="https://latex.codecogs.com/png.latex?%5Cmu_y"> and <img src="https://latex.codecogs.com/png.latex?%5Cmu_y%5Em"> given by <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7Bd%5Cmu_y%7D%7Bd%5Cmu_0%7D(u)%20=%20%5Cfrac%7B1%7D%7BZ%7D%5Cmathrm%7Be%7D%5E%7B-%5CPhi(u;y)%7D%20%5Cquad%20%5Ctext%7Band%7D%5Cquad%20%5Cfrac%7Bd%5Cmu_y%5Em%7D%7Bd%5Cmu_0%5Em%7D(u)%20=%20%5Cfrac%7B1%7D%7BZ_m%7D%5Cmathrm%7Be%7D%5E%7B-%5CPhi(u;y)%7D%20,%0A"> where <img src="https://latex.codecogs.com/png.latex?Z_1"> and <img src="https://latex.codecogs.com/png.latex?Z_m"> are normalising constants.</p>
-<p>We assume that the Gaussian process <img src="https://latex.codecogs.com/png.latex?u"> is supported on some Banach space <img src="https://latex.codecogs.com/png.latex?V%20%5Csubseteq%20B"> and the approximating spaces <img src="https://latex.codecogs.com/png.latex?V_m%20%5Csubset%20B">. This covers the case where the approximating functions are rougher than the true realisations of the Gaussian process we are approximating. With this notation, we have the restriction operator <img src="https://latex.codecogs.com/png.latex?R_m"> that satisfies <img src="https://latex.codecogs.com/png.latex?%0A%5C%7CR_mf%5C%7C_%7BV_m%7D%20%5Cleq%20A_m%20%5C%7Cf%5C%7C_V,%0A"> which is a slightly more targeted bound when <img src="https://latex.codecogs.com/png.latex?B"> is larger than <img src="https://latex.codecogs.com/png.latex?V">.</p>
-<p>We will make the following assumptions about the negative log-likelihood (or potential function) <img src="https://latex.codecogs.com/png.latex?%5CPhi">: For every <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%20%3E%200">, <img src="https://latex.codecogs.com/png.latex?r%3E%200">, and<sup>68</sup> <img src="https://latex.codecogs.com/png.latex?%5C%7Cy%5C%7C%20%3C%20r">, there exist positive constants <img src="https://latex.codecogs.com/png.latex?C_1,%20C_2,%20C_3,%20C_4"> that may depend on <img src="https://latex.codecogs.com/png.latex?%5Cepsilon"> and <img src="https://latex.codecogs.com/png.latex?r"> such that the following 4 conditions hold. (Note: when the norm isn’t specified, we want it to hold over both the <img src="https://latex.codecogs.com/png.latex?V"> and <img src="https://latex.codecogs.com/png.latex?B"> norms.)</p>
-<ol type="1">
-<li><p>For all <img src="https://latex.codecogs.com/png.latex?u%20%5Cin%20V%20%5Ccup%20%5Cleft(%5Cbigcup_%7Bm%5Cgeq%201%7D%20V_m%5Cright)"> <img src="https://latex.codecogs.com/png.latex?%0A%5CPhi(u;y)%20%5Cgeq%20C_1%20-%20%5Cepsilon%20%5C%7Cu%5C%7C%5E2%0A"></p></li>
-<li><p>For every <img src="https://latex.codecogs.com/png.latex?u%5Cin%20B">, <img src="https://latex.codecogs.com/png.latex?y%20%5Cin%20Y"> with <img src="https://latex.codecogs.com/png.latex?%5Cmax%20%5C%7B%5C%7Cu%5C%7C,%20%5C%7Cy%5C%7C_Y%5C%7D%20%3C%20r">, <img src="https://latex.codecogs.com/png.latex?%0A%5CPhi(u;y)%20%5Cleq%20C_2%0A"></p></li>
-<li><p>For every <img src="https://latex.codecogs.com/png.latex?%5Cmax%20%5C%7B%5C%7Cu_1%5C%7C_V,%20%5C%7Cu_2%5C%7C_B,%20%5C%7Cy%5C%7C_Y%5C%7D%20%3C%20r">, <img src="https://latex.codecogs.com/png.latex?%0A%7C%5CPhi(u_1;%20y)%20-%20%5CPhi(u_2;%20y%20)%7C%20%5Cleq%20%5Cexp%5Cleft(%5Cepsilon%5Cmax%5C%7B%5C%7Cu_1%5C%7C_V%5E2,%20%5C%7Cu_2%5C%7C_B%5E2%5C%7D%20-%20C_3%5Cright)%20%5C%7Cu_1%20-%20u_2%5C%7C_B%0A"></p></li>
-<li><p>For every <img src="https://latex.codecogs.com/png.latex?u%5Cin%20B"> and <img src="https://latex.codecogs.com/png.latex?%5Cmax%20%5C%7B%5C%7Cy_1%5C%7C_Y,%20%5C%7Cy_2%5C%7C_Y%5C%7D%20%3C%20r">, <img src="https://latex.codecogs.com/png.latex?%0A%7C%5CPhi(u;%20y_1)%20-%20%5CPhi(u;%20y_2)%20%7C%20%5Cleq%20%20%5Cexp%5Cleft(%5Cepsilon%20%5C%7Cu%5C%7C%5E2%20+%20C_4%5Cright)%5C%7Cy_1%20-%20y_2%5C%7C_Y%0A"></p></li>
-</ol>
-<p>These restrictions are pretty light and are basically what are needed to make sure the posteriors exist. The first one say “don’t grow too fast” to the likelihood and is best explained while humming ABBA’s <a href="https://www.youtube.com/watch?v=hRr7qRb-7k4">Slipping Through My Fingers</a>. The second one makes sure the likelihood isn’t <a href="https://www.youtube.com/watch?v=3wk7C64kaP4">zero</a>. The third and fourth are <a href="https://www.youtube.com/watch?v=0Z-Orh7dpKU">Lipschitz conditions</a> that basically make sure that a small change in <img src="https://latex.codecogs.com/png.latex?u"> (or <img src="https://latex.codecogs.com/png.latex?y">) doesn’t make a big change in the likelihood. It should be pretty clear that if that could happen, the two posteriors wouldn’t be close.</p>
-<p>We are also going to need some conditions on our test functions. Once again, we need them to apply over <img src="https://latex.codecogs.com/png.latex?V"> and <img src="https://latex.codecogs.com/png.latex?B"> when no space is specified for the norm.</p>
-<ol type="1">
-<li><p>For all <img src="https://latex.codecogs.com/png.latex?u%20%5Cin%20V">, <img src="https://latex.codecogs.com/png.latex?G(u)%20=%20%5Cexp(%5Cepsilon%20%5C%7Cu%5C%7C%5E2_V+%20C_5)"></p></li>
-<li><p>For all <img src="https://latex.codecogs.com/png.latex?u_1%20%5Cin%20V">, <img src="https://latex.codecogs.com/png.latex?u_2%20%5Cin%20V_m">, <img src="https://latex.codecogs.com/png.latex?%0A%7CG(u_1)%20-%20G(u_2)%7C%20%5Cleq%20%5Cexp(%5Cepsilon%5Cmax%5C%7B%5C%7Cu_1%5C%7C%5E2_V,%20%5C%7Cu_2%5C%7C%5E2_B%5C%7D)%5C%7Cu_1%20-%20u_2%5C%7C_B.%0A"></p></li>
-</ol>
-<p>Under these conditions, we get the following theorem, which is a simplified version of <a href="https://arxiv.org/abs/1111.0641">Theorem A2 here</a>.</p>
-<div id="thm-bound1" class="theorem">
-<p><span class="theorem-title"><strong>Theorem 1</strong></span> Under the above assumptions, <img src="https://latex.codecogs.com/png.latex?%0A%5Cleft%7C%5Cmathbb%7BE%7D_%7B%5Cmu_y%7D(G(u))%20-%20%5Cmathbb%7BE%7D_%7B%5Cmu%5Em_y%7D(G(u_m))%5Cright%7C%20%5Cleq%20C_m%20%5Csup_%7Bf%20%5Cin%20V%7D%5Cleft(%5Cfrac%7B%5C%7Cf%20-%20R_m%20f%5C%7C_B%7D%7B%5C%7Cf%5C%7C_V%7D%5Cright),%0A"> where <img src="https://latex.codecogs.com/png.latex?C_m"> only depends on <img src="https://latex.codecogs.com/png.latex?m"> through <img src="https://latex.codecogs.com/png.latex?A_m">.</p>
-</div>
-<p>I seriously doubt that the dependence on <img src="https://latex.codecogs.com/png.latex?A_m"> is exponential, as it is in the proof, but I’m not going to try to track that down. That said, I’m also quite sure that the dependence <img src="https://latex.codecogs.com/png.latex?C_m"> is not uniform in <img src="https://latex.codecogs.com/png.latex?m"> unless <img src="https://latex.codecogs.com/png.latex?A_m"> is constant.</p>
-<p>It’s also worth noting that there’s nothing special about <img src="https://latex.codecogs.com/png.latex?G"> being real-valued. In general it can take values in any Banach space <img src="https://latex.codecogs.com/png.latex?E">. Just replace all those absolute values with norms. That means that the result covers convergence of approximations to things like covariance matrices.</p>
-<details>
-<summary>
-Proof, if you’re interested
-</summary>
-<p>We are interested in approximating <img src="https://latex.codecogs.com/png.latex?%0Ae_G%20=%20%5Cleft%7C%5Cmathbb%7BE%7D_%7B%5Cmu_y%7D(G(u))%20-%20%5Cmathbb%7BE%7D_%7B%5Cmu%5Em_y%7D(G(u_m))%5Cright%7C.%0A"> We can expand this to get <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0Ae_G%20%5Cleq%20&amp;%20%5Cfrac%7B1%7D%7BZ%7D%5Cleft%7C%5Cmathbb%7BE%7D_%7B%5Cmu_0%7D%5Cleft(G(u)%5Cexp(-%5CPhi(u;y))%5Cright)%0A-%20%5Cmathbb%7BE%7D_%7B%5Cmu_0%5Em%7D%5Cleft(G(u_m)%5Cexp(-%5CPhi(u_mm;y))%5Cright)%5Cright%7C%20%5C%5C%0A&amp;%5Cquad%20+%0A%5Cleft%7C%5Cfrac%7B1%7D%7BZ%7D%0A-%20%5Cfrac%7B1%7D%7BZ_m%7D%5Cright%7C%5Cmathbb%7BE%7D_%7B%5Cmu_0%5Em%7D%5Cleft(%7CG(u_m)%7C%5Cexp(-%5CPhi(u_m;y))%5Cright).%20%5C%5C%0A&amp;=%20B_1%20+%20B_2.%0A%5Cend%7Balign*%7D"></p>
-<p>It follows from <a href="https://homepages.warwick.ac.uk/~masdr/BOOKCHAPTERS/stuart15c.pdf">Andrew Stuart’s work</a> that the normalising constants <img src="https://latex.codecogs.com/png.latex?Z"> and <img src="https://latex.codecogs.com/png.latex?Z_m"> can be bounded above and below independently of <img src="https://latex.codecogs.com/png.latex?m">, so the above expression makes sense.</p>
-<p>We will now attack <img src="https://latex.codecogs.com/png.latex?B_1"> and <img src="https://latex.codecogs.com/png.latex?B_2"> separately. To do this, we need to consider the joint prior <img src="https://latex.codecogs.com/png.latex?%5Clambda_0(u,%20u_m)"> that is the joint law of the Gaussian process <img src="https://latex.codecogs.com/png.latex?u"> and its finite dimensional approximation <img src="https://latex.codecogs.com/png.latex?u_m%20=%20R_m%20u">.</p>
-<p>For <img src="https://latex.codecogs.com/png.latex?B_1"> we basically use the same trick again. <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0AZB_1%20%5Cleq%20&amp;%20%5Cmathbb%7BE%7D_%7B%5Clambda_0%7D%5Cleft(%7CG(u)%7C%5Cleft%7C%5Cexp(-%5CPhi(u;y))%20-%5Cexp(%5CPhi(u;y))%5Cright%7C%20%5Cright)%20%5C%5C%0A&amp;%5Cquad%20+%20%5Cmathbb%7BE%7D_%7B%5Clambda_0%7D%5Cleft(%5Cexp(-%5CPhi(u_m;y))%20%7C%20G(u)%20-%20G(u_m)%7C%5Cright)%20%5C%5C%0A&amp;%5Cleq%20%20%5Cmathbb%7BE%7D_%7B%5Clambda_0%7D%5Cleft(%5Cmathrm%7Be%7D%5E%7BC_5%20+%20%5Cepsilon%20%5C%7Cu%5C%7C_V%5E2%7D%5Cmathrm%7Be%7D%5E%7B%5Cepsilon%5Cmax%5C%7B1,A_m%5C%7D%5C%7Cu%5C%7C_v%5E2%20-%20C_1%7D%20%5Cmathrm%7Be%7D%5E%7B%5Cepsilon%5Cmax%5C%7B1,A_m%5C%7D%5C%7Cu%5C%7C_V%5E2%20+%20C_3%7D%5C%7Cu%20-%20u_m%5C%7C_B%5Cright)%20%5C%5C%0A&amp;%20%5Cquad%20+%5Cmathbb%7BE%7D_%7B%5Clambda_0%7D%5Cleft(%5Cmathrm%7Be%7D%5E%7B%5Cepsilon%20A_m%5C%7Cu%5C%7C_V%5E2%20-%20C_1%7D%5Cmathrm%7Be%7D%5E%7B%5Cepsilon%5Cmax%5C%7B1,A_m%5C%7D%5C%7Cu%5C%7C_V%5E2%20+%20C_6%7D%5C%7Cu%20-%20u_m%5C%7C_V%5Cright)%20%5C%5C%0A&amp;%5Cleq%20%5Csup_%7Bf%20%5Cin%20V%7D%5Cleft(%5Cfrac%7B%5C%7Cf%20-%20R_m%20f%5C%7C_B%7D%7B%5C%7Cf%5C%7C_V%7D%5Cright)%0A%5Cmathrm%7Be%7D%5E%7BC_3%20+%20C_5%20+%20C_6%20-2%20C_1%7D%5Cmathbb%7BE%7D_%7B%5Cmu_0%7D%5Cleft(%5C%7Cu%5C%7C_V%5Cmathrm%7Be%7D%5E%7B(1+3%5Cmax%5C%7B1,A_m%5C%7D%20+%20A_m)%5Cepsilon%20%5C%7Cu%5C%7C_V%5E2%7D%5Cright)%5C%5C%0A&amp;%5Cleq%20C_7%20%5Csup_%7Bf%20%5Cin%20V%7D%5Cleft(%5Cfrac%7B%5C%7Cf%20-%20R_m%20f%5C%7C_B%7D%7B%5C%7Cf%5C%7C_V%7D%5Cright),%0A%5Cend%7Balign*%7D"> where the second inequality comes from using all of the assumptions on <img src="https://latex.codecogs.com/png.latex?%5CPhi"> and <img src="https://latex.codecogs.com/png.latex?G"> and noting that <img src="https://latex.codecogs.com/png.latex?%5Cleft%7Ce%5E%7B-x%7D%20-%20e%5E%7B-y%7D%5Cright%7C%20%5Cleq%20e%5E%7B-%5Cmin%5C%7Bx,y%5C%7D%7D%7Cx-y%7C">; and the final inequality comes from Fernique’s theorem, which implies that expectation is finite.</p>
-We can also bound <img src="https://latex.codecogs.com/png.latex?B_2"> by noting that <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0A%5Cleft%7CZ%5E%7B-1%7D%20-%20Z_m%5E%7B-1%7D%20%5Cright%7C%20&amp;%20%5Cleq%20%5Cmax%20%5C%7BZ%5E%7B-2%7D,%20Z_m%5E%7B-2%7D%5C%7D%5Cmathbb%7BE%7D_%7B%5Clambda_0%7D%5Cleft(%7C%5Cexp(-%5CPhi(u;y))%20-%20%5Cexp(-%5CPhi(u_m;z))%5Cright)%20%5C%5C%0A&amp;%5Cleq%20C_8%20%5Csup_%7Bf%20%5Cin%20V%7D%5Cleft(%5Cfrac%7B%5C%7Cf%20-%20R_m%20f%5C%7C_B%7D%7B%5C%7Cf%5C%7C_V%7D%5Cright)%0A%5Cend%7Balign*%7D"> by the same reasoning as above.
-</details>
-</section>
-<section id="dealing-with-the-approximation-error" class="level2">
-<h2 class="anchored" data-anchor-id="dealing-with-the-approximation-error">Dealing with the approximation error</h2>
-<p>The theorem above shows that the worst-case error in posterior functionals caused by replacing a Gaussian process <img src="https://latex.codecogs.com/png.latex?u"> with it’s approximation <img src="https://latex.codecogs.com/png.latex?u_m%20=%20R_m%20u"> is driven entirely by how well a general function from <img src="https://latex.codecogs.com/png.latex?V"> can be approximated by a function in <img src="https://latex.codecogs.com/png.latex?V_m">. This is not really a surprising result: if the approximation <img src="https://latex.codecogs.com/png.latex?u_m"> is unable to approximate the sample paths of <img src="https://latex.codecogs.com/png.latex?u"> it is very unlikely it will do a good job with <em>all</em> functionals.</p>
-<p>Thankfully, approximation error is one of the better studied things in this world. Especially in the case where <img src="https://latex.codecogs.com/png.latex?V%20=%20B">.</p>
-<p>For instance, it’s pretty easy to show<sup>69</sup> that if <img src="https://latex.codecogs.com/png.latex?u"> has <img src="https://latex.codecogs.com/png.latex?%5Cnu"> derivatives, then <img src="https://latex.codecogs.com/png.latex?e_G%20%5Cleq%20Cm%5E%7B-%5Cfrac%7B%5Cnu%7D%7Bd%7D%20+%20%5Cepsilon%7D"> for all <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%3E0">.</p>
-<p>If you dive deep enough into the literature, you can get similar results for the type of approximation underneath the subset of regressors approximation.</p>
-<p>For the SPDE approximation, it’s all a little bit more tricky as <img src="https://latex.codecogs.com/png.latex?V_m%20%5Cnot%20%5Csubset%20V">. But ultimately, you get that, for any <img src="https://latex.codecogs.com/png.latex?%5Cepsilon%20%3E0">, <img src="https://latex.codecogs.com/png.latex?e_G%20%5Cleq%20C%20h%5E%7B1-%5Cepsilon%7D">, where <img src="https://latex.codecogs.com/png.latex?h"> is a measure of the mesh size<sup>70</sup>. This is roughly what you’d expect, there’s a loss of <img src="https://latex.codecogs.com/png.latex?%5Cepsilon"> from the ordinary interpolation rate which may or may not be a result of me being a bit shit at maths.</p>
-<p>The argument that gets us here is really cute so I’ll sketch it below. This is here for two reasons: firstly, because I think it’s cool and secondly because the paper is so compressed it’s hard to completely follow the argument, so I thought it would be nice to put on here. (It also took me a whole afternoon to decipher the proof in the paper, which is usually a sign that it could do with a bit of a re-write. How successfully I clarified it is something I will leave up to others to decide.)</p>
-<details>
-<summary>
-Finite element shit
-</summary>
-<p><strong>Setup. Gird yourselves!</strong></p>
-<p>We are going to bound that error rate in a way that’s relevant for the finite element method. The natural choices for the function spaces are <img src="https://latex.codecogs.com/png.latex?V%20=%20H%5E%7B1-%5Cepsilon%7D(%5COmega)"> for some fixed <img src="https://latex.codecogs.com/png.latex?0%20%3C%20%5Cepsilon%20%3C%201/2"> (close to zero is what we want). and <img src="https://latex.codecogs.com/png.latex?B%20=%20L%5E2(%5COmega)">. (To be honest the domain <img src="https://latex.codecogs.com/png.latex?%5COmega"> isn’t changing so I’m gonna forget it sometimes.)</p>
-<p>Once again, we’re going to assume that <img src="https://latex.codecogs.com/png.latex?L"> is a second order uniformly elliptic PDE with no first-order terms (aka <img src="https://latex.codecogs.com/png.latex?b_1%20=%20%5Ccdots%20=%20b_d%20=%200">) and that <img src="https://latex.codecogs.com/png.latex?b_0(s)%20%3E0"> on some subset of <img src="https://latex.codecogs.com/png.latex?%5COmega">. We will use the symmetric, coercive bilinear form associated<sup>71</sup> with <img src="https://latex.codecogs.com/png.latex?L">, which we can define, for any <img src="https://latex.codecogs.com/png.latex?u,v%20%5Cin%20H%5E1">, as <img src="https://latex.codecogs.com/png.latex?%0Aa(u,%20v)%20=%20%5Cint_%5COmega%20(A(s)%5Cnabla%20u(s))%5Ccdot%20%5Cnabla%20v(s)%5C,ds%20+%20%5Cint_%5COmega%20b_0(s)%20u(s)v(s)%5C,ds%0A"></p>
-<p>Remembering that <img src="https://latex.codecogs.com/png.latex?R_m%20=%20LL_m%5E%5Cdagger">, we have <img src="https://latex.codecogs.com/png.latex?%0A%5Csup_%7Bv%20%5Cin%20V%7D%5Cfrac%7B%20%5Cleft%5C%7Cv%20-%20R_m%20v%5Cright%5C%7C_B%7D%7B%5C%7Cv%5C%7C_V%7D%20=%5Csup_%7Bf%5Cin%20LV%7D%5Cfrac%7B%20%5Cleft%5C%7CL%5E%7B-1%7Df%20-%20L_n%5E%7B%5Cdagger%7Df%5Cright%5C%7C_B%7D%7B%5C%7CL%5E%7B-1%7Df%5C%7C_V%7D.%0A"></p>
-<p>The set of functions <img src="https://latex.codecogs.com/png.latex?f%20%5Cin%20LV"> is the set of all functions <img src="https://latex.codecogs.com/png.latex?f%20=%20Lv"> for some <img src="https://latex.codecogs.com/png.latex?v%20%5Cin%20V">. It can be shown that <img src="https://latex.codecogs.com/png.latex?LV%20%20=%20H%5E%7B-1-%5Cepsilon%7D">, where the negative index indicates a dual Sobolev space (aka the space of continuous linear functionals on <img src="https://latex.codecogs.com/png.latex?H%5E%7B1+%20%20%5Cepsilon%7D">).</p>
-<p>This means that we are looking at the difference between the solution to <img src="https://latex.codecogs.com/png.latex?Lu%20=%20f"> and <img src="https://latex.codecogs.com/png.latex?L_m%20u_m%20=%20f_m">, where <img src="https://latex.codecogs.com/png.latex?f_m"> is the <img src="https://latex.codecogs.com/png.latex?L%5E2">-orthogonal projection of <img src="https://latex.codecogs.com/png.latex?f"> onto <img src="https://latex.codecogs.com/png.latex?V_m">, which is the space of piecewise linear functions on some<sup>72</sup> triangular mesh <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BT%7D_m">.</p>
-<p>We define the projection of the function <img src="https://latex.codecogs.com/png.latex?f%20%5Cin%20H%5E%7B-1-%5Cepsilon%7D(%5COmega)"> onto <img src="https://latex.codecogs.com/png.latex?V_m"> as the unique function <img src="https://latex.codecogs.com/png.latex?f_m%20%5Cin%20V_m"> such that<sup>73</sup> <img src="https://latex.codecogs.com/png.latex?%0A%5Cint_%5COmega%20f_n(s)%20v_n(s)%5C,ds%20=%20%5Cint%20f(s)%20v_n(s)%5C,ds,%20%5Cquad%20%5Cforall%20v_n%20%5Cin%20V_n.%0A"></p>
-<p><strong>Now let’s do this!</strong></p>
-<p>With all of this in place, we can actually do something. We want to bound <img src="https://latex.codecogs.com/png.latex?%0A%5Cfrac%7B%5C%7Cu%20-%20u_m%5C%7C_%7BL%5E2%7D%7D%7B%5C%7Cu%5C%7C_%7BH%5E%7B1+%5Cepsilon%7D%7D%7D,%0A"> where<sup>74</sup> <img src="https://latex.codecogs.com/png.latex?a(u,%20%5Cphi)%20=%20%5Cint_%5COmega%20f(s)%20%5Cphi(s)%5C,ds"> for all <img src="https://latex.codecogs.com/png.latex?%5Cphi%20%5Cin%20H%5E%7B1+%5Cepsilon%7D"> and <img src="https://latex.codecogs.com/png.latex?a(u_m,%20%5Cphi_m)%20=%20%5Cint_%5COmega%20f(s)%20%5Cphi_m(s)%5C,ds"> for all <img src="https://latex.codecogs.com/png.latex?%5Cphi_m%20%5Cin%20V_m%20%5Csubset%20H%5E%7B1+%5Cepsilon%7D">.</p>
-<p>The key observation is that <img src="https://latex.codecogs.com/png.latex?%0A%5Cint_%5COmega%20f(s)%20%5Cphi_m(s)%5C,ds%20=%20%5Cint_%5COmega%20f_m(s)%20%5Cphi_m(s)%5C,ds,%0A"> which suggests that <img src="https://latex.codecogs.com/png.latex?u_m(s)"> is an approximation to <em>two different problems</em>!</p>
-<p>Let’s write this second problem down! We want to find <img src="https://latex.codecogs.com/png.latex?z%5E%7B(m)%7D"> such that <img src="https://latex.codecogs.com/png.latex?%0Aa(%7Bz%7D%5E%7B(m)%7D,%20%5Cphi)%20=%20%5Cint_%5COmega%20f_n(s)%20%5Cphi(s)%5C,ds%20%5Cquad%20%5Cforall%20%5Cphi%20%5Cin%20H%5E%7B1%7D%20,%0A"> where the <img src="https://latex.codecogs.com/png.latex?m"> superscript indicates that it depends on <img src="https://latex.codecogs.com/png.latex?m"> through it’s right hand side. The projection <img src="https://latex.codecogs.com/png.latex?f_n%20%5Cin%20L%5E2">, which means that we are in the realm of usual PDEs and (assuming some regularity) <img src="https://latex.codecogs.com/png.latex?z%5E%7B(m)%7D%20%5Cin%20H%5E2">.</p>
-<p>Hence, we can write <img src="https://latex.codecogs.com/png.latex?%0A%5C%7Cu%20-%20u_m%5C%7C_%7BL%5E2%7D%5Cleq%20%5C%7Cu%20-%20z%5E%7B(m)%7D%5C%7C_%7BL%5E2%7D%20+%20%5C%7Cz%5E%7B(m)%7D%20-%20u_m%5C%7C_%7BL%5E2%7D.%0A"></p>
-<p>We can bound the second term almost immediately from standard finite element theory, which says that <img src="https://latex.codecogs.com/png.latex?%0A%5C%7Cz%5E%7B(m)%7D%20-%20u_m%5C%7C_%7BL%5E2%7D%20%5Cleq%20Ch%5E2%20%5C%7Cf_n%5C%7C_%7BL%5E2%7D.%0A"></p>
-<p>To estimate <img src="https://latex.codecogs.com/png.latex?%5C%7Cf_m%5C%7C"> we use the inverse estimates of <a href="https://etna.math.kent.edu/vol.12.2001/pp134-148.dir/pp134-148.pdf">Ben Belgacem and Brenner</a> to show that, for any <img src="https://latex.codecogs.com/png.latex?v%5Cin%20L%5E2(%5COmega)">, <img src="https://latex.codecogs.com/png.latex?%0A%5Cint_%5COmega%20f_m(s)%20v(s)%20%5C,ds%20=%20%5Cint_%5COmega%20f(s)v_m(s)%20%20%5C,ds%5Cleq%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%5C%7Cv_m%5C%7C_%7BH%5E%7B1+%5Cepsilon%7D%7D%20%5Cleq%20Ch%5E%7B-1-%5Cepsilon%7D%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%20%5C%7Cv%5C%7C_%7BL%5E2%7D,%0A"> where <img src="https://latex.codecogs.com/png.latex?v_m"> is the orthogonal projection of <img src="https://latex.codecogs.com/png.latex?v"> onto <img src="https://latex.codecogs.com/png.latex?V_m">.</p>
-<p>If we set <img src="https://latex.codecogs.com/png.latex?v%20=%20f_m"> in the above equation, we get <img src="https://latex.codecogs.com/png.latex?%5C%7Cf_m%5C%7C_%7BL%5E2%7D%20%5Cleq%20Ch%5E%7B-1-%5Cepsilon%7D%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D">, which combines with our previous estimate to give <img src="https://latex.codecogs.com/png.latex?%0A%5C%7Cz%5E%7B(m)%7D%20-%20u_m%5C%7C_%7BL%5E2%7D%20%5Cleq%20Ch%5E%7B1-%5Cepsilon%7D%20%5C%7Cf_n%5C%7C_%7BL%5E2%7D.%0A"></p>
-<p>Finally, to bound <img src="https://latex.codecogs.com/png.latex?%5C%7Cu%20-%20z%5E%7B(m)%7D%5C%7C_%7BL%5E2%7D"> we are going to use one of my<sup>75</sup> favourite arguments. Fix <img src="https://latex.codecogs.com/png.latex?w%20%5Cin%20L%5E2"> and let <img src="https://latex.codecogs.com/png.latex?W"> be the solution of the <em>dual</em> equation <img src="https://latex.codecogs.com/png.latex?a(%5Cphi,%20W)%20=%20%5Cint_%5COmega%20%5Cphi(s)w(s)%5C,ds">. It then follows that, for any <img src="https://latex.codecogs.com/png.latex?v_m%20%5Cin%20V_m">, <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0A%5Cleft%7C%5Cint_%5COmega%20(u(s)%20-%20z%5E%7B(m)%7D(s))w(s)%5C,ds%5Cright%7C%20&amp;=%20%5Cleft%7Ca(u%20-%20z%5E%7B(m)%7D,%20W)%5Cright%7C%20%5C%5C%0A&amp;=%20%5Cleft%7C%5Cint_%5COmega%20(f(s)%20-%20f_m(s))W(s)%5C,ds%5Cright%7C%5C%5C%0A&amp;=%20%5Cleft%7C%5Cint_%5COmega%20(f(s)%20-%20f_m(s))(W(s)%20-%20v_m(s))%5C,ds%5Cright%7C%5C%5C%0A&amp;%5Cleq%5Cleft%7C%5Cint_%5COmega%20f(s)(W(s)%20-%20v_m(s))%5C,ds%5Cright%7C+%20%20%5Cleft%7C%5Cint_%5COmega%20f_m(s)(W(s)%20-%20v_m(s))%5C,ds%5Cright%7C%20%5C%5C%0A&amp;%5Cleq%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%5C%7CW%20-%20v_m%5C%7C_%7BH%5E%7B1+%5Cepsilon%7D%7D%20+%20Ch%5E%7B-1-%5Cepsilon%7D%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%20%5C%7CW%20-%20v_m%5C%7C_%7BL%5E2%7D%20%5C%5C%0A&amp;%5Cleq%20C%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%20h%5E%7B-1%20-%5Cepsilon%7D%5Cleft(h%5E%7B1+%5Cepsilon%7D%5C%7CW%20-%20v_m%5C%7C_%7BH%5E%7B1+%5Cepsilon%7D%7D%20+%20%20%5C%7CW%20-%20v_m%5C%7C_%7BL%5E2%7D%20%5Cright),%0A%5Cend%7Balign*%7D"> where the first line uses the definition of <img src="https://latex.codecogs.com/png.latex?W">; the second uses the definition of <img src="https://latex.codecogs.com/png.latex?u"> and <img src="https://latex.codecogs.com/png.latex?z%5E%7B(m)%7D">; the third uses the fact that <img src="https://latex.codecogs.com/png.latex?(f%20-%20f_m)%20%5Cperp%20V_m"> so subtracting off <img src="https://latex.codecogs.com/png.latex?v_m"> doesn’t change anything; the fourth is the triangle inequality; the fifth is the Hölder inequality on the left and the estimate from half a screen up on the right; and the sixth line is clean up.</p>
-<p>Because the above bound holds for <em>any</em> <img src="https://latex.codecogs.com/png.latex?v_m%20%5Cin%20V_m">, we can choose the one that makes the bound the smallest. This leads to <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0A%5Cleft%7C%5Cint_%5COmega%20(u(s)%20-%20z%5E%7B(m)%7D(s))w(s)%5C,ds%5Cright%7C%20&amp;%5Cleq%20%20C%20%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%20h%5E%7B-1%20-%5Cepsilon%7D%5Cinf_%7Bv%20%5Cin%20V_m%7D%5Cleft(h%5E%7B1+%5Cepsilon%7D%5C%7CW%20-%20v_m%5C%7C_%7BH%5E%7B1+%5Cepsilon%7D%7D%20+%20%20%5C%7CW%20-%20v_m%5C%7C_%7BL%5E2%7D%20%5Cright)%20%5C%5C%0A&amp;%20%5Cleq%20C%5C%7Cf%5C%7C_%7BH%5E%7B-1-%5Cepsilon%7D%7D%20h%5E%7B-1%20-%5Cepsilon%7D%20h%5E2%20%5C%7CW%5C%7C_%7BH%5E2%7D%5C%5C%0A&amp;%5Cleq%20C%20h%5E%7B1-%5Cepsilon%7D%20%5C%7Cw%5C%7C_%7BL%5E2%7D,%0A%5Cend%7Balign*%7D"> where the last two inequalities are Theorem 14.4.2 from Brenner and Scott and a standard estimate of the solution to an elliptic PDE by it’s RHS.</p>
-<p>Putting this all together we get the result. Phew.</p>
-<p>This whole argument was a journey, but I think it’s quite pretty. It’s clobbered together from a lot of sleepless nights and an argument inspired by strip-mining<sup>76</sup> a <a href="https://www.jstor.org/stable/2005390">Ridgeway Scott paper from 1976</a>. Anyway, I think it’s nifty.</p>
-</details>
-</section>
-<section id="wrapping-it-up" class="level2">
-<h2 class="anchored" data-anchor-id="wrapping-it-up">Wrapping it up</h2>
-<p>So. That was quite a lot. I enjoyed it, but I’m weird like that. This has mostly been me trying to remember what I did in 2015. Why? Because I felt like it.</p>
-<p>I also think that there’s some value in this way of thinking about Gaussian processes and it’s nice to show off some ways to use all of that weird shit in <a href="https://dansblog.netlify.app/posts/2021-11-03-yes-but-what-is-a-gaussian-process-or-once-twice-three-times-a-definition-or-a-descent-into-madness/">the last post</a>.</p>
-<p>All of these words can be boiled down to this take away:</p>
-<blockquote class="blockquote">
-<p>If your finite dimensional GP <img src="https://latex.codecogs.com/png.latex?u_m"> is linked to a GP <img src="https://latex.codecogs.com/png.latex?u"> by some (potentially non-linear relationship) <img src="https://latex.codecogs.com/png.latex?u_m=%20R_m%20u">, then the posterior error will be controlled by how well you can approximate a function <img src="https://latex.codecogs.com/png.latex?v"> that <em>could</em> be a realisation of the GP by <img src="https://latex.codecogs.com/png.latex?R_m%20v">.</p>
-</blockquote>
-<p>This is a very intuitive result if you are already thinking of GP approximation as approximating a random function. But a lot of the literature takes a view that we are approximating a covariance matrix or a multivariate normal. This might be enough to approximate a maximum likelihood estimator, but it’s insufficient for approximating a posterior<sup>77</sup></p>
-<p>Furthermore, because most of the constants in the bounds don’t depend too heavily on the specific finite dimensional approximation (except through <img src="https://latex.codecogs.com/png.latex?A_m">), we can roughly say that if we have two methods for approximating a GP, the one that does a better job at approximating functions will be the better choice.</p>
-<p>As long as it was, this isn’t a complete discussion of the problem. We have not considered hyper-parameters! This is a little bit tricky because if <img src="https://latex.codecogs.com/png.latex?%5Cmu_0"> depends on parameters <img src="https://latex.codecogs.com/png.latex?%5Ctheta">, then <img src="https://latex.codecogs.com/png.latex?R_m"> will also depend on parameters (and for subset of regressors, <img src="https://latex.codecogs.com/png.latex?V_m"> also depends on the parameters).</p>
-<p>In theory, we could use this to bound the error in the posterior <img src="https://latex.codecogs.com/png.latex?p(%5Ctheta%20%5Cmid%20y)">. To see how we would do that, let’s consider the case where we have Gaussian observations.</p>
-<p>Then we get <img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Balign*%7D%0Ap(%5Ctheta%20%5Cmid%20y)%20&amp;%20%5Cfrac%7B%5Cexp(-%5CPhi(u;y))%7D%7Bp(y)%7D%20%5Cleft%5B%5Cfrac%7Bd%5Cmu_y%7D%7Bd%5Cmu_0%7D%5Cright%5D%5E%7B-1%7D%20p(%5Ctheta)%20%5C%5C%0A&amp;=%20%5Cfrac%7BZ(%5Ctheta)%20p(%5Ctheta)%7D%7B%5Cint_%5CTheta%20Z(%5Ctheta)p(%5Ctheta)%5C,d%5Ctheta%7D,%0A%5Cend%7Balign*%7D"> where <img src="https://latex.codecogs.com/png.latex?Z(%5Ctheta)%20=%20%5Cmathbb%7BE%7D_%7B%5Cmu_0%7D%5Cleft(e%5E%7B-%5CPhi(u;y)%7D%5Cright)">.</p>
-<p>We could undoubtedly bound the error in this using similar techniques to the ones we’ve already covered (in fact, we’ve already got a bound on <img src="https://latex.codecogs.com/png.latex?%7CZ%20-%20Z_m%7C">). And then it would just be a matter of piecing it all together.</p>
-<p><a href="https://www.youtube.com/watch?v=bZvNmcU_pUM">But I’m tired and I just want to cry for me.</a></p>
-
-
-</section>
-
-
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
-
-<ol>
-<li id="fn1"><p>Naively: a condescending way to say “the way you were told to use them”↩︎</p></li>
-<li id="fn2"><p>Is it better to have a large amount of crappy data or a small amount of decent data? Depends on if you’re trying to impress people by being right or by being flashy.↩︎</p></li>
-<li id="fn3"><p>Who doesn’t love a good shape. Or my personal favourite: a point pattern.↩︎</p></li>
-<li id="fn4"><p>Or, hell, this is our information about how to query the Gaussian process to get the information we need for this observation. Because, again, this does not have to be as simple as evaluating the function at a point!↩︎</p></li>
-<li id="fn5"><p>This could be time, space, space-time, covariate space, a function space, a lattice, a graph, an orthogonal frame, a manifold, a perversion, whatever. It doesn’t matter. It’s all just Gaussian processes. Don’t let people try to tell you this shit is fancy.↩︎</p></li>
-<li id="fn6"><p>This could be covariate information, group information, hierarchy information, causal information, survey information, or really anything else you want it to be. Take a deep breath. Locate your inner peace. Add whatever you need to the model to make it go boop.↩︎</p></li>
-<li id="fn7"><p>I will never use this assumption. Think of it like the probability space at the top of a annals of stats paper.↩︎</p></li>
-<li id="fn8"><p>So the thing is that this is here because it was funny to me when I wrote it, but real talk: just being like “it’s iid” is some real optimism (optimism, like hope, has no place in statistics.) and pretending that this is a light or inconsequential assumption is putting some bad energy out into the world. But that said, I was once a bit drunk at a bar with a subjective Bayesian (if you want to pick your drinking Bayesian, that’s not a bad choice. They’re all from The North) and he was screaming at me for thinking about what would happen if I had more data, and I was asking him quietly and politely how the data could possibly inform models as complex as he seemed to be proposing. And he said to me: what you do is you look for structures within your data that are exchangeable in some sense (probably after conditioning) and you use those as weak replicates. And, of course, I knew that but I’d never thought about it that way. Modelling, eh. Do it properly.↩︎</p></li>
-<li id="fn9"><p>These (and the associated parenthetical girls) were supposed to be nested footnotes but Markdown is homophobic and doesn’t allow them. I am being oppressed.↩︎</p></li>
-<li id="fn10"><p>It’s an interesting area, but the tooling isn’t there for people who don’t want to devote a year of their lives to this to experiment.↩︎</p></li>
-<li id="fn11"><p>This is what matrix nerds say when they mean “I love you”. Or when they mean that it’s all derived from the structure of a matrix rather than from some structural principles stolen from the underlying problem. The matrix people are complicated.↩︎</p></li>
-<li id="fn12"><p>The reason for this is that, while there are clever methods for getting determinants of H-matrices, they don’t actually scale all that well. So Geoga, Anitescu, and Stein paper use a Hutchinson estimator of the log-determinant. This has ok relative accuracy, but unfortunately, we need it to have excellent absolute accuracy to use it in a Bayesian procedure (believe me, I have tried). On the other hand, the Hutchinson estimator of the <em>gradient</em> of the log-determinant is pretty stable and gives a really nice approximate gradient. This is why MLE type methods for learning the hyper-parameters of a GP can be made scalable with H-matrix techniques.↩︎</p></li>
-<li id="fn13"><p>Otherwise, why bother. Just sub-sample and get on the beers. Or the bears. Or both. Whatever floats your boat.↩︎</p></li>
-<li id="fn14"><p>on <img src="https://latex.codecogs.com/png.latex?u"> and probably other parameters in the model↩︎</p></li>
-<li id="fn15"><p>Dual spaces, y’all. This vector was inevitable because <img src="https://latex.codecogs.com/png.latex?m">-dimensional row vectors are the dual space of <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BR%7D%5Em">, while <img src="https://latex.codecogs.com/png.latex?s_i%20%5Crightarrow%20u(s_i)"> is in <img src="https://latex.codecogs.com/png.latex?B%5E*">.↩︎</p></li>
-<li id="fn16"><p>This is not surprising if you’re familiar with the <a href="https://arxiv.org/abs/1501.06195">sketching-type bounds that Yang, Pilanci and Wainwright did a while back</a> (or, for that matter, with any non-asymptotic bounds involving the the complexity of the RKHS). Isn’t maths fun.↩︎</p></li>
-<li id="fn17"><p>Hölder↩︎</p></li>
-<li id="fn18"><p>Think “infinitely differentiable but more so”.↩︎</p></li>
-<li id="fn19"><p>An analytic function is one that you know will walk straight home from the pub, whereas a <img src="https://latex.codecogs.com/png.latex?%5Cnu">-differentiable function might just go around the corner, hop on grindr, and get in a uber. Like he’s not going to go to the other side of the city, but he might pop over to a nearby suburb. A generalised function texts you a photo of a doorway covered by a bin bag with a conveniently placed hole at 2am with no accompanying message other than an address↩︎</p></li>
-<li id="fn20"><p>I mean, I cannot be sure, but I’m pretty sure.↩︎</p></li>
-<li id="fn21"><p>Again, not strictly necessary but it removes a tranche of really annoying technicalities and isn’t an enormous restriction in practice.↩︎</p></li>
-<li id="fn22"><p>The result is that there is no non-trivial translation invariant measure on a separable Banach space (aka there is no analogue of the Lebesgue measure). You can prove this by using separability to make a disjoint cover of equally sized balls, realise that they would all have to have the same measure, and then say “Fuck. I’ve got too many balls”.↩︎</p></li>
-<li id="fn23"><p>Borel. Because we have assumed <img src="https://latex.codecogs.com/png.latex?B"> is separable, the cylindrical <img src="https://latex.codecogs.com/png.latex?%5Csigma">-algebra is identical to the Borel <img src="https://latex.codecogs.com/png.latex?%5Csigma">-algebra and <img src="https://latex.codecogs.com/png.latex?%5Cmu_0"> is a Radon measure. Party.↩︎</p></li>
-<li id="fn24"><p>See <a href="http://stuart.caltech.edu/publications/pdf/stuart15c.pdf">Andrew Stuart’s long article on formulating Bayesian problems in this context</a> and <a href="http://stuart.caltech.edu/publications/pdf/stuart89.pdf">Masoumeh Dashti and Andrew Stuart’s paper paper on (simple) finite dimensional approximations</a>.↩︎</p></li>
-<li id="fn25"><p>The SPDE approach. Read on Macduff.↩︎</p></li>
-<li id="fn26"><p>the <a href="https://r-inla.org/">Irish National Liberation Army</a>↩︎</p></li>
-<li id="fn27"><p>This covers GP models, GAMs, lots of spatial models, and a bunch of other stuff.↩︎</p></li>
-<li id="fn28"><p>Like, the data is a single observation of a point pattern. Or, to put it a different way, a list of (x,y) coordinates of (<em>a priori</em>) unknown length.↩︎</p></li>
-<li id="fn29"><p>Approximate Markovian GPs in 2-4 dimensions. <a href="https://arxiv.org/abs/2111.01084">See here for some info</a>↩︎</p></li>
-<li id="fn30"><p>Rue. The king of INLA. Another all round fabulous person. And a person foolish enough to hire me twice even though I was very very useless.↩︎</p></li>
-<li id="fn31"><p>In the interest of accuracy, Janine and I were giving back to back talks at a conference that we decided for some reason to give as a joint talk and I remember her getting more and more agitated as I was sitting in the back row of the conference desperately trying to contort the innards of INLA to the form I needed to make the damn thing work. It worked and we had results to present. We also used the <a href="https://r-inla.org/">INLA software</a> in any number of ways it had not been used before that conference. The talk was pretty well received and I was very relieved. It was also my first real data analysis and I didn’t know to do things like “look at the data” to check assumptions, so it was a bit of a clusterfuck and again Janine was very patient. I was a <em>very</em> useless 25 year old and a truly shit statistician. But we get better if we practice and now I’m a perfectly ok statistician.↩︎</p></li>
-<li id="fn32"><p>Janine and I, with Finn Lindgren, Sigrunn Sørbye and Håvard Rue, who were all heavily involved throughout but I’m sure I’ve already exhausted people’s patience.↩︎</p></li>
-<li id="fn33"><p>IIRC, Sigrunn’s university has one of those stupid lists where venue matters more than quality. Australia is also obsessed with this. It’s dumb.↩︎</p></li>
-<li id="fn34"><p>In hindsight, the reviewer was asking for a simulation study, which is a perfectly reasonable thing to ask for but at the time I couldn’t work out how to do that because, in my naive numerical analyst ways, I thought we would need to compare our answer to a ground truth and I didn’t know how to do that. Now I know that the statistician way is to compute the same thing two different ways on exactly one problem that’s chosen pretty carefully and saying “it looks similar”.↩︎</p></li>
-<li id="fn35"><p>Conditional on the log-intensity surface, a LGCP is a Poisson process↩︎</p></li>
-<li id="fn36"><p>is it, though↩︎</p></li>
-<li id="fn37"><p>My co-authors are all very patient.↩︎</p></li>
-<li id="fn38"><p>with fixed hyper-parameters↩︎</p></li>
-<li id="fn39"><p>The thing about inverse problems is that they assume <img src="https://latex.codecogs.com/png.latex?%5CPhi(u;y)"> is the solution of some PDE or integral equation, so they don’t make any convenient simplifying assumptions that make their results inapplicable to LGCPs!↩︎</p></li>
-<li id="fn40"><p>https://arxiv.org/pdf/0901.1342.pdf↩︎</p></li>
-<li id="fn41"><p>star↩︎</p></li>
-<li id="fn42"><p>Also weak convergence but metrized by the Wasserstein-1 distance.↩︎</p></li>
-<li id="fn43"><p>Fernique’s Theorem. I am using “we” very liberally here. Fernique knew and said so in French a while back. Probably the Soviet probabilists knew too but, like, I’m not going to write a history of exponential moments.↩︎</p></li>
-<li id="fn44"><p>On <img src="https://latex.codecogs.com/png.latex?L%5E2">, which is a Hilbert space so the basis really is countable. The result is a shit-tonne easier to parse if we make <img src="https://latex.codecogs.com/png.latex?B"> a separable Hilbert space but I’m feeling perverse. If you want the most gloriously psychotic expression of this theorem, check out Theorem 7.3 <a href="https://maths.anu.edu.au/files/CMAproc44-vanNeerven-href.pdf">here</a>↩︎</p></li>
-<li id="fn45"><p>There are tonnes of examples where people do actually use the Karhunen-Loève basis or some other orthogonal basis expansion. Obviously all of this theory holds over there.↩︎</p></li>
-<li id="fn46"><p>This has many names throughout the literature. I cannae be arsed listing them. But <a href="https://homepages.inf.ed.ac.uk/ckiw/postscript/lskm_chap.pdf">Quiñonero-Candela, Rasmussen, and Williams</a> attribute it to Wahba’s book in 1990.↩︎</p></li>
-<li id="fn47"><p>Functions of the form <img src="https://latex.codecogs.com/png.latex?%5Csum_%7Bi=1%7D%5Em%20a_j%20r_u(%5Ccdot,%20s_j)"> are in the RKHS corresponding to covariance function <img src="https://latex.codecogs.com/png.latex?r_u">. In fact, you can characterise the whole space as limits of sums that look like that.↩︎</p></li>
-<li id="fn48"><p>I mean, we are not going to be using the <img src="https://latex.codecogs.com/png.latex?A_m"> to do anything except grow with <img src="https://latex.codecogs.com/png.latex?m">, so the specifics aren’t super important. Because <em>this is a blog post</em>.↩︎</p></li>
-<li id="fn49"><p>Not every. You do this for nice sets. See Rozanov’s book on Markov random fields if you care.↩︎</p></li>
-<li id="fn50"><p><img src="https://latex.codecogs.com/png.latex?d(s,%20A)%20=%20%5Cinf_%7Bs'%5Cin%20A%7D%20%5C%7Cs%20-%20s'%5C%7C">↩︎</p></li>
-<li id="fn51"><p>Rozanov↩︎</p></li>
-<li id="fn52"><p>The sets on which they are non-zero are different↩︎</p></li>
-<li id="fn53"><p>For general Markov random fields, this representation still exists, but <img src="https://latex.codecogs.com/png.latex?L"> is no longer a differential operator (although <img src="https://latex.codecogs.com/png.latex?L%5E*L"> must be!). All of the stuff below follows, probably with some amount of hard work to get the theory right.↩︎</p></li>
-<li id="fn54"><p>What is white noise? It is emphatically not a stochastic process that has the delta function as it’s covariance function. That thing is just ugly. In order to make any of this work, we need to be able to integrate deterministic functions with respect to white noise. Hence, we view it as an independently scattered random measure that satisfies <img src="https://latex.codecogs.com/png.latex?W(A)%20%5Csim%20N(0,%20%7CA%7C)"> and <img src="https://latex.codecogs.com/png.latex?%5Cint_A%20f(s)W(ds)%20%5Csim%20N(0,%20%5Cint_A%20f(s)%5E2%5C,%20ds)">. Section 5.2 of Adler and Taylor’s book Random Fields and Geometry is one place to learn more.↩︎</p></li>
-<li id="fn55"><p><a href="https://arxiv.org/abs/1802.06350">This paper is a solid review</a>↩︎</p></li>
-<li id="fn56"><p><a href="https://arxiv.org/abs/2006.04917">This paper</a>↩︎</p></li>
-<li id="fn57"><p>Finite element methods had been used before, especially in the splines community, with people like <a href="https://www.jstor.org/stable/3088802?seq=1#metadata_info_tab_contents">Tim Ramsay</a> doing some interesting work. The key insight of Finn’s paper was to link this all to corresponding infinite dimensional Gaussian processes.↩︎</p></li>
-<li id="fn58"><p>We’re assuming <img src="https://latex.codecogs.com/png.latex?V_m%5Csubset%20L%5E2(%5COmega)">, which is not a big deal.↩︎</p></li>
-<li id="fn59"><p>See the paper for details of exactly which pseudo-inverse. It doesn’t really matter tbh, it’s just we’ve got to do something with the other degrees of freedom.↩︎</p></li>
-<li id="fn60"><p>Consult your favourite finite element book and then get pissed off it doesn’t cover higher-order PDEs in any detail.↩︎</p></li>
-<li id="fn61"><p>It looks like this is vital, but it isn’t. The main thing that changes if your PDE is hyperbolic or parabolic or hypo-elliptic is how you do the discretisation. As long as the PDE is <em>linear</em>, this whole thing works in principle.↩︎</p></li>
-<li id="fn62"><p>For some <img src="https://latex.codecogs.com/png.latex?%5Calpha%3E0">, <img src="https://latex.codecogs.com/png.latex?%5Csum_%7Bi,j=1%7D%5Ed%20w_iw_ja_%7Bij%7D(s)%20%5Cgeq%20%5Calpha%20%5Csum_%7Bi=1%7D%5Ed%20w_i%5E2"> holds for all <img src="https://latex.codecogs.com/png.latex?s%20%5Cin%20%5COmega">.↩︎</p></li>
-<li id="fn63"><p>For this construction to work in higher dimensions, you need to use a higher-order differential operator. In particular, if you want a continuous field on some subset of <img src="https://latex.codecogs.com/png.latex?%5Cmathbb%7BR%7D%5Ed">, you need <img src="https://latex.codecogs.com/png.latex?L"> to be a differential operator of order <img src="https://latex.codecogs.com/png.latex?%3Ed/2"> or higher. So in 4 dimensions, we need the highest order derivative to be at least 4th order (technically <img src="https://latex.codecogs.com/png.latex?L"> could be the square root of a 6th order operator, but that gets hairy).↩︎</p></li>
-<li id="fn64"><p>It holds in general, but if the linear terms are dominant (a so-called advection-driven diffusion), then you will need a different numerical method to get a stable estimate.↩︎</p></li>
-<li id="fn65"><p>Modulo some smoothness requirements on <img src="https://latex.codecogs.com/png.latex?%5COmega"> and <img src="https://latex.codecogs.com/png.latex?a_%7Bij%7D(s)">.↩︎</p></li>
-<li id="fn66"><p>It’s very easy to model <a href="https://arxiv.org/abs/1304.6949">weird anisotropies</a> and to work on manifolds↩︎</p></li>
-<li id="fn67"><p><a href="https://arxiv.org/abs/1710.05013">eg this comparison</a>↩︎</p></li>
-<li id="fn68"><p>Let’s not let any of the data fly off to infinity!↩︎</p></li>
-<li id="fn69"><p>Corollary A2 in the paper we’re following↩︎</p></li>
-<li id="fn70"><p>Think of it as the triangle diameter if you want.↩︎</p></li>
-<li id="fn71"><p>Integration by parts gives us <img src="https://latex.codecogs.com/png.latex?%5Cint_%5COmega%20(Lu(s))v(s)%5C,ds%20=%20a(u,v)"> if everything is smooth enough. We do this to confuse people and because it makes all of the maths work.↩︎</p></li>
-<li id="fn72"><p>not weird↩︎</p></li>
-<li id="fn73"><p><img src="https://latex.codecogs.com/png.latex?f"> is a generalised function so we are interpreting the integrals as duality pairings. This makes sense because <img src="https://latex.codecogs.com/png.latex?V_m%20%5Csubset%20H%5E%7B1+%5Cepsilon%7D"> if we allow for a mesh-dependent embedding constant (this is why we don’t use <img src="https://latex.codecogs.com/png.latex?B%20=%20H%5E%7B1+%5Cepsilon%7D">)↩︎</p></li>
-<li id="fn74"><p>This is how fancy people define solutions to PDEs. We’re fancy.↩︎</p></li>
-<li id="fn75"><p>Also everyone else’s, but it’s so elegantly deployed here. This is what I stole from <a href="https://www.jstor.org/stable/2005390">Scott 1976)</a>↩︎</p></li>
-<li id="fn76"><p>Real talk. I can sorta see where this argument is in the Scott paper, but I must’ve been really in the pocket when I wrote this because phew it is not an obvious transposition.↩︎</p></li>
-<li id="fn77"><p>Unless the approximation is very, very good. If we want to be pedantic, we’re approximating everything by floating point arithmetic. But we’re usually doing a good job.↩︎</p></li>
-</ol>
-</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2021,
-  author = {Simpson, Dan},
-  title = {Getting into the Subspace; or What Happens When You
-    Approximate a {Gaussian} Process},
-  date = {2021-11-24},
-  url = {https://dansblog.netlify.app/getting-into-the-subspace},
-  langid = {en}
-}
-</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2021" class="csl-entry quarto-appendix-citeas">
-Simpson, Dan. 2021. <span>“Getting into the Subspace; or What Happens
-When You Approximate a Gaussian Process.”</span> November 24, 2021. <a href="https://dansblog.netlify.app/getting-into-the-subspace">https://dansblog.netlify.app/getting-into-the-subspace</a>.
-</div></div></section></div> ]]></description>
-  <category>Gaussian processes</category>
-  <category>Fundamentals</category>
-  <category>Theory</category>
-  <guid>https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/getting-into-the-subspace.html</guid>
-  <pubDate>Wed, 24 Nov 2021 05:00:00 GMT</pubDate>
-  <media:content url="https://dansblog.netlify.app/posts/2021-11-24-getting-into-the-subspace/pika.JPG" medium="image"/>
 </item>
 </channel>
 </rss>
