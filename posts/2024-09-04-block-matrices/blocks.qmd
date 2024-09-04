@@ -1,8 +1,8 @@
 ---
 title: "Random C++ Part 1: Building a block sparse matrix"
-description: "I was writing a longer thing, but it was too long, so hey. Let's just do this for year"
+description: "I was writing a longer thing, but it was too long, so hey. Let's just do this for a change"
   
-date: 2024-06-05
+date: 2024-09-04
 image: "ravens.JPEG"
 categories: [Stan, Sparse matrices, Autodiff]
 twitter-card:
