@@ -14,7 +14,7 @@ format:
   html:
     df-print: paged
 jupyter: python3
-draft: true
+draft: false
 execute:
   eval: true
 
@@ -23,7 +23,10 @@ execute:
 ::: {.callout-note appearance="simple"}
 
 ## Acknowledgements
-The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious [Finn Lindgren](https://www.maths.ed.ac.uk/~flindgre/), who emailed me some code to do this probably a decade ago. Yes I am behind on my emails.
+The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious [Finn Lindgren](https://www.maths.ed.ac.uk/~flindgre/), who emailed me some code to do this probably a decade ago. Yes I am behind on my emails. 
+
+Finn's code can be found [here](https://github.com/inlabru-org/fmesher/blob/devel/src/qtool.h) 
+as part of the glorious INLAbru project.
 :::
 
 ::: {.callout-note appearance="simple"}

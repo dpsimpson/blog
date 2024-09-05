@@ -15,7 +15,2965 @@
 <link>https://dansblog.netlify.app/</link>
 </image>
 <generator>quarto-1.4.553</generator>
-<lastBuildDate>Tue, 03 Sep 2024 14:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 04 Sep 2024 14:00:00 GMT</lastBuildDate>
+<item>
+  <title>Random C++ Part 2: Sparse partial inverses in Eigen</title>
+  <dc:creator>Dan Simpson</dc:creator>
+  <link>https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/partial-inverse.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<div class="callout callout-style-simple callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Acknowledgements
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious <a href="https://www.maths.ed.ac.uk/~flindgre/">Finn Lindgren</a>, who emailed me some code to do this probably a decade ago. Yes I am behind on my emails.</p>
+<p>Finn’s code can be found <a href="https://github.com/inlabru-org/fmesher/blob/devel/src/qtool.h">here</a> as part of the glorious INLAbru project.</p>
+</div>
+</div>
+<div class="callout callout-style-simple callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Code availability
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The code from this post can be found in my <a href="https://github.com/dpsimpson/blog/tree/master/posts/2024-09-05-partial-inverse">github repo</a>.</p>
+</div>
+</div>
+<p>The time has come once more to make a blog post truly untethered from context. This time, I’m going to show you how to compute entries of the inverse of a sparse symmetric positive definite matrix that correspond to the non-zero elements of the original matrix. And I am going to once again pull out that rusty spoon that is my C++ skill to do it.</p>
+<section id="a-little-bit-of-motivation" class="level2">
+<h2 class="anchored" data-anchor-id="a-little-bit-of-motivation">A little bit of motivation</h2>
+<p>Computing certain elements of the inverse of a matrix isn’t necessarily the most useless thing possible. It actually comes up quite a lot in statistical applications. For instance, if you are computing the score function while doing maximum likelihood estimation for a multivariate Gaussian you’re gonna need those values. Or, less specifically, if you happen to have a multivariate Gaussian <img src="https://latex.codecogs.com/png.latex?N(0,%20Q%5E%7B-1%7D)"> parameterized by its precision (inverse covariance) matrix <img src="https://latex.codecogs.com/png.latex?Q">, if you are interested in the variance of each coordinate, you need the diagonal of <img src="https://latex.codecogs.com/png.latex?Q%5E%7B-1%7D">.</p>
+<p>A very real problem with computing <img src="https://latex.codecogs.com/png.latex?Q%5E%7B-1%7D"> is that it is, infamously, quite expensive. The only really practical way to do it is to solve <img src="https://latex.codecogs.com/png.latex?n"> linear systems, where <img src="https://latex.codecogs.com/png.latex?n"> is the number of rows/columns in <img src="https://latex.codecogs.com/png.latex?Q">. When <img src="https://latex.codecogs.com/png.latex?n"> is big, this is going to be a bit of a computational disaster!</p>
+<p>Thankfully, there is a convenient set of recursions due to Takahashi, Fagan, and Chen<sup>1</sup> that allow us to compute these elements directly and cheaply from the Cholesky factorization of <img src="https://latex.codecogs.com/png.latex?Q">.</p>
+<p>In fact, I have <a href="https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative#primitive-three-the-dreaded-log-determinant">blogged about this before</a>.</p>
+<p>Essentially, we need to implement the following pseudocode.</p>
+<pre><code> for i = n-1, ..., 0
+   for j = n-1, ..., i
+   if (L[j,i] not known to be 0)
+      Sigma[j,i] = Sigma[i,j] = (I(i==j)/L[i,i] 
+        - sum_{k=i+1}^{n-1} L[k,i] Sigma[k,j] ) / L[i,i]</code></pre>
+<p>This is not going to be terribly complicated, but it does require a bit of C++ plumbing and dealing with the internal Eigen representation of the Choleksy factor. It’s always so fun to read documentation!</p>
+</section>
+<section id="making-this-work-in-c" class="level2">
+<h2 class="anchored" data-anchor-id="making-this-work-in-c">Making this work in C++</h2>
+<p>One of the things about working with a library like Eigen is that we really want to use the official API for its functions as much as possible. Even when we itch to use the undocumented internal structure, we should desist: the API is, usually, pretty stable and it is considerably less likely that an Eigen update will materially break our code if we hold them to the promises they actually make rather than the ones we wish they made.</p>
+<p>It might look like you need three iterators to build our algorithm, but we actually need four. Because the matrix is stored in column-major order, we are going to need a new iterator for every distinct column index. In this case, that is 1. A reverse iterator going up column <code>i</code> of <code>Sigma</code> 2. A reverse iterator going up column <code>i</code> of <code>L</code> 3. A reverse iterator going up column <code>j</code> of <code>Sigma</code> 4. A reverse iterator going up column <code>i</code> in sync with iterator 3.</p>
+<p>The C++ code is pretty straightforward after that, you just need to keep your iterators in sync.</p>
+<p>One wrinkle that I forgot about the first time I coded this is that there are a few things that I need to be true: firstly, I need the output to be the lower-triangle of a symmetric matrix, and secondly I need that matrix to have the same sparsity pattern as <img src="https://latex.codecogs.com/png.latex?Q">. To do this, I wrote a RAII helper class, mainly because if I’m going to manipulate raw pointers I’m gonna want some safety.</p>
+<p>This helper class is a <em>functor</em>, meaning that its objects are callable with similar syntax to functions. Is this strictly necessary? Of course not. But mummy I love him.</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb2-1"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;Eigen/SparseCore&gt;</span></span>
+<span id="cb2-2"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;Eigen/SparseCholesky&gt;</span></span>
+<span id="cb2-3"></span>
+<span id="cb2-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typedef</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>StorageIndex StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-5"></span>
+<span id="cb2-6"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">template</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> MatchPattern <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">using</span> T <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">base_type</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;::</span>type<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-8">    StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-9">    StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-10">    T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-11">    StorageIndex <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-12">    StorageIndex <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-13"></span>
+<span id="cb2-14">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">public</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span></span>
+<span id="cb2-15"></span>
+<span id="cb2-16">    MatchPattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-17">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/**</span></span>
+<span id="cb2-18"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  MatchPattern(const SpMat&amp; A, const SpMat&amp; pattern)</span></span>
+<span id="cb2-19"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  Constructs functor class designed to construct a sparse matrix with</span></span>
+<span id="cb2-20"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  the same non-zero pattern as `pattern` and the same non-zero values </span></span>
+<span id="cb2-21"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  as `A`.</span></span>
+<span id="cb2-22"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  </span></span>
+<span id="cb2-23"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  This function assumes that the sparsity pattern of `pattern` is a SUBSET</span></span>
+<span id="cb2-24"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  of the sparsity pattern of `A`. Weird things will happen if this does not</span></span>
+<span id="cb2-25"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  hold.</span></span>
+<span id="cb2-26"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     * </span></span>
+<span id="cb2-27"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  Usage:</span></span>
+<span id="cb2-28"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  ```</span></span>
+<span id="cb2-29"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  typedef Eigen::SparseMatrix</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;double&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> SpMatrixd;</span></span>
+<span id="cb2-30"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  SpMatrixd A_pattern = MatchPattern</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;SpMatrixd&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(A, pattern)();</span></span>
+<span id="cb2-31"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  ```</span></span>
+<span id="cb2-32"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">    * */</span></span>
+<span id="cb2-33">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb2-34">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nonZeros<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb2-35"></span>
+<span id="cb2-36">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-37">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>copy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>outerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>outerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span> </span>
+<span id="cb2-38">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-39">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>copy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>innerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>innerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-40">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-41"></span>
+<span id="cb2-42"></span>
+<span id="cb2-43">        T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> valptr <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-44">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-45">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>InnerIterator Acol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-46">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>InnerIterator pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-47">                pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-48">                    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">while</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Acol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Acol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">())){</span></span>
+<span id="cb2-49">                        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>Acol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-50">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-51">                    valptr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Acol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb2-52">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>Acol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-53">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-54">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-55">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-56"></span>
+<span id="cb2-57">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Specialization for rank-1 matrices A = bc^T</span></span>
+<span id="cb2-58">    MatchPattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb2-59">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Matrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Dynamic<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&amp;</span> b<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb2-60">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Matrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Dynamic<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> c<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> </span>
+<span id="cb2-61">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> pattern</span>
+<span id="cb2-62">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-63">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/**</span></span>
+<span id="cb2-64"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  MatchPattern(typename Eigen::Vector</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;T&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp; b, typename Eigen::Vector</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;T&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp; c, const SpMat&amp; pattern)</span></span>
+<span id="cb2-65"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  A specialization of the MatchPattern class where the matrix to be matched </span></span>
+<span id="cb2-66"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  is a rank one matrix of the form $A = bc^T$.</span></span>
+<span id="cb2-67"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     * </span></span>
+<span id="cb2-68"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  Usage:</span></span>
+<span id="cb2-69"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  ```</span></span>
+<span id="cb2-70"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  typedef Eigen::SparseMatrix</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;double&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> SpMatrixd;</span></span>
+<span id="cb2-71"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  SpMatrixd A_pattern = MatchPattern</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;SpMatrixd&gt;</span><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(b, c, pattern)();</span></span>
+<span id="cb2-72"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     *  ```</span></span>
+<span id="cb2-73"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">     * */</span></span>
+<span id="cb2-74">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb2-75">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nonZeros<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb2-76">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-77">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>copy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>outerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>outerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span> </span>
+<span id="cb2-78">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> StorageIndex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-79">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>copy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>innerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>innerIndexPtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-80">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">new</span> T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">];</span></span>
+<span id="cb2-81"></span>
+<span id="cb2-82">        T<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> valptr <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-83">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> j <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-84">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>InnerIterator pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-85">                pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span>pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-86">                    valptr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">++</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>coeff<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>pattern_col<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">())</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> c<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>coeff<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>j<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-87">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-88">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-89">        </span>
+<span id="cb2-90">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-91"></span>
+<span id="cb2-92">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">~</span>MatchPattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-93">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-94">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-95">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">delete</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb2-96">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-97"></span>
+<span id="cb2-98">    SpMat <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">operator</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-99">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Map<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb2-100">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb2-101">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_cols</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb2-102">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_nnz</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb2-103">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_outer</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb2-104">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_inner</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb2-105">            <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">m_val</span></span>
+<span id="cb2-106">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb2-107">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-108"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span></code></pre></div>
+<p>The first thing to note here is that I am, fundamentally, quite lazy. As such I have made the convenient assumption that the target sparsity pattern is always a subset of the sparsity pattern of interest. This is true for the application that I have in mind, but you should probably be careful if you’re adapting this code to anything else.</p>
+<p>The second thing you may have noticed is that there a second constructor that is not needed here at all. This is really a gift to future me and avoids me having to re-write this code at some point in the future. Nothing to see here.</p>
+<p>With all of this in hand, we can jump over to the code indebted to<sup>2</sup> Finn.</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb3-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">template</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpChol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span></span>
+<span id="cb3-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpChol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>MatrixType partial_inverse<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb3-3">    <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpChol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb3-4">    <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> pattern</span>
+<span id="cb3-5"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-6"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/**</span></span>
+<span id="cb3-7"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  Input:</span></span>
+<span id="cb3-8"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  - `llt`: a Sparse Cholesky factorization of a matrix `Q`.</span></span>
+<span id="cb3-9"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  - `pattern`: a sparse matrix with the target sparsity</span></span>
+<span id="cb3-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  Assumptions:</span></span>
+<span id="cb3-11"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  - `pattern` has the same sparsity pattern as `Q` or is a subset of that pattern</span></span>
+<span id="cb3-12"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  Output: </span></span>
+<span id="cb3-13"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *  - A sparse matrix with the same sparsity pattern as `pattern` who's non-zero</span></span>
+<span id="cb3-14"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> *    elements correspond to the non-zero elements of $Q^{-1}$.</span></span>
+<span id="cb3-15"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"> **/</span></span>
+<span id="cb3-16">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typedef</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">typename</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>ReverseInnerIterator reverse_it<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-17">    StorageIndex ncols <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cols<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-18">    <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">const</span> SpMat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span> L <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>matrixL<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-19">    SpMat Qinv <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> L<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">template</span> selfadjointView<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Lower<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;();</span></span>
+<span id="cb3-20"></span>
+<span id="cb3-21">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ncols <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-22">        reverse_it QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb3-23">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>reverse_it LcolI_slow<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>L<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span> LcolI_slow<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>LcolI_slow<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-24">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// inner sum iterators</span></span>
+<span id="cb3-25">            reverse_it LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>L<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb3-26">            reverse_it QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> LcolI_slow<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">());</span></span>
+<span id="cb3-27">            </span>
+<span id="cb3-28">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Initialize Qinv[j,i]</span></span>
+<span id="cb3-29">            QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-30"></span>
+<span id="cb3-31">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Inner-most sum</span></span>
+<span id="cb3-32">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">while</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-33">                <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// First up, sync the iterators</span></span>
+<span id="cb3-34">                <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">while</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span> QinvcolJ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;&amp;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">())){</span></span>
+<span id="cb3-35">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-36">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-37">                <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>QinvcolJ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;&amp;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()))</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-38">                    QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-=</span> LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-39">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-40">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-41">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-42">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-43">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// At this point LcolI is the diagonal value</span></span>
+<span id="cb3-44">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>i <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> LcolI_slow<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">())</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-45">                QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span>  <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/</span> LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-46">                QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/=</span>  LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-47">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">else</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-48">                QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/=</span>  LcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-49">                <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Set Qinv[i,j] = Qinv[j,i]</span></span>
+<span id="cb3-50">                <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">while</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>row<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> i<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-51">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-52">                <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-53">                QinvcolJ<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valueRef<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">();</span></span>
+<span id="cb3-54">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-55">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">--</span>QinvcolI<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-56">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-57">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-58"></span>
+<span id="cb3-59">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Undo the permutation</span></span>
+<span id="cb3-60">    Qinv <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>twistedBy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>permutationP<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">().</span>inverse<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">());</span></span>
+<span id="cb3-61"></span>
+<span id="cb3-62">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Return the non-zero elements of Qinv corresponding to the non-zero</span></span>
+<span id="cb3-63">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// elements of Q</span></span>
+<span id="cb3-64">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> MatchPattern<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">)();</span></span>
+<span id="cb3-65"></span>
+<span id="cb3-66"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>You’ll probably notice that there are far fewer template shenanigans here than in the block matrix code from yesterday. That is because this only needs to work with scalar types and doesn’t need to be part of the <code>math</code> API. If needed, I guess we could always work out what the derivative of the partial inverse is and implement its reverse-mode specialization in Stan, but frankly why<sup>3</sup> bother.</p>
+<p>The other thing you may notice is the line</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb4-1">Qinv <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>twistedBy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>permutationP<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">().</span>inverse<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">());</span></span></code></pre></div>
+<p>This exists because the Cholesky factor is not actually performed on <img src="https://latex.codecogs.com/png.latex?Q"> but rather on a permuted matrix <img src="https://latex.codecogs.com/png.latex?PQP%5ET"> for some permutation matrix <img src="https://latex.codecogs.com/png.latex?P">. This line basically undoes the permutation and puts everything back into its right place.</p>
+</section>
+<section id="a-quick-test" class="level2">
+<h2 class="anchored" data-anchor-id="a-quick-test">A quick test</h2>
+<p>Finally, we need to make sure this works. The easiest way to do this is with a simple example, which is a 25x25 sparse matrix. Everything is hard coded in, because why not.</p>
+<div class="sourceCode" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode numberSource cpp number-lines code-with-copy"><code class="sourceCode cpp"><span id="cb5-1"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">&lt;iostream&gt;</span></span>
+<span id="cb5-2"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"partial_inverse.hpp"</span></span>
+<span id="cb5-3"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"Eigen/SparseCore"</span></span>
+<span id="cb5-4"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">#include </span><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">"Eigen/Dense"</span></span>
+<span id="cb5-5"></span>
+<span id="cb5-6"></span>
+<span id="cb5-7"><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> main<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb5-8">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">using</span> SparseMatrix <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>ColMajor<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;;</span></span>
+<span id="cb5-9"></span>
+<span id="cb5-10">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> Q_inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-11">                    <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">14</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-12">                    <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">14</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">14</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">19</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">20</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-13">                    <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">21</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">22</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">19</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">23</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">14</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">19</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">24</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">20</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">21</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">20</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-14">                    <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">21</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">22</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">21</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">22</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">23</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">22</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">23</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">24</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">19</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">23</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">24</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb5-15">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> Q_outer<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">11</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">18</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">22</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">27</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">32</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">37</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">41</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">45</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">50</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">55</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">60</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">68</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">73</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">78</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">83</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-16">                    <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">87</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">90</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">94</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">98</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">102</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">105</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span> </span>
+<span id="cb5-17">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">double</span> Q_val<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">[]</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-18">                    <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-19">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-20">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-21">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-22">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-23">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-24">                    <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb5-25">                    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb5-26">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>VectorXd Qinv_true<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">105</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb5-27">    Qinv_true <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.220593295593296</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.234139471639472</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.220593295593296</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.25021645021645</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.251621989121989</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.25021645021645</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.234139471639472</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.251621989121989</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.253146853146853</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.251621989121989</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.234139471639472</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.25021645021645</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0664335664335664</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.251621989121989</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0652680652680653</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.25021645021645</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.220593295593296</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0611402486402486</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.234139471639472</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0602730602730603</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0547785547785548</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.233306970806971</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.051483238983239</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.220593295593296</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb5-28">    </span>
+<span id="cb5-29">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> Q_ncol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">25</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb5-30">    <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">int</span> Q_nnz <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">105</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb5-31"></span>
+<span id="cb5-32">    SparseMatrix Q <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Map<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;(</span>Q_ncol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q_ncol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q_outer<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q_inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q_val<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb5-33"></span>
+<span id="cb5-34"></span>
+<span id="cb5-35">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">auto</span> llt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>SimplicialLLT<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>SparseMatrix<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;(</span>Q<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb5-36"></span>
+<span id="cb5-37">    SparseMatrix Qinv <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> partial_inverse<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>llt<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> Q<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb5-38">    Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>VectorXd Qinv_val <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>Map<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>Eigen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span>VectorXd<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;(</span>Qinv<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>valuePtr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(),</span> Q_nnz<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">);</span></span>
+<span id="cb5-39"></span>
+<span id="cb5-40">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>cout <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"The error in the partial inverse is "</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">(</span>Qinv_val <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> Qinv_true<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">).</span>norm<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">()</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"!"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">std::</span>endl<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb5-41"></span>
+<span id="cb5-42"></span>
+<span id="cb5-43"></span>
+<span id="cb5-44"></span>
+<span id="cb5-45"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The output is</p>
+<pre><code>The error in the partial inverse is 1.25852e-15!</code></pre>
+<p>All good here.</p>
+<p>That’s the end for this blog post. Hopefully I’ll be back soon-ish with a more interesting post that actually uses all of this stuff.</p>
+
+
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Takahashi, K., Fagan, J., Chen, M.S., 1973. Formation of a sparse bus impedance matrix and its application to short circuit study. In: Eighth PICA Conference Proceedings.IEEE Power Engineering Society, pp.&nbsp;63–69 (Papers Presented at the 1973 Power Industry Computer Application Conference in Minneapolis, MN)↩︎</p></li>
+<li id="fn2"><p>stolen from↩︎</p></li>
+<li id="fn3"><p>One reason would be to use gradient descent on the score function for a Gaussian MLE. Another is that this might be useful inside the <code>generated quantities</code> block to compute things like the marginal variances of the model, but, as the great lady said, not today Satan.↩︎</p></li>
+</ol>
+</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2024,
+  author = {Simpson, Dan},
+  title = {Random {C++} {Part} 2: {Sparse} Partial Inverses in {Eigen}},
+  date = {2024-09-05},
+  url = {https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html},
+  langid = {en}
+}
+</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2024" class="csl-entry quarto-appendix-citeas">
+Simpson, Dan. 2024. <span>“Random C++ Part 2: Sparse Partial Inverses in
+Eigen.”</span> September 5, 2024. <a href="https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html">https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html</a>.
+</div></div></section></div> ]]></description>
+  <category>Stan</category>
+  <category>Sparse matrices</category>
+  <category>Autodiff</category>
+  <category>Eigen</category>
+  <guid>https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/partial-inverse.html</guid>
+  <pubDate>Wed, 04 Sep 2024 14:00:00 GMT</pubDate>
+  <media:content url="https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/reba.JPG" medium="image"/>
+</item>
 <item>
   <title>Random C++ Part 1: Building a block sparse matrix in Eigen</title>
   <dc:creator>Dan Simpson</dc:creator>
@@ -25265,146 +28223,6 @@ Simpson, Dan, and Dan Simpson. 2021. <span>“Why Won’t You Cheat with Me?
   <guid>https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/why-wont-you-cheat-with-me-repost.html</guid>
   <pubDate>Wed, 08 Dec 2021 14:00:00 GMT</pubDate>
   <media:content url="https://dansblog.netlify.app/posts/2021-12-09-why-wont-you-cheat-with-me-repost/sylvia2.JPG" medium="image"/>
-</item>
-<item>
-  <title>The king must die (repost)</title>
-  <dc:creator>Dan Simpson</dc:creator>
-  <dc:creator>Dan Simpson</dc:creator>
-  <link>https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<blockquote class="blockquote">
-<p>And then there was Yodeling Elaine, the Queen of the Air. She had a dollar sign medallion about as big as a dinner plate around her neck and a tiny bubble of spittle around her nostril and a little rusty tear, for she had lassoed and lost another tipsy sailor—<a href="https://www.youtube.com/watch?v=q6zAp0NvPSs">Tom Waits</a></p>
-</blockquote>
-<p>It turns out I turned thirty two<sup>1</sup> and became unbearable. Some of you may feel, with an increasing sense of temporal dissonance, that I was already unbearable<sup>2</sup>. Others will wonder how I can look so good at my age<sup>3</sup>. None of that matters to me because all I want to do is talk about the evils of marketing like the 90s were a vaguely good idea<sup>4</sup>.</p>
-<p>The thing is, I worry that the real problem in academic statistics in 2017 is not a reproducibility crisis, so much as that so many of our methods just don’t work. And to be honest, I don’t really know what to do about that, other than suggest that we tighten our standards and insist that people proposing new methods, models, and algorithms work harder to sketch out the boundaries of their creations. (What a suggestion. Really. Concrete proposals for concrete change. But it’s a blog. If ever there was a medium to be half-arsed in it’s this one. It’s like twitter for people who aren’t pithy.)</p>
-<section id="berätta-för-mig-om-det-är-sant-att-din-hud-är-doppad-i-honung" class="level2">
-<h2 class="anchored" data-anchor-id="berätta-för-mig-om-det-är-sant-att-din-hud-är-doppad-i-honung">Berätta för mig om det är sant att din hud är doppad i honung</h2>
-<p>So what is the object of my impotent ire today. Well nothing less storied than the <a href="https://people.eecs.berkeley.edu/~jordan/courses/260-spring10/other-readings/park-casella.pdf">Bayesian Lasso</a>.</p>
-<p>It should be the least controversial thing in this, the year of our lord two thousand and seventeen, to point out that this method bears no practical resemblance to the Lasso. Or, in the words of Law and Order: SVU, “The [Bayesian Lasso] is fictional and does not depict any actual person or event”.</p>
-</section>
-<section id="who-do-you-think-you-are" class="level2">
-<h2 class="anchored" data-anchor-id="who-do-you-think-you-are">Who do you think you are?</h2>
-<p>The Bayesian Lasso is a good example of what’s commonly known as the Lupita Nyong’o fallacy<sup>5</sup>, which goes something like this: Lupita Nyong’o had a break out role in Twelve Years a Slave, she also had a heavily disguised role in one of ’ the Star Wars films (the specific Star Wars film is not important. I haven’t seen it and I don’t care). Hence Twelve Years a Slave exists in the extended Star Wars universe.<sup>6</sup></p>
-<p>The key point is that the (classical) Lasso plays a small part within the Bayesian Lasso (it’s the MAP estimate) in the same way that Lupita Nyong’o played a small role in that Star Wars film. But just as the presence of Ms Nyong’o does not turn Star Wars into Twelve Years a Slave, the fact that the classical Lasso can be recovered as the MAP estimate of the Bayesian Lasso does not make the Bayesian Lasso useful.</p>
-<p>And yet people still ask <a href="https://statmodeling.stat.columbia.edu/2017/02/14/lasso-regression-etc-stan/">if they can be fit in Stan</a>. In that case, Andrew answered the question that was asked, which is typically the best way to deal with software enquiries<sup>7</sup>. But I am brave and was not asked for my opinion, so I’m going to talk about why the Bayesian Lasso doesn’t work.</p>
-</section>
-<section id="hiding-all-away" class="level2">
-<h2 class="anchored" data-anchor-id="hiding-all-away">Hiding all away</h2>
-<p>So why would anyone not know that the Bayesian Lasso doesn’t work? Well, I don’t really know. But I will point out that all of the results that I’ve seen in this directions (not that I’ve been looking hard) have been published in the prestigious but obtuse places like Annals of Statistics, the journal we publish in when we either don’t want people without a graduate degree in mathematical statistics to understand us or when we want to get tenure.</p>
-<p>By contrast, the original paper is very readable and published in JASA, where we put papers when we are ok with people who do not have a graduate degree in mathematical statistics being able to read them, or when we want to get tenure<sup>8</sup>.</p>
-<p>To be fair to Park and Casella, they never really say that the Baysian Lasso should be used for sparsity. Except for one sentence in the introduction where they say the median gives approximately sparse estimators and the title which links it to the most prominent and popular method for estimating a sparse signal. Marketing eh. (See, I’m Canadian now<sup>9</sup>).</p>
-<p>##The devil has designed my death and is waiting to be sure</p>
-<p>So what is the Bayesian LASSO (and why did I spend 600 words harping on about something before defining it? The answer will shock you. Actually the answer will not shock you, it’s because it’s kinda hard to do equations on this thing<sup>10</sup>.)</p>
-<p>For data observed with Gaussian error, the Bayesian Lasso takes the form <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathbf%7By%7D%20%5Cmid%20%5Cboldsymbol%7B%5Cbeta%7D%20%5Csim%20N(%20%5Cmathbf%7BX%7D%20%5Cboldsymbol%7B%5Cbeta%7D,%20%5Cboldsymbol%7B%5CSigma%7D)%0A"></p>
-<p>where, instead of putting a Normal prior on <img src="https://latex.codecogs.com/png.latex?%5Cboldsymbol%7B%5Cbeta%7D"> as we would in a bog-standard Bayesian regression, we instead use independent Laplace priors <img src="https://latex.codecogs.com/png.latex?%0Ap(%5Cbeta_i)%20=%20%5Cfrac%7B%5Clambda%7D%7B2%7D%20%5Cexp(-%5Clambda%20%7C%20%5Cbeta_i%7C).%0A"></p>
-<p>Here the tuning parameter<sup>11</sup> <img src="https://latex.codecogs.com/png.latex?%5Clambda%20=%20c(p,s_0,%5Cmathbf%7BX%7D)%5Ctilde%7B%5Clambda%7D"> where <img src="https://latex.codecogs.com/png.latex?p"> is the number of covariates, <img src="https://latex.codecogs.com/png.latex?s_0"> is the number of “true” non-zero elements of <img src="https://latex.codecogs.com/png.latex?%5Cboldsymbol%7B%5Cbeta%7D">, <img src="https://latex.codecogs.com/png.latex?%5Cboldsymbol%7B%5CSigma%7D"> is known, and <img src="https://latex.codecogs.com/png.latex?%5Ctilde%7B%5Clambda%7D"> is an unknown scaling parameter that should be <img src="https://latex.codecogs.com/png.latex?%5Cmathcal%7BO%7D(1)">.</p>
-<p><em>Important Side note</em>: This isn’t the exact same model as Park and Castella used as they didn’t use the transformation <img src="https://latex.codecogs.com/png.latex?%0A%5Clambda%20=%20c(p,s_0,%5Cmathbf%7BX%7D)%20%5Ctilde%7B%5Clambda%7D%0A"> but rather just dealt with <img src="https://latex.codecogs.com/png.latex?%5Clambda"> as the parameter. We will see below, and it’s born out by many papers in this field, that the best possible value of <img src="https://latex.codecogs.com/png.latex?%5Clambda"> will depend on this structural/design information</p>
-<p>If we know how <img src="https://latex.codecogs.com/png.latex?%5Clambda"> varies as the structural/design information changes, it’s a much better idea to put a prior on <img src="https://latex.codecogs.com/png.latex?%5Ctilde%7B%5Clambda%7D"> than on <img src="https://latex.codecogs.com/png.latex?%5Clambda"> directly. Why? Because a prior on <img src="https://latex.codecogs.com/png.latex?%5Clambda"> needs to depend on p, <img src="https://latex.codecogs.com/png.latex?s_0">, and X and hence needs to be changed for each problem, while a prior on <img src="https://latex.codecogs.com/png.latex?%5Ctilde%7B%5Clambda%7D"> can be used for many problems. One possible option is <img src="https://latex.codecogs.com/png.latex?c(p,s_0,%5Cmathbf%7BX%7D)%20=%202%5C%7C%5Cmathbf%7BX%7D%5C%7C%5Csqrt%7B%5Clog%20p%20%7D">, which is a rate optimal parameter for the (non-Bayesian) Lasso. Later, we’ll do a back-of-the-envelope calculation that suggests we might not need the square root around the logarithmic term.</p>
-<section id="why-do-we-scale-priors" class="level3">
-<h3 class="anchored" data-anchor-id="why-do-we-scale-priors">Why do we scale priors</h3>
-<p>The critical idea behind the Bayesian Lasso is that <em>we can use the i.i.d. Laplace priors to express the substantive belief that the most of the</em> <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j"> <em>are (approximately) zero</em>. The reason for scaling the prior is that the values of <img src="https://latex.codecogs.com/png.latex?%5Clambda"> that are consistent with this belief depend on <img src="https://latex.codecogs.com/png.latex?p">, <img src="https://latex.codecogs.com/png.latex?s_0">, and <img src="https://latex.codecogs.com/png.latex?X">.</p>
-<p>For example, <img src="https://latex.codecogs.com/png.latex?%5Clambda%20=%201">, the Bayesian Lasso will not give an approximately sparse signal.</p>
-<p>While we could just use a prior for <img src="https://latex.codecogs.com/png.latex?%5Clambda"> that has a very heavy right tail (something like an inverse gamma), this is at odds with a good practice principle of making sure all of thee parameters in your models are properly scaled to make them order 1. Why do we do this? Because it makes it much much easier to set sensible priors.</p>
-<p>Some of you may have noticed that the scaling <img src="https://latex.codecogs.com/png.latex?c(p,s_0,%5Cmathbf%7BX%7D)"> can depend on the unknown sparsity <img src="https://latex.codecogs.com/png.latex?s_0">. This seems like cheating. People who do asymptotic theory call this sort of value for <img src="https://latex.codecogs.com/png.latex?%5Clambda"> an oracle value, mainly because people studying Bayesian asymptotics are really really into database software.</p>
-<p>The idea is that this is the value of <img src="https://latex.codecogs.com/png.latex?%5Clambda"> that gives the model the best chance of working. When maths-ing, you work out the properties of the posterior with the oracle value of <img src="https://latex.codecogs.com/png.latex?%5Clambda"> and then you use some sort of smoothness argument to show that the actual method that is being used to select (or average over) the parameter gives almost the same answer.</p>
-<p>It’s also worth noting that the scaling here doesn’t (directly<sup>12</sup>) depend on the number of observations, only the number of covariates. This is appropriate: it’s ok for priors to depend on things that should be known <em>a priori</em> (like the number of parameters) or things that can be worked with<sup>13</sup> (like the scaling of <img src="https://latex.codecogs.com/png.latex?X">). It’s a bit weirder if it depends on the number of observations (that tends to break things like coherent Bayesian updating, while the other dependencies don’t).</p>
-</section>
-</section>
-<section id="only-once-in-sheboygan.-only-once." class="level2">
-<h2 class="anchored" data-anchor-id="only-once-in-sheboygan.-only-once.">Only once in Sheboygan. Only once.</h2>
-<p>So what’s wrong with the Bayesian Lasso? Well the short version is that the Laplace prior doesn’t have enough mass near zero relative to the mass in the tails to allow for a posterior that has a lot of entries that are almost zero and some entries that are emphatically not zero.<br>
-Because the Bayesian Lasso prior does not have a spike at zero, none of the entries will be a priori exactly zero, so we need some sort of rule to separate the “zero” entries from the “non-zero” entries. The way that we’re going to do this is to choose a cutoff <img src="https://latex.codecogs.com/png.latex?%5Cepsilon"> where we assume that if <img src="https://latex.codecogs.com/png.latex?%7C%5Cbeta_j%7C%20%3C%5Cepsilon">, then <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j%20=0">.</p>
-<p>So how do we know that the Lasso prior doesn’t put enough mass in important parts of the parameter space? Well there are two ways. I learnt it during the exciting process of <a href="https://arxiv.org/abs/1403.4630">writing a paper</a> that the reviewers insisted should have an extended section about sparsity (although this was at best tangential to the rest of the paper), so I suddenly needed to know about Bayesian models of sparsity. So I read those Annals of Stats papers. (That’s why I know I should be scaling <img src="https://latex.codecogs.com/png.latex?%5Clambda">!).</p>
-<p>What are the key references? Well all the knowledge that you seek is <a href="https://arxiv.org/pdf/1403.0735.pdf">here</a> and <a href="https://projecteuclid.org/download/pdfview_1/euclid.ejs/1460463652">here.</a></p>
-<p>But a much easier way to work out that the Bayesian Lasso is bad is to do some simple maths.</p>
-<p>Because the <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j"> are a priori independent, we get a prior on the effective sparsity <img src="https://latex.codecogs.com/png.latex?s_%5Cepsilon%20=%20%5C#%5C%7Bj%20:%20%7C%5Cbeta_j%7C%20%20%3E%20%5Cepsilon%5C%7D"> <img src="https://latex.codecogs.com/png.latex?%0As_%5Cepsilon%20%5Csim%20%5Ctext%7BBin%7D(p,%20%5CPr(%7C%5Cbeta_j%7C%20%3E%20%5Cepsilon)).%0A"> For the Bayesian Lasso, that probability can be computed as <img src="https://latex.codecogs.com/png.latex?%0A%5CPr%20(%20%7C%20%5Cbeta_j%20%7C%20%3E%20%5Cepsilon%20)%20=%20e%5E%7B-%20%5Clambda%20%5Cepsilon%7D,%0A"> so <img src="https://latex.codecogs.com/png.latex?%0As_%5Cepsilon%20%5Csim%20%5Ctext%7BBin%7D%5Cleft(p,%20e%5E%7B-%5Clambda%20%5Cepsilon%7D%5Cright).%0A"></p>
-<p>Ideally, the distribution of this effective sparsity would be centred on the true sparsity.<br>
-So we’d like to choose <img src="https://latex.codecogs.com/png.latex?%5Clambda"> so that <img src="https://latex.codecogs.com/png.latex?%0A%5Cmathbb%7BE%7D(s_%5Cepsilon)=%20p%20e%5E%7B-%20%5Clambda%20%5Cepsilon%7D=%20s_0.%0A"></p>
-<p>A quick re-arrangement suggests that <img src="https://latex.codecogs.com/png.latex?%0A%5Clambda%20=%20%5Cepsilon%5E%7B-1%7D%20%5Clog(p)%20-%20%5Cepsilon%5E%7B-1%7D%20%5Clog(s_0).%0A"></p>
-<p>Now, we are interested in signals with <img src="https://latex.codecogs.com/png.latex?s_0%20=%20o(p)">, i.e.&nbsp;where only a very small number of the <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j"> are non-zero. This suggests we can safely ignore the second term as it will be much smaller than the first term.</p>
-<p>To choose <img src="https://latex.codecogs.com/png.latex?%5Cepsilon">, we can work from the general principle that we want to choose it so that the effect of the “almost zero” <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j"> <img src="https://latex.codecogs.com/png.latex?%0A%5Csum_%7Bj:%7C%5Cbeta_j%7C%20%3C%20%5Cepsilon%7D%20%5Cbeta_j%20X_%7B:j%7D%0A"> is small. (here <img src="https://latex.codecogs.com/png.latex?X_%7B:j%7D"> is the <img src="https://latex.codecogs.com/png.latex?j">th column of the matrix <img src="https://latex.codecogs.com/png.latex?X">.)</p>
-<p>From this, it’s pretty clear that <img src="https://latex.codecogs.com/png.latex?%5Cepsilon"> is going to have to depend on <img src="https://latex.codecogs.com/png.latex?p">, <img src="https://latex.codecogs.com/png.latex?s_0">, and <img src="https://latex.codecogs.com/png.latex?X"> as well! But how?</p>
-<p>Well, first we note that <img src="https://latex.codecogs.com/png.latex?%0A%5Csum_%7Bj:%7C%5Cbeta_j%7C%20%3C%20%5Cepsilon%7D%20%5Cbeta_j%20X_%7B:j%7D%20%5Cleq%20%5Cepsilon%20%5Cmax_%7Bi%20=1,%5Cldots,%20n%7D%5Csum_%7Bj=1%7D%5Ep%20%7CX_%7Bij%7D%7C%20=%20%5Cepsilon%20%5C%7CX%5C%7C_%5Cinfty.%0A"> Hence we can make this asymptotically small (as <img src="https://latex.codecogs.com/png.latex?p%5Crightarrow%20%5Cinfty">) if <img src="https://latex.codecogs.com/png.latex?%0A%5Cepsilon%20=%20o%5Cleft(%5C%7CX%5C%7C_%5Cinfty%5E%7B-1%7D%5Cright).%0A"> Critically, if we have scaled the design matrix so that each covariate is at most <img src="https://latex.codecogs.com/png.latex?1">, ie <img src="https://latex.codecogs.com/png.latex?%0A%5Cmax_%7Bi=1,%5Cldots,n%7D%20%7CX_%7Bij%7D%7C%20%5Cleq%201,%20%5Cqquad%20%5Ctext%7Bfor%20all%20%7D%20j%20=%201,%5Cldots,%20p,%0A"> then this reduces to the much more warm and fuzzy <img src="https://latex.codecogs.com/png.latex?%0A%5Cepsilon%20=%20o%5Cleft(p%5E%7B-1%7D%5Cright).%0A"></p>
-<p>This means that we need to take <img src="https://latex.codecogs.com/png.latex?%5Clambda%20=%20%5Cmathcal%7BO%7D(p%20%5Clog(p))"> in order to ensure that we have our prior centred on sparse vectors (in the sense that the prior mean for the number of non-zero components is always much less than <img src="https://latex.codecogs.com/png.latex?p">).</p>
-</section>
-<section id="show-some-emotion" class="level2">
-<h2 class="anchored" data-anchor-id="show-some-emotion">Show some emotion</h2>
-<div class="cell">
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
-<p>So for the Bayesian Lasso, a sensible parameter is <img src="https://latex.codecogs.com/png.latex?%5Clambda%20=%20p%5Clog%20p">, which will usually have a large number of components less than the threshold <img src="https://latex.codecogs.com/png.latex?%5Cepsilon"> and a small number that are larger.</p>
-<p>But this is still a bad prior.</p>
-<p>To see this, let’s consider the prior probability of seeing a <img src="https://latex.codecogs.com/png.latex?%5Cbeta_j"> larger than one <img src="https://latex.codecogs.com/png.latex?%0A%5CPr%20(%20%7C%20%5Cbeta_j%20%7C%20%3E%201)%20=%20p%5E%7B-p%7D%20%5Cdownarrow%20%5Cdownarrow%20%5Cdownarrow%200.%0A"></p>
-<p>This is the problem with the Bayesian Lasso: in order to have a lot of zeros in the signal, you are also forcing the non-zero elements to be very small. A plot of this function is above, and it’s clear that even for very small values of <img src="https://latex.codecogs.com/png.latex?p"> the probability of seeing a coefficient bigger than one is crushingly small.</p>
-<p>Basically, the Bayesian Lasso can’t give enough mass to both small and large signals simultaneously. Other Bayesian models (such as the horseshoe and the <a href="https://arxiv.org/abs/1707.01694">Finnish horseshoe</a>) can support both simultaneously and this type of calculation can show that (although it’s harder. See Theorem 6 <a href="https://arxiv.org/pdf/1403.4630.pdf">here</a>).</p>
-<p>(The scaling that I derived in the previous section is a little different to the standard Lasso scaling of <img src="https://latex.codecogs.com/png.latex?%5Clambda%20=%20%5Cmathcal%7BO%7D%20(p%20%5Csqrt%7B%5Clog%20p%7D)">, but the same result holds: for large <img src="https://latex.codecogs.com/png.latex?p"> the probability of seeing a large signal is vanishingly small.)</p>
-</section>
-<section id="maybe-i-was-mean-but-i-really-dont-think-so" class="level2">
-<h2 class="anchored" data-anchor-id="maybe-i-was-mean-but-i-really-dont-think-so">Maybe I was mean, but I really don’t think so</h2>
-<p>This analysis is all very <em>back of the envelope</em>, but it contains a solid grain of truth<sup>14</sup>.</p>
-<p>If you fit a Bayesian Lasso in Stan with an unknown scaling parameter <img src="https://latex.codecogs.com/png.latex?%5Clambda">, you will not see estimates that are all zero, like this analysis suggests. This is because the posterior for <img src="https://latex.codecogs.com/png.latex?%5Clambda"> tries to find the values of the parameters that best fit the data <em>and not</em> the values that give an <img src="https://latex.codecogs.com/png.latex?%5Cepsilon">-sparse signal.</p>
-<p>In order to fit the data, it is important that the useful covariates have large <img src="https://latex.codecogs.com/png.latex?%5Cbeta">s, which, in turn, forces the <img src="https://latex.codecogs.com/png.latex?%5Cbeta">s that should be zero to be larger than our dreamt of <img src="https://latex.codecogs.com/png.latex?%5Cepsilon">.</p>
-<p>And so you see posteriors constructed with the Bayesian Lasso exisiting in some sort of eternal tension: the small <img src="https://latex.codecogs.com/png.latex?%5Cbeta">s are too big, and the large <img src="https://latex.codecogs.com/png.latex?%5Cbeta">s are typically shrunken towards zero.</p>
-<p>It’s the sort of compromise that leaves everyone unhappy.</p>
-<p>Let’s close it out with <a href="https://www.youtube.com/watch?v=wVw1wIj9nC8">the title song</a>.</p>
-<blockquote class="blockquote">
-<p>And I’m so afraid your courtiers<br>
-Cannot be called best friends</p>
-</blockquote>
-<p><strong>Lightly re-touched from the original, posted on <a href="https://statmodeling.stat.columbia.edu/2017/11/02/king-must-die/">Andrew’s blog</a>. Orignal verison, 2 November, 2017.</strong></p>
-
-
-</section>
-
-
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
-
-<ol>
-<li id="fn1"><p>(2021 edit) I am no longer 32. I am still unbearable.↩︎</p></li>
-<li id="fn2"><p><a href="https://www.youtube.com/watch?v=92IkddsjtAA">Fair point</a>↩︎</p></li>
-<li id="fn3"><p>Answer: <a href="https://www.youtube.com/watch?v=cEC2hUHqEg4">Black Metal</a>↩︎</p></li>
-<li id="fn4"><p>They were not. The concept of authenticity is just another way for the dominant culture to suppress more interesting ones.↩︎</p></li>
-<li id="fn5"><p>(2021 edit): Really, Daniel? Really?↩︎</p></li>
-<li id="fn6"><p>(2021): Ok. That ended better than I feared.↩︎</p></li>
-<li id="fn7"><p>It’s usually a fool’s game to try to guess why people are asking particular questions. It probably wouldn’t be hard for someone to catalogue the number of times I’ve not followed my advice on this, but in life as in statistics, consistency is really only a concern if everything else is going well.↩︎</p></li>
-<li id="fn8"><p>2021: Look at me trying to land a parallel construction.↩︎</p></li>
-<li id="fn9"><p>2021: The other week someone asked if I was Canadian, which is a sure sign that my accent is just broken.↩︎</p></li>
-<li id="fn10"><p>2021: Prophetic words↩︎</p></li>
-<li id="fn11"><p>Could we put a prior on this? Sure. And in practice this is what we should probably do. But for today, we are going to keep it fixed.↩︎</p></li>
-<li id="fn12"><p>It depends on <img src="https://latex.codecogs.com/png.latex?%5C%7CX%5C%7C"> which could depend on the number of observations.↩︎</p></li>
-<li id="fn13"><p>There’s a lot of space for interesting questions here.↩︎</p></li>
-<li id="fn14"><p>It’ws also fully justified by people who have written far more mathematically sophisticated papers on this topic!↩︎</p></li>
-</ol>
-</section><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a></div></div></section><section class="quarto-appendix-contents" id="quarto-citation"><h2 class="anchored quarto-appendix-heading">Citation</h2><div><div class="quarto-appendix-secondary-label">BibTeX citation:</div><pre class="sourceCode code-with-copy quarto-appendix-bibtex"><code class="sourceCode bibtex">@online{simpson2021,
-  author = {Simpson, Dan and Simpson, Dan},
-  title = {The King Must Die (Repost)},
-  date = {2021-12-08},
-  url = {https://dansblog.netlify.app/2021-12-08-the-king-must-die-repost},
-  langid = {en}
-}
-</code></pre><div class="quarto-appendix-secondary-label">For attribution, please cite this work as:</div><div id="ref-simpson2021" class="csl-entry quarto-appendix-citeas">
-Simpson, Dan, and Dan Simpson. 2021. <span>“The King Must Die
-(Repost).”</span> December 8, 2021. <a href="https://dansblog.netlify.app/2021-12-08-the-king-must-die-repost">https://dansblog.netlify.app/2021-12-08-the-king-must-die-repost</a>.
-</div></div></section></div> ]]></description>
-  <category>Bayesian Lasso</category>
-  <category>Variable Selection</category>
-  <category>Fundamentals</category>
-  <category>Theory</category>
-  <category>Things that don&#39;t work</category>
-  <guid>https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/the-king-must-die-repost.html</guid>
-  <pubDate>Tue, 07 Dec 2021 14:00:00 GMT</pubDate>
-  <media:content url="https://dansblog.netlify.app/posts/2021-12-08-the-king-must-die-repost/sylvia.jpg" medium="image" type="image/jpeg"/>
 </item>
 </channel>
 </rss>

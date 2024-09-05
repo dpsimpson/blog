@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/2024-09-05-partial-inverse/partial-inverse.html",
       "/posts/2024-09-04-block-matrices/blocks.html",
       "/posts/2024-05-08-laplace/laplace.html",
       "/posts/2023-01-30-diffusion/diffusion.html",
