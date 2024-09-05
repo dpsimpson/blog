@@ -1,0 +1,369 @@
+---
+title: "Random C++ Part 2: Sparse partial inverses in Eigen" 
+description: "Sometimes you just need some elements of the inverse of a sparse matrix. Sometimes you're working in C++. This is that time."
+  
+date: 2024-09-05
+image: "scooby.JPG"
+categories: [Stan, Sparse matrices, Autodiff]
+twitter-card:
+  title: "Sparse Partial inverses in Eigen"
+  creator: "@dan_p_simpson"
+citation: 
+  url: https://dansblog.netlify.app/posts/2024-05-08-laplace/laplace.html
+format: 
+  html:
+    df-print: paged
+jupyter: python3
+draft: true
+execute:
+  eval: true
+
+---
+
+_The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious [Finn Lindgren](https://www.maths.ed.ac.uk/~flindgre/), who emailed me some code to do this probably a decade ago. Yes I am behind on my emails._
+
+The time has come once more to make a blog post truly untethered from context.
+This time, I'm going to show you how to compute entries of the inverse of a 
+sparse symmetric positive definite matrix that correspond to the non-zero
+elements of the original matrix. And I am going to once again pull out that 
+rusty spoon that is my C++ skill to do it.
+
+## A little bit of motivation
+
+Computing certain elements of the inverse of a matrix isn't necessarily the 
+most useless thing possible. It actually comes up quite a lot in statistical
+applications. For instance, if you are computing the score function while doing 
+maximum likelihood estimation for a multivariate Gaussian you're gonna need those
+values. Or, less specifically, if you happen to have a multivariate Gaussian 
+$N(0, Q^{-1})$ parameterized by its precision (inverse covariance) matrix $Q$, 
+if you are interested in the variance of each coordinate, you need the diagonal 
+of $Q^{-1}$. 
+
+A very real problem with computing $Q^{-1}$ is that it is, infamously, quite expensive.
+The only really practical way to do it is to solve $n$ linear systems, where $n$
+is the number of rows/columns in $Q$. When $n$ is big, this is going to be a 
+bit of a computational disaster!
+
+Thankfully, there is a convenient set of recursions due to Takahashi, Fagan, and 
+Chen^[Takahashi, K., Fagan, J., Chen, M.S., 1973. Formation of a sparse bus impedance matrix and its application to short circuit study. In: Eighth PICA Conference Proceedings.IEEE Power Engineering Society, pp. 63–69 (Papers Presented at the 1973 Power Industry Computer Application Conference in Minneapolis, MN)]
+that allow us to compute these elements directly and cheaply from the Cholesky
+factorization of $Q$.
+
+In fact, I have [blogged about this before](https://dansblog.netlify.app/posts/2022-05-20-to-catch-a-derivative-first-youve-got-to-think-like-a-derivative/to-catch-a-derivative-first-youve-got-to-think-like-a-derivative#primitive-three-the-dreaded-log-determinant).
+
+Essentially, we need to implement the following pseudocode.
+```
+ for i = n-1, ..., 0
+   for j = n-1, ..., i
+   if (L[j,i] not known to be 0)
+      Sigma[j,i] = Sigma[i,j] = (I(i==j)/L[i,i] 
+        - sum_{k=i+1}^{n-1} L[k,i] Sigma[k,j] ) / L[i,i]
+```
+
+This is not going to be terribly complicated, but it does require a bit of C++
+plumbing and dealing with the internal Eigen representation of the Choleksy factor.
+It's always so fun to read documentation!
+
+## Making this work in C++
+
+One of the things about working with a library like Eigen is that we really want
+to use the official API for its functions as much as possible. Even when we itch
+to use the undocumented internal structure, we should desist: the API is, usually, 
+pretty stable and it is considerably less likely that an Eigen update will materially
+break our code if we hold them to the promises they actually make rather than the
+ones we wish they made.
+
+It might look like you need three iterators to build our algorithm, but we actually need four. Because the matrix is stored in column-major order, we are going to need a new iterator for every distinct column index. In this case, that is 
+1. A reverse iterator going up column `i` of `Sigma`
+2. A reverse iterator going up column `i` of `L`
+3. A reverse iterator going up column `j` of `Sigma`
+4. A reverse iterator going up column `i` in sync with iterator 3.
+
+The C++ code is pretty straightforward after that, you just need to keep your 
+iterators in sync.
+
+One wrinkle that I forgot about the first time I coded this 
+is that there are a few things that I need to be true: firstly, I need the output
+to be the lower-triangle of a symmetric matrix, and secondly I need that matrix
+to have the same sparsity pattern as $Q$. To do this, I wrote a RAII helper class,
+mainly because if I'm going to manipulate raw pointers I'm gonna want some safety.
+
+This helper class is a _functor_, meaning that its objects are callable with similar
+syntax to functions. Is this strictly necessary? Of course not. But mummy I love him.
+
+```c++
+#include <Eigen/SparseCore>
+#include <Eigen/SparseCholesky>
+
+typedef Eigen::SparseMatrix<double>::StorageIndex StorageIndex;
+
+template<typename SpMat> class MatchPattern {
+    using T = typename base_type<SpMat>::type;
+    StorageIndex* m_outer;
+    StorageIndex* m_inner;
+    T* m_val;
+    StorageIndex m_cols;
+    StorageIndex m_nnz;
+
+    public:
+
+    MatchPattern(const SpMat& A, const SpMat& pattern) {
+    /**
+     *  MatchPattern(const SpMat& A, const SpMat& pattern)
+     *  Constructs functor class designed to construct a sparse matrix with
+     *  the same non-zero pattern as `pattern` and the same non-zero values 
+     *  as `A`.
+     *  
+     *  This function assumes that the sparsity pattern of `pattern` is a SUBSET
+     *  of the sparsity pattern of `A`. Weird things will happen if this does not
+     *  hold.
+     * 
+     *  Usage:
+     *  ```
+     *  typedef Eigen::SparseMatrix<double> SpMatrixd;
+     *  SpMatrixd A_pattern = MatchPattern<SpMatrixd>(A, pattern)();
+     *  ```
+    * */
+        m_cols = pattern.cols();
+        m_nnz = pattern.nonZeros();
+
+        m_outer = new StorageIndex[m_cols + 1];
+        std::copy(pattern.outerIndexPtr(), pattern.outerIndexPtr() + m_cols + 1, m_outer); 
+        m_inner = new StorageIndex[m_nnz];
+        std::copy(pattern.innerIndexPtr(), pattern.innerIndexPtr() + m_nnz, m_inner);
+        m_val = new T[m_nnz];
+
+
+        T* valptr = m_val;
+        for (int j = 0; j < m_cols; ++j) {
+            typename SpMat::InnerIterator Acol(A, j);
+            for (typename SpMat::InnerIterator pattern_col(pattern, j);
+                pattern_col; ++pattern_col) {
+                    while (Acol & (Acol.row() < pattern_col.row())){
+                        ++Acol;
+                    }
+                    valptr++ = Acol.value();
+                    ++Acol;
+                }
+        }
+    }
+
+    // Specialization for rank-1 matrices A = bc^T
+    MatchPattern(
+        const typename Eigen::Matrix<T,1,Eigen::Dynamic>& b, 
+        const typename Eigen::Matrix<T,1,Eigen::Dynamic> c, 
+        const SpMat& pattern
+    ) {
+    /**
+     *  MatchPattern(typename Eigen::Vector<T>& b, typename Eigen::Vector<T>& c, const SpMat& pattern)
+     *  A specialization of the MatchPattern class where the matrix to be matched 
+     *  is a rank one matrix of the form $A = bc^T$.
+     * 
+     *  Usage:
+     *  ```
+     *  typedef Eigen::SparseMatrix<double> SpMatrixd;
+     *  SpMatrixd A_pattern = MatchPattern<SpMatrixd>(b, c, pattern)();
+     *  ```
+     * */
+        m_cols = pattern.cols();
+        m_nnz = pattern.nonZeros();
+        m_outer = new StorageIndex[m_cols + 1];
+        std::copy(pattern.outerIndexPtr(), pattern.outerIndexPtr() + m_cols + 1, m_outer); 
+        m_inner = new StorageIndex[m_nnz];
+        std::copy(pattern.innerIndexPtr(), pattern.innerIndexPtr() + m_nnz, m_inner);
+        m_val = new T[m_nnz];
+
+        T* valptr = m_val;
+        for (int j = 0; j < m_cols; ++j) {
+            for (typename SpMat::InnerIterator pattern_col(pattern, j);
+                pattern_col; ++pattern_col) {
+                    valptr++ = b.coeff(pattern_col.row()) * c.coeff(j);
+                }
+        }
+        
+    }
+
+    ~MatchPattern() {
+        delete[] m_inner;
+        delete[] m_outer;
+        delete[] m_val;
+    }
+
+    SpMat operator () () {
+        return typename SpMat::Map(
+            m_cols,
+            m_cols,
+            m_nnz,
+            m_outer,
+            m_inner,
+            m_val
+        );
+    }
+};
+
+```
+
+The first thing to note here is that I am, fundamentally, quite lazy. As such
+I have made the convenient assumption that the target sparsity pattern is always
+a subset of the sparsity pattern of interest. This is true for the application
+that I have in mind, but you should probably be careful if you're adapting this
+code to anything else.
+
+The second thing you may have noticed is that there a second constructor that
+is not needed here at all. This is really a gift to future me and avoids me having
+to re-write this code at some point in the future. Nothing to see here.
+
+With all of this in hand, we can jump over to the code indebted to^[stolen from]
+Finn.
+
+```c++
+template<typename SpChol, typename SpMat>
+typename SpChol::MatrixType partial_inverse(
+    const SpChol& llt,
+    const SpMat& pattern
+) {
+/**
+ *  Input:
+ *  - `llt`: a Sparse Cholesky factorization of a matrix `Q`.
+ *  - `pattern`: a sparse matrix with the target sparsity
+ *  Assumptions:
+ *  - `pattern` has the same sparsity pattern as `Q` or is a subset of that pattern
+ *  Output: 
+ *  - A sparse matrix with the same sparsity pattern as `pattern` who's non-zero
+ *    elements correspond to the non-zero elements of $Q^{-1}$.
+ **/
+    typedef typename SpMat::ReverseInnerIterator reverse_it;
+    StorageIndex ncols = llt.cols();
+    const SpMat& L = llt.matrixL();
+    SpMat Qinv = L.template selfadjointView<Eigen::Lower>();
+
+    for (int i = ncols - 1; i >= 0; --i) {
+        reverse_it QinvcolI(Qinv, i);
+        for (reverse_it LcolI_slow(L, i); LcolI_slow; --LcolI_slow) {
+            // inner sum iterators
+            reverse_it LcolI(L, i);
+            reverse_it QinvcolJ(Qinv, LcolI_slow.row());
+            
+            // Initialize Qinv[j,i]
+            QinvcolI.valueRef() = 0.0;
+
+            // Inner-most sum
+            while (LcolI.row() > i) {
+                // First up, sync the iterators
+                while ( QinvcolJ && (LcolI.row() < QinvcolJ.row())){
+                    --QinvcolJ;
+                }
+                if (QinvcolJ && (QinvcolJ.row() == LcolI.row())) {
+                    QinvcolI.valueRef() -= LcolI.value() * QinvcolJ.value();
+                    --QinvcolJ;
+                }
+                --LcolI;
+            }
+            // At this point LcolI is the diagonal value
+            if (i == LcolI_slow.row()) {
+                QinvcolI.valueRef() +=  1/ LcolI.value();
+                QinvcolI.valueRef() /=  LcolI.value();
+            } else{
+                QinvcolI.valueRef() /=  LcolI.value();
+                // Set Qinv[i,j] = Qinv[j,i]
+                while (QinvcolJ.row() > i) {
+                    --QinvcolJ;
+                }
+                QinvcolJ.valueRef() = QinvcolI.value();
+            }
+            --QinvcolI;
+        }
+    }
+
+    // Undo the permutation
+    Qinv = Qinv.twistedBy(llt.permutationP().inverse());
+
+    // Return the non-zero elements of Qinv corresponding to the non-zero
+    // elements of Q
+    return MatchPattern(Qinv, Q)();
+
+}
+
+```
+
+You'll probably notice that there are far fewer template shenanigans here than
+in the block matrix code from yesterday. That is because this only needs to work with scalar
+types and doesn't need to be part of the `math` API. If needed, I guess we could always 
+work out what the derivative of the partial inverse is and implement its 
+reverse-mode specialization in Stan,
+but frankly why^[One reason would be to use gradient descent on the score function for a Gaussian MLE. Another is that this might be useful inside the `generated quantities` block to compute things like the marginal variances of the model, but, as the great lady said, not today Satan.] bother.
+
+The other thing you may notice is the line
+```c++
+Qinv = Qinv.twistedBy(llt.permutationP().inverse());
+```
+This exists because the Cholesky factor is not actually performed on $Q$ but rather
+on a permuted matrix $PQP^T$ for some permutation matrix $P$. This line basically
+undoes the permutation and puts everything back into its right place.
+
+## A quick test
+
+Finally, we need to make sure this works. The easiest way to do this is with a 
+simple example, which is a 25x25 sparse matrix. Everything is hard coded in, because
+why not.
+
+```c++
+#include <iostream>
+#include "partial_inverse.hpp"
+#include "Eigen/SparseCore"
+#include "Eigen/Dense"
+
+
+int main() {
+    using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor>;
+
+    int Q_inner[] = {0,1,5,0,1,2,6,1,2,3,7,2,3,4,8,3,4,9,0,5,6,10,1,5,6,7,11,2,
+                    6,7,8,12,3,7,8,9,13,4,8,9,14,5,10,11,15,6,10,11,12,16,7,11,
+                    12,13,17,8,12,13,14,18,9,13,14,19,10,15,16,20,11,15,16,17,
+                    21,12,16,17,18,22,13,17,18,19,23,14,18,19,24,15,20,21,16,20,
+                    21,22,17,21,22,23,18,22,23,24,19,23,24};
+    int Q_outer[] = {0,3,7,11,15,18,22,27,32,37,41,45,50,55,60,64,68,73,78,83,
+                    87,90,94,98,102,105}; 
+    double Q_val[] = {5.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,
+                    5.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,
+                    -1.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,
+                    -1.0,-1.0,5.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,-1.0,
+                    -1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,
+                    -1.0,5.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,
+                    -1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,-1.0,
+                    5.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,5.0,-1.0,-1.0,-1.0,5.0,-1.0,
+                    -1.0,-1.0,5.0,-1.0,-1.0,-1.0,5.0};
+    Eigen::VectorXd Qinv_true(105);
+    Qinv_true << 0.220593295593296,0.051483238983239,0.051483238983239,0.051483238983239,0.233306970806971,0.0547785547785548,0.0602730602730603,0.0547785547785548,0.234139471639472,0.0547785547785548,0.0611402486402486,0.0547785547785548,0.233306970806971,0.051483238983239,0.0602730602730603,0.051483238983239,0.220593295593296,0.051483238983239,0.051483238983239,0.233306970806971,0.0602730602730603,0.0547785547785548,0.0602730602730603,0.0602730602730603,0.25021645021645,0.0652680652680653,0.0652680652680653,0.0611402486402486,0.0652680652680653,0.251621989121989,0.0652680652680653,0.0664335664335664,0.0602730602730603,0.0652680652680653,0.25021645021645,0.0602730602730603,0.0652680652680653,0.051483238983239,0.0602730602730603,0.233306970806971,0.0547785547785548,0.0547785547785548,0.234139471639472,0.0611402486402486,0.0547785547785548,0.0652680652680653,0.0611402486402486,0.251621989121989,0.0664335664335664,0.0652680652680653,0.0664335664335664,0.0664335664335664,0.253146853146853,0.0664335664335664,0.0664335664335664,0.0652680652680653,0.0664335664335664,0.251621989121989,0.0611402486402486,0.0652680652680653,0.0547785547785548,0.0611402486402486,0.234139471639472,0.0547785547785548,0.0547785547785548,0.233306970806971,0.0602730602730603,0.051483238983239,0.0652680652680653,0.0602730602730603,0.25021645021645,0.0652680652680653,0.0602730602730603,0.0664335664335664,0.0652680652680653,0.251621989121989,0.0652680652680653,0.0611402486402486,0.0652680652680653,0.0652680652680653,0.25021645021645,0.0602730602730603,0.0602730602730603,0.0547785547785548,0.0602730602730603,0.233306970806971,0.051483238983239,0.051483238983239,0.220593295593296,0.051483238983239,0.0602730602730603,0.051483238983239,0.233306970806971,0.0547785547785548,0.0611402486402486,0.0547785547785548,0.234139471639472,0.0547785547785548,0.0602730602730603,0.0547785547785548,0.233306970806971,0.051483238983239,0.051483238983239,0.051483238983239,0.220593295593296;
+    
+    int Q_ncol = 25;
+    int Q_nnz = 105;
+
+    SparseMatrix Q = Eigen::Map<SparseMatrix>(Q_ncol, Q_ncol, Q_nnz, Q_outer, Q_inner, Q_val);
+
+
+    auto llt = Eigen::SimplicialLLT<SparseMatrix>(Q);
+
+    SparseMatrix Qinv = partial_inverse(llt, Q);
+    Eigen::VectorXd Qinv_val = Eigen::Map<Eigen::VectorXd>(Qinv.valuePtr(), Q_nnz);
+
+    std::cout << "The error in the partial inverse is " << (Qinv_val - Qinv_true).norm() << "!" << std::endl;
+
+
+
+
+}
+
+```
+
+The output is 
+```
+The error in the partial inverse is 1.25852e-15!
+```
+
+All good here.
+
+That's the end for this blog post. Hopefully I'll be back soon-ish with a more 
+interesting post that actually uses all of this stuff.
+
+

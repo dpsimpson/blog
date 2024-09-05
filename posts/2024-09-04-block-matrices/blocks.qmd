@@ -59,11 +59,11 @@ That means that we need to prefer algorithms that run down columns of matrices
 over ones that run across rows.
 
 This is because computers are clever and when you ask them for, eg `A[0,0]`, the CPU 
-will actually load the first few entries of the 0th _column_^[Or row if it's row major] of `A` in anticipation^[Let's anthopomorphise. I don't want to write a blog about caches.] 
+will actually load the first few entries of the 0th _column_^[Or row if it's row major] of `A` in anticipation^[Let's anthropomorphize. I don't want to write a blog about caches.] 
 that you will need `A[0,1]` and its friends next. If you instead next ask for 
 `A[1,0]`, the CPU has to throw its pre-loaded stuff out, reach out to some potentially
 distant memory and try again. When an array has a lot of rows, these cache misses^[Drag name: Cache Mx]
-noticably degrade the performance of a program.
+noticeably degrade the performance of a program.
 
 
 All of that is to say that this is actually not too too hard to implement
@@ -83,7 +83,7 @@ There are essentially two challenges in doing this. Firstly, the number of
 columns and then number of non-zeros are not known at compile time so we need
 to allocate dynamic memory on the heap. This is always a risky proposition in 
 C++ as it's pretty easy to screw up and end up with a memory leak. To get around
-this, I'm using the RAII (resource aquisition is instantiation) pattern, which
+this, I'm using the RAII (resource acquisition is instantiation) pattern, which
 basically encapsulates all the memory usage inside a functor, who's call method
 return a sparse symmetric matrix.
 
@@ -222,7 +222,7 @@ class Block_sparse_lower {
 } // namespace stan
 ```
 The first thing you probably noticed was all the templates. Templates are 
-a beautiful^[Until you're rooting around a seventy page compiler error that really just means you forgot a typename on the final `return`.] feature of C++ and pretty much all that bit just alllows us to have 
+a beautiful^[Until you're rooting around a seventy page compiler error that really just means you forgot a typename on the final `return`.] feature of C++ and pretty much all that bit just allows us to have 
 any matrix and sparse matrix from Eigen as long as they contain scalars (as
 opposed to autodiff variables). They also allow us to hack together a pre-C++20
 version of [concepts](https://en.wikipedia.org/wiki/Concepts_(C%2B%2B)), 
