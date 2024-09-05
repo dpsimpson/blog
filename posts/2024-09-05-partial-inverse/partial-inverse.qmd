@@ -3,8 +3,8 @@ title: "Random C++ Part 2: Sparse partial inverses in Eigen"
 description: "Sometimes you just need some elements of the inverse of a sparse matrix. Sometimes you're working in C++. This is that time."
   
 date: 2024-09-05
-image: "scooby.JPG"
-categories: [Stan, Sparse matrices, Autodiff]
+image: "reba.JPG"
+categories: [Stan, Sparse matrices, Autodiff, Eigen]
 twitter-card:
   title: "Sparse Partial inverses in Eigen"
   creator: "@dan_p_simpson"
@@ -20,7 +20,17 @@ execute:
 
 ---
 
-_The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious [Finn Lindgren](https://www.maths.ed.ac.uk/~flindgre/), who emailed me some code to do this probably a decade ago. Yes I am behind on my emails._
+::: {.callout-note appearance="simple"}
+
+## Acknowledgements
+The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious [Finn Lindgren](https://www.maths.ed.ac.uk/~flindgre/), who emailed me some code to do this probably a decade ago. Yes I am behind on my emails.
+:::
+
+::: {.callout-note appearance="simple"}
+
+## Code availability 
+The code from this post can be found in my [github repo](https://github.com/dpsimpson/blog/tree/master/posts/2024-09-05-partial-inverse).
+:::
 
 The time has come once more to make a blog post truly untethered from context.
 This time, I'm going to show you how to compute entries of the inverse of a 
@@ -365,5 +375,7 @@ All good here.
 
 That's the end for this blog post. Hopefully I'll be back soon-ish with a more 
 interesting post that actually uses all of this stuff.
+
+
 
 

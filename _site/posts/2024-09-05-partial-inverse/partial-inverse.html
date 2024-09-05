@@ -137,11 +137,11 @@ window.Quarto = {
 <link rel="stylesheet" href="../../styles.css">
 <meta property="og:title" content="Un garçon pas comme les autres (Bayes) - Random C++ Part 2: Sparse partial inverses in Eigen">
 <meta property="og:description" content="Sometimes you just need some elements of the inverse of a sparse matrix. Sometimes you’re working in C++. This is that time.">
-<meta property="og:image" content="https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/scooby.JPG">
+<meta property="og:image" content="https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/reba.JPG">
 <meta property="og:site_name" content="Un garçon pas comme les autres (Bayes)">
 <meta name="twitter:title" content="Sparse Partial inverses in Eigen">
 <meta name="twitter:description" content="Sometimes you just need some elements of the inverse of a sparse matrix. Sometimes you’re working in C++. This is that time.">
-<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/scooby.JPG">
+<meta name="twitter:image" content="https://dansblog.netlify.app/posts/2024-09-05-partial-inverse/reba.JPG">
 <meta name="twitter:creator" content="@dan_p_simpson">
 <meta name="twitter:card" content="summary_large_image">
 </head>
@@ -208,6 +208,7 @@ window.Quarto = {
                 <div class="quarto-category">Stan</div>
                 <div class="quarto-category">Sparse matrices</div>
                 <div class="quarto-category">Autodiff</div>
+                <div class="quarto-category">Eigen</div>
               </div>
                   </div>
   </div>
@@ -257,7 +258,32 @@ window.Quarto = {
 
 
 
-<p><em>The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious <a href="https://www.maths.ed.ac.uk/~flindgre/">Finn Lindgren</a>, who emailed me some code to do this probably a decade ago. Yes I am behind on my emails.</em></p>
+<div class="callout callout-style-simple callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Acknowledgements
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The code in this post is indebted (and in some cases wholly ripped off from) work by the glorious <a href="https://www.maths.ed.ac.uk/~flindgre/">Finn Lindgren</a>, who emailed me some code to do this probably a decade ago. Yes I am behind on my emails.</p>
+</div>
+</div>
+<div class="callout callout-style-simple callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Code availability
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The code from this post can be found in my <a href="https://github.com/dpsimpson/blog/tree/master/posts/2024-09-05-partial-inverse">github repo</a>.</p>
+</div>
+</div>
 <p>The time has come once more to make a blog post truly untethered from context. This time, I’m going to show you how to compute entries of the inverse of a sparse symmetric positive definite matrix that correspond to the non-zero elements of the original matrix. And I am going to once again pull out that rusty spoon that is my C++ skill to do it.</p>
 <section id="a-little-bit-of-motivation" class="level2">
 <h2 class="anchored" data-anchor-id="a-little-bit-of-motivation">A little bit of motivation</h2>

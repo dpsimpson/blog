@@ -20,6 +20,13 @@ execute:
 
 ---
 
+
+::: {.callout-note appearance="simple"}
+
+## Code availability 
+The code from this post can be found in my [github repo](https://github.com/dpsimpson/blog/tree/master/posts/2024-09-04-block-matrices).
+:::
+
 I'll be honest with y'all. I was writing something else. It was really long
 and was getting annoying to edit and was probably never going to be finished.
 So instead of doing that, I am just going to post this. It's about making a 
@@ -329,4 +336,3 @@ After compilation, the output is
 This is exactly what we expect! Hooray. 
 
 And that's it. A symmetric 2x2 block sparse matrix in C++. Who knows what I'll do next.
-

@@ -361,7 +361,7 @@
     "href": "posts/2024-09-04-block-matrices/blocks.html",
     "title": "Random C++ Part 1: Building a block sparse matrix in Eigen",
     "section": "",
-    "text": "I’ll be honest with y’all. I was writing something else. It was really long and was getting annoying to edit and was probably never going to be finished. So instead of doing that, I am just going to post this. It’s about making a block matrix in a Stan-compatible way. Why?? Because I wanted to be able to do this.\nThere is no context forthcoming. There are no good jokes. Just building one sparse matrix.\nEnjoy"
+    "text": "Code availability\n\n\n\nThe code from this post can be found in my github repo.\nI’ll be honest with y’all. I was writing something else. It was really long and was getting annoying to edit and was probably never going to be finished. So instead of doing that, I am just going to post this. It’s about making a block matrix in a Stan-compatible way. Why?? Because I wanted to be able to do this.\nThere is no context forthcoming. There are no good jokes. Just building one sparse matrix.\nEnjoy"
   },
   {
     "objectID": "posts/2024-09-04-block-matrices/blocks.html#c-plumbing-building-a-2x2-block-sparse-matrix-from-a-sparse-11-block-and-two-dense-matrices",
